@@ -28,43 +28,41 @@ export function setupSensorsService() {
   const activeWindowHistory: ActiveWindowEntry[] = []
   const MAX_HISTORY = 5
 
-  let lastActiveWinErrorTime = 0
-  const ERROR_LOG_INTERVAL = 60000 // Only log once per minute
+  let nativeActiveWinDamaged = false
 
   async function getActiveWindowInfo(): Promise<WindowInfo | null> {
-    try {
-      const result = await activeWin()
-      if (result) {
-        return {
-          title: result.title || 'Unknown',
-          processName: result.owner.name || 'Unknown',
-        }
-      }
-    }
-    catch (err) {
-      const now = Date.now()
-      if (now - lastActiveWinErrorTime > ERROR_LOG_INTERVAL) {
-        log.withError(err).warn('Native active-win failed; using system fallbacks.')
-        lastActiveWinErrorTime = now
-      }
-
-      // Fallback for Windows: Use PowerShell to get the window with the largest CPU usage among windowed processes
-      // as a heuristic for the 'active' window. This avoids native dlopen/Add-Type issues.
-      if (process.platform === 'win32') {
-        try {
-          const psCommand = '(Get-Process | Where-Object { $_.MainWindowTitle -ne "" } | Sort-Object CPU -Descending | Select-Object -First 1) | Select-Object MainWindowTitle, ProcessName | ConvertTo-Json'
-          const { stdout } = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psCommand], { encoding: 'utf8', windowsHide: true })
-          if (stdout) {
-            const parsed = JSON.parse(stdout)
-            return {
-              title: parsed.MainWindowTitle || 'Unknown',
-              processName: parsed.ProcessName || 'Unknown',
-            }
+    if (!nativeActiveWinDamaged) {
+      try {
+        const result = await activeWin()
+        if (result) {
+          return {
+            title: result.title || 'Unknown',
+            processName: result.owner.name || 'Unknown',
           }
         }
-        catch (psErr) {
-          // Ignore PS fallback errors to avoid spam
+      }
+      catch (err) {
+        nativeActiveWinDamaged = true
+        log.withError(err).warn('Native active-win failed; switching to system fallbacks for this session.')
+      }
+    }
+
+    // Fallback for Windows: Use PowerShell to get the window with the largest CPU usage among windowed processes
+    // as a heuristic for the 'active' window. This avoids native dlopen/Add-Type issues.
+    if (process.platform === 'win32') {
+      try {
+        const psCommand = '(Get-Process | Where-Object { $_.MainWindowTitle -ne "" } | Sort-Object CPU -Descending | Select-Object -First 1) | Select-Object MainWindowTitle, ProcessName | ConvertTo-Json'
+        const { stdout } = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psCommand], { encoding: 'utf8', windowsHide: true })
+        if (stdout) {
+          const parsed = JSON.parse(stdout)
+          return {
+            title: parsed.MainWindowTitle || 'Unknown',
+            processName: parsed.ProcessName || 'Unknown',
+          }
         }
+      }
+      catch (psErr) {
+        // Ignore PS fallback errors to avoid spam
       }
     }
 
