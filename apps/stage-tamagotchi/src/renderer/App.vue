@@ -149,6 +149,7 @@ onMounted(async () => {
   }
 
   logStep('onMounted start')
+
   proactivityStore.registerTools(builtinTools)
   proactivityStore.startHeartbeatLoop()
 
@@ -183,7 +184,7 @@ onMounted(async () => {
   characterOrchestratorStore.initialize()
   logStep('Starting cursor tracking')
   await startTrackingCursorPoint()
-  logStep('Startup initialization complete')
+  // Startup initialization complete
 
   // Expose stage provider definitions to plugin host APIs.
   defineInvokeHandler(context.value, pluginProtocolListProviders, async () => listProvidersForPluginHost())
