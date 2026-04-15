@@ -137,7 +137,8 @@ function registerInfoFlow() {
     if (!camera.value || !controls.value)
       return
     controls.value.enableRotate = newEnable
-    controls.value.enableZoom = newEnable
+    // Always keep zoom enabled as it doesn't conflict with tactile interactions
+    controls.value.enableZoom = true
   }, { immediate: true })
 
   /*
