@@ -142,8 +142,15 @@ export function useVRMClothInteraction() {
     if (!raycaster.ray.intersectsBox(nodes.boundary))
       return
 
-    // [PHASE-3] We scan fullMeshCache to capture 'lastHitMesh' even for non-cloth items
-    const intersects = raycaster.intersectObjects(fullMeshCache.value, false)
+    // [SPEED-FIX] Filter only VISIBLE cloth first to avoid 23s 'hidden outfit' tax
+    const visibleCloth = clothMeshCache.value.filter(m => m.visible)
+    let intersects = raycaster.intersectObjects(visibleCloth, false)
+
+    if (intersects.length === 0) {
+      // [SPEED-FIX] Fallback to other VISIBLE meshes (accessories, body, etc)
+      const visibleFull = fullMeshCache.value.filter(m => m.visible)
+      intersects = raycaster.intersectObjects(visibleFull, false)
+    }
 
     if (intersects.length > 0) {
       const hit = intersects[0]
@@ -211,7 +218,7 @@ export function useVRMClothInteraction() {
       return // EXIT INSTANTLY (0ms)
     }
 
-    // Fallback: If memory is empty, use the cached flat list
+    // Fallback: If memory is empty, use the cached flat list (VISIBLE ONLY)
     mouse.x = (event.x / window.innerWidth) * 2 - 1
     mouse.y = -(event.y / window.innerHeight) * 2 + 1
     raycaster.setFromCamera(mouse, camera)
@@ -219,7 +226,8 @@ export function useVRMClothInteraction() {
     if (!raycaster.ray.intersectsBox(nodes.boundary))
       return
 
-    const intersects = raycaster.intersectObjects(fullMeshCache.value, false)
+    const visibleFull = fullMeshCache.value.filter(m => m.visible)
+    const intersects = raycaster.intersectObjects(visibleFull, false)
     if (intersects.length > 0) {
       const hit = intersects[0]
       const mesh = hit.object as THREE.Mesh
