@@ -1,7 +1,7 @@
 import type { ChatHistoryItem, ChatStreamEvent } from '../../types/chat'
 import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessionsIndex } from '../../types/chat-session'
 
-import { useBroadcastChannel } from '@vueuse/core'
+import { useBroadcastChannel, watchDebounced } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -866,11 +866,11 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
   // NOTICE: Synchronize character settings (systemPrompt) with the active session
   // by hot-swapping the root system message content.
-  watch(systemPrompt, () => {
+  watchDebounced(systemPrompt, () => {
     if (!ready.value)
       return
     refreshActiveSystemMessage({ force: true })
-  })
+  }, { debounce: 300 })
 
   watch(
     () => lifetimeMemory.artifacts.get(activeCardId.value || 'default')?.updatedAt ?? 0,

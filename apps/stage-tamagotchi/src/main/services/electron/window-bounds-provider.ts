@@ -74,7 +74,7 @@ function createWindowsPoller(nativeId: string, callback: BoundsCallback): { stop
         callback(null)
       }
     }
-    catch (err) {
+    catch {
       callback(null)
     }
 

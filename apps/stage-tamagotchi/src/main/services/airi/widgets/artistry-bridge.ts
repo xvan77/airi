@@ -1,6 +1,9 @@
 import type { WidgetsWindowManager } from '../../../windows/widgets'
 import type { ArtistryProvider, ArtistryRequest } from './providers/base'
 
+import { Buffer } from 'node:buffer'
+import { createHash } from 'node:crypto'
+
 import { useLogg } from '@guiiai/logg'
 
 import { ComfyUIProvider } from './providers/comfyui'
@@ -36,8 +39,8 @@ async function downloadImageAsBase64(url: string): Promise<string> {
     const response = await fetch(url)
     if (!response.ok)
       throw new Error(`Failed to fetch image: ${response.statusText}`)
-    const buffer = await response.arrayBuffer()
-    return Buffer.from(buffer).toString('base64')
+    const bufferArray = await response.arrayBuffer()
+    return Buffer.from(bufferArray).toString('base64')
   }
   catch (error: any) {
     log.error(`[Artistry Bridge] Failed to download image: ${error.message}`)
@@ -67,7 +70,12 @@ export async function generateHeadless(params: {
     m: params.model,
     pr: params.provider,
     o: params.options,
-    g: { ...params.globals, image: params.globals?.image ? 'HAS_IMAGE' : undefined },
+    g: {
+      ...params.globals,
+      image: params.globals?.image
+        ? createHash('sha256').update(params.globals.image.slice(0, 1024)).digest('hex')
+        : undefined,
+    },
   })
 
   if (pendingHeadlessRequests.has(fingerprint)) {
@@ -187,6 +195,8 @@ export async function generateHeadless(params: {
   }
 }
 
+let cachedArtistryConfig: any = null
+
 async function handleArtistryTrigger(params: {
   id: string
   componentName?: string
@@ -203,10 +213,18 @@ async function handleArtistryTrigger(params: {
   const prompt = props.payload?.prompt || props.prompt
 
   const config = props._artistryConfig || {}
-  const providerId = config.provider || 'comfyui'
+  if (Object.keys(config).length > 0) {
+    cachedArtistryConfig = config
+  }
+  const configToUse = Object.keys(config).length > 0 ? config : (cachedArtistryConfig || {})
+
+  const providerId = configToUse.provider || configToUse.Globals?.artistryProvider || 'comfyui'
+
+  if (providerId === 'none')
+    return
 
   // Extract options and remix ID fallback
-  const options = config.options || {}
+  const options = configToUse.options || {}
   const remixId = props.payload?.remixId || props.remixId || options.remixId || (props.status === 'generating' && !prompt ? '48250602' : undefined)
 
   const mode = props.mode || (remixId ? 'remix' : 'generate')
@@ -228,17 +246,20 @@ async function handleArtistryTrigger(params: {
       return
     }
 
+    const globalsToUse = configToUse.Globals
+
     // Initialize the provider with global config
-    if (provider.initialize && config.Globals) {
-      await provider.initialize(config.Globals)
+    if (provider.initialize && globalsToUse) {
+      await provider.initialize(globalsToUse)
     }
 
     try {
       // Build the abstract request
       const request: ArtistryRequest = {
-        prompt: config.promptPrefix ? `${config.promptPrefix} ${prompt}` : prompt,
-        model: config.model,
+        prompt: configToUse.promptPrefix ? `${configToUse.promptPrefix} ${prompt}` : prompt,
+        model: configToUse.model,
         extra: {
+          ...props.payload,
           ...options,
           internalJobId: runId, // Track each generation independently, even on the same widget.
           remixId,
@@ -257,17 +278,34 @@ async function handleArtistryTrigger(params: {
         })
       }
 
-      // If the provider accepts callbacks (like ComfyUI streaming stdout)
+      let isDone = false
+
       if ('setJobCallback' in provider) {
-        ;(provider as any).setJobCallback(runId, (statusUpdate: any) => updateIfActive(statusUpdate))
+        const callbackPromise = new Promise<void>((resolve) => {
+          ;(provider as any).setJobCallback(runId, (statusUpdate: any) => {
+            updateIfActive(statusUpdate)
+            if (statusUpdate.status === 'succeeded' || statusUpdate.status === 'failed') {
+              isDone = true
+              resolve()
+            }
+          })
+        })
+
+        await provider.generate(request)
+        const timeoutPromise = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Generation timed out')), 1000 * 60 * 10))
+        await Promise.race([callbackPromise, timeoutPromise])
       }
+      else {
+        const job = await provider.generate(request)
 
-      const job = await provider.generate(request)
-
-      // Polling loop for providers that don't do callbacks (like Replicate)
-      if (!('setJobCallback' in provider)) {
-        let isDone = false
+        // Polling loop for providers that don't do callbacks (like Replicate)
+        const pollStart = Date.now()
+        const POLL_TIMEOUT = 1000 * 60 * 10 // 10 minutes
         while (!isDone) {
+          if (Date.now() - pollStart > POLL_TIMEOUT) {
+            updateIfActive({ status: 'error', actionLabel: 'Generation timed out' })
+            break
+          }
           const status = await provider.getStatus(job.jobId)
           if (status.status === 'succeeded' || status.status === 'failed') {
             isDone = true

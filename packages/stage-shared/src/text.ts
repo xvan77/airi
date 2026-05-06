@@ -69,7 +69,7 @@ const WIN1252_TO_BYTE: Record<number, number> = {
  * misinterpreted characters and restoring them while leaving valid Unicode symbols untouched.
  */
 export function healMozibake(text: string): string {
-  if (!text || !/[^\x00-\x7F]/.test(text))
+  if (!text || !/[^\u0000-\u007F]/.test(text))
     return text
 
   // Literal mappings for common fragments that are hard to recover via bit-shifting

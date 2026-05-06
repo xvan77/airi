@@ -28,7 +28,7 @@ const req = https.request(options, (res) => {
         console.log('No models found or error:', data)
       }
     }
-    catch (e) {
+    catch {
       console.log('Raw response:', data)
     }
   })

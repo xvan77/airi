@@ -34,16 +34,15 @@ function analyze(doc, maxDepth = 5) {
     if (isMap(node)) {
       node.items.forEach((item) => {
         const key = item.key.toString()
-        const currentPath = [...path, key].join('.')
         let line = '?'
         try {
           if (item.key.range && doc.lineCounter) {
             line = doc.lineCounter.linePos(item.key.range[0]).line
           }
         }
-        catch (e) {}
+        catch {}
 
-        console.log(`${'  '.repeat(indent)}${currentPath} (line ${line})`)
+        console.log(`${'  '.repeat(indent)}${[...path, key].join('.')} (line ${line})`)
 
         if (indent / 2 < maxDepth) {
           printNode(item.value, [...path, key], indent + 2)
@@ -66,7 +65,6 @@ function audit(doc) {
     const keys = new Set()
     map.items.forEach((item) => {
       const key = item.key.toString()
-      const currentPath = [...path, key].join('.')
 
       if (keys.has(key)) {
         const line = item.key.range ? doc.lineCounter.linePos(item.key.range[0]).line : '?'
@@ -116,8 +114,7 @@ function getKeys(node, path = [], keys = new Set()) {
   if (isMap(node)) {
     node.items.forEach((item) => {
       const key = item.key.toString()
-      const currentPath = [...path, key].join('.')
-      keys.add(currentPath)
+      keys.add([...path, key].join('.'))
       getKeys(item.value, [...path, key], keys)
     })
   }

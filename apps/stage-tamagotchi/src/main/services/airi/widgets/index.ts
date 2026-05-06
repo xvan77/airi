@@ -4,8 +4,9 @@ import type { BrowserWindow, IpcMainEvent } from 'electron'
 import type { WidgetsWindowManager } from '../../../windows/widgets'
 
 import { defineInvokeHandlers } from '@moeru/eventa'
+import { artistryComfyHealthCheck, artistryGenerateHeadless } from '@proj-airi/stage-shared'
 
-import { artistryGenerateHeadless, widgetsAdd, widgetsClear, widgetsFetch, widgetsHideWindow, widgetsOpenWindow, widgetsPrepareWindow, widgetsRemove, widgetsUpdate } from '../../../../shared/eventa'
+import { widgetsAdd, widgetsClear, widgetsFetch, widgetsHideWindow, widgetsOpenWindow, widgetsPrepareWindow, widgetsRemove, widgetsUpdate } from '../../../../shared/eventa'
 import { generateHeadless } from './artistry-bridge'
 
 interface InvokeOptions {
@@ -35,6 +36,7 @@ export function createWidgetsService(params: { context: ReturnType<typeof create
     widgetsFetch,
     widgetsHideWindow,
     artistryGenerateHeadless,
+    artistryComfyHealthCheck,
   }, {
     widgetsPrepareWindow: async (payload, options) => {
       if (!isFromWindow(options as InvokeOptions, params.window))
@@ -86,6 +88,27 @@ export function createWidgetsService(params: { context: ReturnType<typeof create
       }
       catch (error: any) {
         return { error: error.message }
+      }
+    },
+    artistryComfyHealthCheck: async (payload: { url: string }) => {
+      const url = payload?.url
+      if (!url)
+        throw new Error('Missing URL')
+      try {
+        const resp = await fetch(`${url}/system_stats`)
+        if (!resp.ok)
+          throw new Error(`HTTP ${resp.status}`)
+        const data = await resp.json()
+        const gpus = data.devices?.map((d: any) => d.name).join(', ') || 'Unknown GPU'
+        const vram = data.devices?.[0]?.vram_total
+        const vramStr = vram ? `${(vram / 1024 / 1024 / 1024).toFixed(1)} GB` : ''
+        return { gpus, vramStr }
+      }
+      catch (e: any) {
+        if (e.message.includes('fetch') || e.message.includes('CORS') || e.message.includes('Forbidden') || e.message.includes('fetch failed')) {
+          throw new Error('CORS')
+        }
+        throw e
       }
     },
   })

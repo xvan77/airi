@@ -19,7 +19,7 @@ export function getArtistryConfig(): ResolvedArtistryConfig {
   try {
     return resolveArtistryConfigFromStore(useArtistryStore())
   }
-  catch (e) {
+  catch {
     return {}
   }
 }
@@ -75,18 +75,11 @@ async function executeCreateImageJournalEntry(params: { prompt?: string, title?:
 
     let blob: Blob
     if (artistryResult.base64) {
-      let data = artistryResult.base64
-      let contentType = 'image/png'
-      if (typeof data === 'string' && data.includes(',')) {
-        const parts = data.split(',')
-        contentType = parts[0].split(':')[1]?.split(';')[0] || contentType
-        data = parts[1]
-      }
-      const byteCharacters = atob(data)
-      const byteNumbers = new Array(byteCharacters.length)
-      for (let j = 0; j < byteCharacters.length; j++)
-        byteNumbers[j] = byteCharacters.charCodeAt(j)
-      blob = new Blob([new Uint8Array(byteNumbers)], { type: contentType })
+      const dataUrl = artistryResult.base64.includes(',')
+        ? artistryResult.base64
+        : `data:image/png;base64,${artistryResult.base64}`
+      const response = await fetch(dataUrl)
+      blob = await response.blob()
     }
     else {
       const response = await fetch(artistryResult.imageUrl!)
@@ -128,8 +121,8 @@ async function executeCreateImageJournalEntry(params: { prompt?: string, title?:
           ttlMs: 0,
         })
       }
-      catch (e) {
-        console.warn('[ImageJournalTool] Failed to spawn Result widget', e)
+      catch {
+        console.warn('[ImageJournalTool] Failed to spawn Result widget')
       }
     }
 

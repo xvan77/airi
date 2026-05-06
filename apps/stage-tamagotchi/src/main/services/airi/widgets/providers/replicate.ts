@@ -4,7 +4,7 @@ import Replicate from 'replicate'
 
 import { useLogg } from '@guiiai/logg'
 
-const log = useLogg('replicate-provider').useGlobalConfig()
+const log = useLogg('providers-replicate').useGlobalConfig()
 
 export class ReplicateProvider implements ArtistryProvider {
   readonly id = 'replicate'
@@ -38,6 +38,10 @@ export class ReplicateProvider implements ArtistryProvider {
       this.apiKey = config.replicateApiKey
       this.replicate = new Replicate({ auth: this.apiKey })
     }
+    else {
+      this.apiKey = ''
+      this.replicate = null
+    }
     if (config?.replicateDefaultModel)
       this.defaultModel = config.replicateDefaultModel
     if (config?.replicateAspectRatio)
@@ -59,7 +63,7 @@ export class ReplicateProvider implements ArtistryProvider {
     let inputOptions: Record<string, any> = {
       go_fast: request.extra?.go_fast ?? true,
       aspect_ratio: request.extra?.aspect_ratio ?? this.aspectRatio,
-      output_format: request.extra?.output_format ?? 'webp',
+      output_format: request.extra?.output_format ?? 'png',
       output_quality: request.extra?.output_quality ?? 80,
       num_inference_steps: request.extra?.num_inference_steps ?? this.inferenceSteps,
     }
@@ -71,7 +75,7 @@ export class ReplicateProvider implements ArtistryProvider {
 
     // 2. Merge overrides from the "JSON Parameters" textarea if present
     if (request.extra) {
-      const { image, ...rest } = request.extra
+      const { image: _, internalJobId: _2, remixId: _3, template: _4, ...rest } = request.extra
       inputOptions = { ...inputOptions, ...rest }
     }
 
@@ -176,7 +180,10 @@ export class ReplicateProvider implements ArtistryProvider {
     }
     finally {
       // Clean up callback after completion
-      setTimeout(() => this.callbacks.delete(jobId), 10000)
+      setTimeout(() => {
+        this.callbacks.delete(jobId)
+        this.jobResults.delete(jobId)
+      }, 10000)
     }
   }
 

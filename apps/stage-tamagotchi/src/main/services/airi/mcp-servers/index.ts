@@ -139,7 +139,7 @@ export function createMcpStdioManager(): McpStdioManager {
     try {
       await readFile(path, 'utf-8')
     }
-    catch (error) {
+    catch {
       log.withFields({ path }).log('mcp config file not found, creating default')
       await writeFile(path, `${JSON.stringify(defaultMcpConfig, null, 2)}\n`)
     }

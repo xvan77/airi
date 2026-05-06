@@ -383,7 +383,7 @@ export function setupDiscordService() {
         // We don't push log for typing to avoid spamming the debug console
       }
     }
-    catch (err: any) {
+    catch {
       // Ignore typing errors silently to avoid spam
     }
   })

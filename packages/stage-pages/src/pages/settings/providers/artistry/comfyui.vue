@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ComfyUIWorkflowTemplate } from '@proj-airi/stage-ui/stores/modules/artistry'
 
+import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { artistryComfyHealthCheck } from '@proj-airi/stage-shared'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { FieldInput } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -27,19 +29,8 @@ async function testConnection() {
   isCorsError.value = false
   try {
     const url = comfyuiServerUrl.value.replace(/\/+$/, '')
-    const resp = await fetch(`${url}/system_stats`, { mode: 'cors' })
-
-    if (resp.status === 403) {
-      isCorsError.value = true
-      throw new Error('Forbidden (Possible CORS issue)')
-    }
-
-    if (!resp.ok)
-      throw new Error(`HTTP ${resp.status}`)
-    const data = await resp.json()
-    const gpus = data.devices?.map((d: any) => d.name).join(', ') || 'Unknown GPU'
-    const vram = data.devices?.[0]?.vram_total
-    const vramStr = vram ? `${(vram / 1024 / 1024 / 1024).toFixed(1)} GB` : ''
+    const healthCheck = useElectronEventaInvoke(artistryComfyHealthCheck)
+    const { gpus, vramStr } = await healthCheck({ url })
     connectionInfo.value = `Connected — ${gpus}${vramStr ? ` (${vramStr} VRAM)` : ''}`
     connectionStatus.value = 'connected'
   }

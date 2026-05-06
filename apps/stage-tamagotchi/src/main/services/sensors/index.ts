@@ -88,7 +88,7 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
         }
       }
     }
-    catch (err) {
+    catch {
       const now = Date.now()
       if (now - lastActiveWinErrorTime > ERROR_LOG_INTERVAL) {
         // eslint-disable-next-line no-console

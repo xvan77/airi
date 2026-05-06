@@ -5,8 +5,8 @@ import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 
-import cozyTeaCornerInPastelHuesUrl from '../assets/backgrounds/cozy-tea-corner-in-pastel-hues.png'
-import cuteStreamingRoomWithPastelDecorUrl from '../assets/backgrounds/cute-streaming-room-with-pastel-decor.png'
+import cozyTeaCornerInPastelHuesUrl from '../assets/backgrounds/cozy-tea-corner-in-pastel-hues.avif'
+import cuteStreamingRoomWithPastelDecorUrl from '../assets/backgrounds/cute-streaming-room-with-pastel-decor.avif'
 
 import { useAiriCardStore } from './modules/airi-card'
 
@@ -160,6 +160,18 @@ export const useBackgroundStore = defineStore('background', () => {
       }
 
       entries.value = loadedEntries
+
+      // Reconciliation: Purge ObjectURLs for entries that were deleted in other windows
+      for (const id in backgroundUrls) {
+        if (!loadedEntries.has(id)) {
+          const url = backgroundUrls[id]
+          if (url)
+            URL.revokeObjectURL(url)
+          delete backgroundUrls[id]
+          blobRefs.delete(id)
+        }
+      }
+
       console.log(`[BackgroundStore] Store initialized with ${loadedEntries.size} entries.`)
     }
     catch (error) {
@@ -326,6 +338,10 @@ export const useBackgroundStore = defineStore('background', () => {
       const nextEntries = new Map(entries.value)
       nextEntries.delete(id)
       entries.value = nextEntries
+
+      const url = backgroundUrls[id]
+      if (url)
+        URL.revokeObjectURL(url)
 
       const blobRef = blobRefs.get(id)
       if (blobRef)

@@ -2,7 +2,7 @@ import type { ArtistryJob, ArtistryJobStatus, ArtistryProvider, ArtistryRequest 
 
 import { useLogg } from '@guiiai/logg'
 
-const log = useLogg('nanobanana-provider').useGlobalConfig()
+const log = useLogg('providers-nanobanana').useGlobalConfig()
 
 export class NanoBananaProvider implements ArtistryProvider {
   readonly id = 'nanobanana'
@@ -51,10 +51,6 @@ export class NanoBananaProvider implements ArtistryProvider {
     if (base64Image.includes('base64,'))
       base64Image = base64Image.split('base64,')[1]
 
-    if (!base64Image) {
-      throw new Error('Nano Banana provider requires a base image.')
-    }
-
     this.runGeneration(jobId, model, resolution, request.prompt, base64Image)
 
     return {
@@ -67,17 +63,17 @@ export class NanoBananaProvider implements ArtistryProvider {
     this.updateStatus(jobId, { status: 'running', actionLabel: 'Inscribing with Nano Banana...' })
 
     try {
+      const requestParts: any[] = [{ text: prompt }]
+      if (base64Image) {
+        requestParts.push({ inline_data: { mime_type: 'image/jpeg', data: base64Image } })
+      }
+
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: 'image/jpeg', data: base64Image } },
-            ],
-          }],
+          contents: [{ parts: requestParts }],
           generationConfig: { imageConfig: { aspectRatio: '1:1', imageSize: resolution } },
         }),
       })
@@ -103,6 +99,12 @@ export class NanoBananaProvider implements ArtistryProvider {
     catch (e: any) {
       log.error(`[Nano Banana] Generation failed: ${e.message}`)
       this.updateStatus(jobId, { status: 'failed', error: e.message })
+    }
+    finally {
+      setTimeout(() => {
+        this.callbacks.delete(jobId)
+        this.jobResults.delete(jobId)
+      }, 10000)
     }
   }
 

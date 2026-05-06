@@ -517,6 +517,18 @@ async function saveCard(card: Card): Promise<boolean> {
     return false
   }
 
+  let artistryConfig: Record<string, any> | undefined
+  try {
+    artistryConfig = selectedArtistryConfigStr.value.trim()
+      ? JSON.parse(selectedArtistryConfigStr.value)
+      : undefined
+  }
+  catch {
+    showError.value = true
+    errorMessage.value = 'Artistry Config must be valid JSON before saving.'
+    return false
+  }
+
   // Build card with modules extension
   const cardWithModules = {
     ...rawCard,
@@ -610,14 +622,7 @@ async function saveCard(card: Card): Promise<boolean> {
     autonomousTarget: selectedArtistryAutonomousTarget.value,
     autonomousMonitorEnabled: selectedArtistryAutonomousMonitorEnabled.value,
     autonomousHistoryDepth: selectedArtistryAutonomousHistoryDepth.value,
-    options: (() => {
-      try {
-        return selectedArtistryConfigStr.value.trim() ? JSON.parse(selectedArtistryConfigStr.value) : undefined
-      }
-      catch {
-        return undefined
-      }
-    })(),
+    options: artistryConfig,
   }
 
   if (isEditMode.value && props.cardId) {

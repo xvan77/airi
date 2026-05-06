@@ -234,8 +234,11 @@ function resolveWidgetComponent(name: string) {
   return GenericWidget
 }
 
-function handleClose() {
+async function handleClose() {
   clearTtl()
+  if (widgetId.value) {
+    await requestRemoval(widgetId.value)
+  }
   window.close()
 }
 </script>
@@ -257,6 +260,7 @@ function handleClose() {
       </button>
       <component
         :is="resolveWidgetComponent(widget.componentName)"
+        :id="widget.id"
         :key="widget.id"
         :title="widget.componentName"
         :model-value="widget.componentProps"

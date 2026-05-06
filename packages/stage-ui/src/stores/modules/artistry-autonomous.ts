@@ -474,10 +474,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
               data = parts[1]
             }
             const byteCharacters = atob(data)
-            const byteNumbers = new Array(byteCharacters.length)
-            for (let j = 0; j < byteCharacters.length; j++)
-              byteNumbers[j] = byteCharacters.charCodeAt(j)
-            blob = new Blob([new Uint8Array(byteNumbers)], { type: contentType })
+            blob = new Blob([new Uint8Array(Array.from({ length: byteCharacters.length }, (_, j) => byteCharacters.charCodeAt(j)))], { type: contentType })
           }
           else {
             const response = await fetch(result.imageUrl!)

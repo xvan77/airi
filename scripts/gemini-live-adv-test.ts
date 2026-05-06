@@ -1,5 +1,3 @@
-import * as fs from 'node:fs'
-
 import WebSocket from 'ws'
 
 import * as dotenv from 'dotenv'
@@ -10,16 +8,6 @@ dotenv.config()
 const PRIMARY_API_KEY = process.env.GEMINI_API_KEY
 const MODEL = 'models/gemini-3.1-flash-live-preview'
 const URI = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${PRIMARY_API_KEY}`
-
-const screenshotPath = 'C:\\Users\\h4rdc\\.gemini\\antigravity\\brain\\3b896cce-fb5e-4b5b-a9fe-ffd25e650ac6\\media__1774912465244.png'
-let screenshotBase64 = ''
-try {
-  screenshotBase64 = fs.readFileSync(screenshotPath, { encoding: 'base64' })
-  console.log('Loaded screenshot for vision test:', screenshotPath)
-}
-catch (e) {
-  console.error('Failed to load screenshot:', e)
-}
 
 const ws = new WebSocket(URI)
 

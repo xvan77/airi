@@ -130,7 +130,7 @@ function getArtistryConfig() {
     }
     return JSON.parse(JSON.stringify(config))
   }
-  catch (e) {
+  catch {
     return {}
   }
 }

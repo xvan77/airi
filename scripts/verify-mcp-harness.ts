@@ -6,13 +6,6 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 // --- MOCKED/COPIED FROM PROJECT ---
 
 // From packages/stage-ui/src/stores/mcp-tool-bridge.ts
-interface McpToolDescriptor {
-  serverName: string
-  name: string
-  toolName: string
-  description?: string
-  inputSchema: Record<string, unknown>
-}
 
 // From packages/stage-ui/src/stores/modules/live-session.ts (Hardened Logic)
 function mapAiriToolToGemini(tool: any): Record<string, unknown> {

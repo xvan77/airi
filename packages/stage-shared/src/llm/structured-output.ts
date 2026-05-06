@@ -41,7 +41,6 @@ export async function generateObject<T>(
     apiKey,
     baseURL,
     schema,
-    schemaName = 'artifact',
     maxAttempts = 3,
     normalize,
     ...llmOptions

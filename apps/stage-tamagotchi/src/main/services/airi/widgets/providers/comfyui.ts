@@ -1,8 +1,10 @@
 import type { ArtistryJob, ArtistryJobStatus, ArtistryProvider, ArtistryRequest } from './base'
 
+import { Buffer } from 'node:buffer'
+
 import { useLogg } from '@guiiai/logg'
 
-const log = useLogg('comfyui-provider').useGlobalConfig()
+const log = useLogg('providers-comfyui').useGlobalConfig()
 
 const POLL_INTERVAL_MS = 5000
 const POLL_TIMEOUT_MS = 1000 * 60 * 10 // 10 minutes
@@ -46,7 +48,7 @@ export class ComfyUIProvider implements ArtistryProvider {
     const jobId = request.extra?.internalJobId || Math.random().toString(36).slice(2)
 
     // Resolve which workflow template to use
-    const templateId = request.model || request.extra?.template || this.activeWorkflowId
+    const templateId = request.extra?.template || request.model || this.activeWorkflowId
     const template = this.savedWorkflows.find(w => w.id === templateId)
 
     if (!template) {
@@ -114,11 +116,15 @@ export class ComfyUIProvider implements ArtistryProvider {
 
       let queueResp: Response
       try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000)
         queueResp = await fetch(`${this.serverUrl}/prompt`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: resolvedPrompt }),
+          signal: controller.signal,
         })
+        clearTimeout(timeoutId)
       }
       catch (e: any) {
         throw new Error(`Cannot connect to ComfyUI at ${this.serverUrl}: ${e.message}`)
@@ -157,7 +163,10 @@ export class ComfyUIProvider implements ArtistryProvider {
 
         let histResp: Response
         try {
-          histResp = await fetch(`${this.serverUrl}/history/${promptId}`)
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000)
+          histResp = await fetch(`${this.serverUrl}/history/${promptId}`, { signal: controller.signal })
+          clearTimeout(timeoutId)
         }
         catch (e: any) {
           throw new Error(`ComfyUI disconnected during polling: ${e.message}`)
@@ -173,7 +182,10 @@ export class ComfyUIProvider implements ArtistryProvider {
             if ((!outputs || Object.keys(outputs).length === 0) && !historyDone) {
               log.warn(`[ComfyUI] Job ${jobId} finished but outputs are empty. Retrying history in 1s...`)
               await new Promise(r => setTimeout(r, 1000))
-              const retryResp = await fetch(`${this.serverUrl}/history/${promptId}`)
+              const controller = new AbortController()
+              const timeoutId = setTimeout(() => controller.abort(), 30000)
+              const retryResp = await fetch(`${this.serverUrl}/history/${promptId}`, { signal: controller.signal })
+              clearTimeout(timeoutId)
               if (retryResp.ok) {
                 const retryData = await retryResp.json()
                 if (retryData[promptId] && retryData[promptId].outputs) {
@@ -226,7 +238,10 @@ export class ComfyUIProvider implements ArtistryProvider {
     }
     finally {
       // Clean up callback after completion
-      setTimeout(() => this.callbacks.delete(jobId), 10000)
+      setTimeout(() => {
+        this.callbacks.delete(jobId)
+        this.jobResults.delete(jobId)
+      }, 10000)
     }
   }
 

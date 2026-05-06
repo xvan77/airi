@@ -9,6 +9,7 @@ import { Alert } from '@proj-airi/stage-ui/components'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { DisplayModelFormat, useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { AiriCardSchema } from '@proj-airi/stage-ui/types'
 import { InputFile } from '@proj-airi/ui'
@@ -753,6 +754,8 @@ async function exportCardPng(cardId: string) {
 // Card activation
 async function activateCard(id: string) {
   activeCardId.value = id
+  const artistryStore = useArtistryStore()
+  artistryStore.resetState()
 }
 
 // Clear editing state when creation/edit dialog closes

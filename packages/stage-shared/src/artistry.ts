@@ -2,6 +2,8 @@ import { defineInvokeEventa } from '@moeru/eventa'
 
 export const artistryGenerateHeadless = defineInvokeEventa<{ imageUrl?: string, base64?: string, error?: string }, { prompt: string, model?: string, provider?: string, options?: Record<string, any>, globals?: Record<string, any> }>('eventa:invoke:electron:artistry:generate-headless')
 
+export const artistryComfyHealthCheck = defineInvokeEventa<{ gpus: string, vramStr: string }, { url: string }>('eventa:invoke:electron:artistry:comfy-health-check')
+
 export const REPLICATE_IMAGEGEN_PRESETS = [
   {
     id: 'prunaai/p-image',
