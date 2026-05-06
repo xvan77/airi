@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   /** Tooltip for the main button */
   title?: string
   imagineMode?: boolean
