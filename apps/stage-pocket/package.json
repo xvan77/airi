@@ -1,6 +1,7 @@
 {
   "name": "@proj-airi/stage-pocket",
   "type": "module",
+  "version": "0.9.1-stable.20260506",
   "private": true,
   "description": "LLM powered virtual character",
   "author": {
@@ -14,6 +15,7 @@
     "lint": "eslint .",
     "lint:swift": "swiftlint ios",
     "preview": "vite preview",
+    "open:ios": "cap open ios",
     "typecheck": "vue-tsc --noEmit",
     "dev:web": "vite",
     "dev:ios": "cap-vite -- ios"
