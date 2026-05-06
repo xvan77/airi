@@ -203,6 +203,7 @@ onMounted(() => {
           />
 
           <ChatImagesPopover
+            variant="mobile"
             :imagine-mode="isImagineMode"
             @toggle-imagine="isImagineMode = !isImagineMode"
             @attach="fileInput?.click()"

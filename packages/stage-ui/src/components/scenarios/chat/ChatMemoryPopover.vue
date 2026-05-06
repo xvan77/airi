@@ -12,9 +12,12 @@ const props = withDefaults(defineProps<{
   showCacheStatus?: boolean
   /** Tooltip for the main button */
   title?: string
+  /** Variant of the trigger button */
+  variant?: 'default' | 'mobile'
 }>(), {
   showCacheStatus: false,
   title: 'Memory & Context',
+  variant: 'default',
 })
 
 const emit = defineEmits<{
@@ -87,6 +90,14 @@ function navigateToMemory() {
   <PopoverRoot>
     <PopoverTrigger as-child>
       <button
+        v-if="variant === 'mobile'"
+        class="w-fit flex items-center justify-center border-2 border-neutral-100/60 rounded-xl border-solid bg-neutral-50/70 p-2 backdrop-blur-md transition-all active:scale-95 dark:border-neutral-800/30 dark:bg-neutral-800/70"
+        :title="title"
+      >
+        <div class="i-solar:leaf-bold-duotone size-5 text-neutral-500 dark:text-neutral-400" />
+      </button>
+      <button
+        v-else
         class="max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md p-2 outline-none transition-colors transition-transform active:scale-95"
         bg="neutral-100 dark:neutral-800"
         text="lg neutral-500 dark:neutral-400"
