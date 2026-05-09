@@ -70,6 +70,12 @@ export const useSpine = defineStore('spine', () => {
     () => ({ ...defaultSpineAnimation }),
   )
 
+  /** Active independent animations. */
+  const activeAnimations = useLocalStorageManualReset<Record<string, boolean>>(
+    'settings/spine/active-animations',
+    () => ({}),
+  )
+
   /** All animations discovered on the loaded skeleton. */
   const availableAnimations = useLocalStorageManualReset<SpineAnimationDescriptor[]>(
     'settings/spine/available-animations',
@@ -114,6 +120,7 @@ export const useSpine = defineStore('spine', () => {
   function resetState() {
     supportedControl.forEach(c => resetViewControl(c))
     currentAnimation.reset()
+    activeAnimations.reset()
     availableAnimations.reset()
     availableSkins.reset()
     currentSkin.reset()
@@ -131,6 +138,7 @@ export const useSpine = defineStore('spine', () => {
     position,
     scale,
     currentAnimation,
+    activeAnimations,
     availableAnimations,
     availableSkins,
     currentSkin,

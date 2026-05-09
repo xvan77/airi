@@ -34,6 +34,7 @@ const {
   scale,
   position,
   currentAnimation,
+  activeAnimations,
   availableAnimations,
   currentSkin,
   availableSkins,
@@ -75,16 +76,15 @@ function handleVariantSelect(variantName: string | number | undefined) {
   currentVariant.value = variantName
 }
 
-function handleAnimationSelect(animationName: string | number | undefined) {
-  if (typeof animationName !== 'string')
-    return
-  currentAnimation.value = { ...currentAnimation.value, name: animationName }
-}
-
 function handleSkinSelect(skinName: string | number | undefined) {
   if (typeof skinName !== 'string')
     return
   currentSkin.value = skinName
+}
+
+function toggleAnimation(name: string) {
+  const current = activeAnimations.value[name] || false
+  activeAnimations.value = { ...activeAnimations.value, [name]: !current }
 }
 </script>
 
@@ -102,12 +102,22 @@ function handleSkinSelect(skinName: string | number | undefined) {
     :expand="true"
   >
     <!-- Animation -->
-    <Select
-      :model-value="currentAnimation.name"
-      :options="animationOptions"
-      class="w-full"
-      @update:model-value="handleAnimationSelect"
-    />
+    <div v-if="availableAnimations.length > 0" class="mb-4 flex flex-wrap gap-1">
+      <button
+        v-for="anim in availableAnimations"
+        :key="anim.name"
+        :class="[
+          'relative rounded-md px-2 py-1 text-xs transition-all duration-150',
+          'border border-solid select-none',
+          activeAnimations[anim.name]
+            ? 'bg-primary-500/20 border-primary-400 text-primary-600 dark:text-primary-300 font-medium'
+            : 'bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700',
+        ]"
+        @click="toggleAnimation(anim.name)"
+      >
+        {{ anim.name }}
+      </button>
+    </div>
     <FieldRange v-model="spineDefaultMixDuration" as="div" :min="0" :max="2" :step="0.05" :label="t('settings.spine.animation.mix-duration')">
       <template #label>
         <div flex items-center>

@@ -59,6 +59,7 @@ const db = ref<DuckDBWasmDrizzleDatabase>()
 
 const vrmViewerRef = ref<InstanceType<typeof ThreeScene>>()
 const live2dSceneRef = ref<InstanceType<typeof Live2DScene>>()
+const spineViewerRef = ref<InstanceType<typeof SpineScene>>()
 
 const settingsStore = useSettings()
 const vhackStore = useVHackStore()
@@ -273,6 +274,18 @@ const emotionsQueue = createQueue<EmotionPayload>({
           else {
             console.warn('[Stage] No Live2D explicit mapping, name match, or motion found for:', emotionName)
           }
+        }
+      }
+      else if (stageModelRenderer.value === 'spine') {
+        const emotionName = ctx.data.name
+        const intensity = ctx.data.intensity
+        // eslint-disable-next-line no-console
+        console.log('[Stage] Spine emotion/motion processing:', { name: emotionName, intensity })
+        if (spineViewerRef.value) {
+          spineViewerRef.value.setEmotion(emotionName, intensity)
+        }
+        else {
+          console.warn('[Stage] spineViewerRef is NULL')
         }
       }
     },
@@ -1064,6 +1077,7 @@ defineExpose({
       />
       <SpineScene
         v-if="stageModelRenderer === 'spine'"
+        ref="spineViewerRef"
         v-model:state="componentState"
         :model-src="stageModelSelectedUrl"
         :model-id="stageModelSelected"

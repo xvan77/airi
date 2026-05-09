@@ -48,6 +48,7 @@ const {
   position,
   scale,
   currentAnimation,
+  activeAnimations,
   currentSkin,
   availableAnimations,
   availableSkins,
@@ -225,6 +226,9 @@ async function loadModel() {
             // Apply the user's saved idle animation.
             applyCurrentAnimation()
 
+            // Apply active independent animations.
+            applyActiveAnimations(activeAnimations.value)
+
             emits('modelLoaded')
             resolve()
           }
@@ -385,6 +389,26 @@ function applyCurrentAnimation() {
   animationManager.setIdle(desired)
 }
 
+function applyActiveAnimations(activeAnims: Record<string, boolean>) {
+  if (!animationState || !availableAnimations.value)
+    return
+
+  availableAnimations.value.forEach((anim, index) => {
+    const trackIndex = 10 + index
+    const isActive = activeAnims[anim.name] || false
+
+    const currentTrack = animationState.getCurrent(trackIndex)
+    const isPlaying = currentTrack && currentTrack.animation.name === anim.name
+
+    if (isActive && !isPlaying) {
+      animationState.setAnimation(trackIndex, anim.name, true)
+    }
+    else if (!isActive && isPlaying) {
+      animationState.setEmptyAnimation(trackIndex, props.defaultMixDuration)
+    }
+  })
+}
+
 function applySkin(skinName: string) {
   if (!skeleton)
     return
@@ -420,9 +444,7 @@ function applySkin(skinName: string) {
 function setEmotion(emotion: Emotion, _intensity: number = 1): string | undefined {
   if (!animationManager)
     return undefined
-  const animationName = EMOTION_SpineAnimationName_value[emotion]
-  if (!animationName)
-    return undefined
+  const animationName = EMOTION_SpineAnimationName_value[emotion] || emotion
   const entry = animationManager.playEmotion(animationName)
   return entry?.animation?.name
 }
@@ -439,6 +461,10 @@ watch([() => props.width, () => props.height, position, scale], () => {
 
 watch(currentAnimation, () => {
   applyCurrentAnimation()
+}, { deep: true })
+
+watch(activeAnimations, (newVal) => {
+  applyActiveAnimations(newVal)
 }, { deep: true })
 
 watch(currentSkin, (skinName) => {
