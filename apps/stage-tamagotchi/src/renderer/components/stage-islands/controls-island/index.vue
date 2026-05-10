@@ -10,6 +10,7 @@ import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { storeToRefs } from 'pinia'
 import { computed, ref, toRef, watch } from 'vue'
+import { useColorMode } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
@@ -48,6 +49,11 @@ const { enabled } = storeToRefs(settingsAudioDeviceStore)
 const { alwaysOnTop, controlsIslandIconSize, stageModelRenderer } = storeToRefs(settingsStore)
 const { activeCard, activeCardId } = storeToRefs(cardStore)
 const liveSessionStore = useLiveSessionStore()
+const colorMode = useColorMode()
+
+function toggleTheme() {
+  colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
+}
 const visionStore = useVisionStore()
 const { powerState } = storeToRefs(liveSessionStore)
 const { status: visionStatus } = storeToRefs(visionStore)
@@ -917,6 +923,16 @@ function triggerWardrobeItem(id: string) {
                 </ControlButton>
                 <template #tooltip>
                   {{ interactionMode === 'orbit' ? 'Tactile Mode (Poke)' : 'Orbit Mode (Camera)' }}
+                </template>
+              </ControlButtonTooltip>
+
+              <ControlButtonTooltip>
+                <ControlButton :button-style="adjustStyleClasses.button" @click="toggleTheme()">
+                  <div v-if="colorMode === 'dark'" i-solar:sun-linear :class="adjustStyleClasses.icon" text="amber-500" />
+                  <div v-else i-solar:moon-linear :class="adjustStyleClasses.icon" text="sky-600 dark:sky-400" />
+                </ControlButton>
+                <template #tooltip>
+                  {{ colorMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode' }}
                 </template>
               </ControlButtonTooltip>
 
