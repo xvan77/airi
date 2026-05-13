@@ -189,7 +189,7 @@ async function loadModel(url: string) {
       },
     })
 
-    if (currentSequence !== loadSequence)
+    if (!isComponentMounted.value || currentSequence !== loadSequence)
       return
 
     if (!result) {
@@ -293,6 +293,23 @@ async function loadModel(url: string) {
   }
 }
 
+// Watch idle animation changes
+watch(() => props.idleAnimation, async (newAnim) => {
+  if (newAnim && newAnim.endsWith('.vmd') && mmdInstance.value && mmdAnimationMixer.value) {
+    try {
+      const clip = await loadVMDAnimation(newAnim, mmdInstance.value)
+      if (clip) {
+        mmdAnimationMixer.value.stopAllAction()
+        const action = mmdAnimationMixer.value.clipAction(clip)
+        action.play()
+      }
+    }
+    catch (error) {
+      console.warn('[MMDModel] Failed to load new idle animation:', error)
+    }
+  }
+})
+
 // Watch model source changes
 watch(modelSrc, (newSrc, oldSrc) => {
   if (!newSrc) {
@@ -312,13 +329,17 @@ watch([modelOffset, modelRotationY], ([offset, rotY]) => {
   mmdGroup.value.rotation.y = rotY
 })
 
+const isComponentMounted = ref(false)
+
 onMounted(() => {
+  isComponentMounted.value = true
   if (modelSrc.value && !modelLoaded.value) {
     void loadModel(modelSrc.value)
   }
 })
 
 onUnmounted(() => {
+  isComponentMounted.value = false
   cleanup()
 })
 

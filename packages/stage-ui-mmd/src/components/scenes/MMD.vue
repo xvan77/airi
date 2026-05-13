@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useMmd } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { Screen } from '@proj-airi/ui'
 import { TresCanvas } from '@tresjs/core'
+import { storeToRefs } from 'pinia'
 import { ACESFilmicToneMapping, PerspectiveCamera } from 'three'
 import { shallowRef } from 'vue'
 
@@ -22,6 +24,8 @@ const emit = defineEmits<{
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
 const camera = shallowRef(new PerspectiveCamera())
+const mmdStore = useMmd()
+const { currentMotion } = storeToRefs(mmdStore)
 
 function onTresReady() {
   componentState.value = 'mounted'
@@ -65,6 +69,7 @@ function onSceneBootstrap(data: any) {
           :eye-height="1.5"
           :camera-position="{ x: 0, y: 1.5, z: 5 }"
           :camera="camera"
+          :idle-animation="`/assets/mmd/animations/${currentMotion}`"
           @scene-bootstrap="onSceneBootstrap"
           @error="(err) => emit('error', err)"
         />

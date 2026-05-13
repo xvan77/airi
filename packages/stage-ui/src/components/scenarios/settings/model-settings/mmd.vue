@@ -2,7 +2,7 @@
 import { useMmd } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positioning'
-import { Button, FieldRange } from '@proj-airi/ui'
+import { Button, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -21,7 +21,7 @@ const { t } = useI18n()
 const { stageModelSelected } = storeToRefs(useSettings())
 const positioningStore = usePositioningStore()
 const mmdStore = useMmd()
-const { availableMorphs, morphMappings, hiddenMorphs } = storeToRefs(mmdStore)
+const { availableMorphs, morphMappings, hiddenMorphs, availableMotions, currentMotion } = storeToRefs(mmdStore)
 
 const scale = computed({
   get: () => positioningStore.getPosition(props.modelId || stageModelSelected.value).scale,
@@ -50,14 +50,20 @@ const positionY = computed({
   },
 })
 
-// Morph Targets List State
+// Tabs State
+const customizationTabs = computed(() => [
+  { value: 'expressions', label: 'Expressions', icon: 'i-solar:face-scan-circle-bold-duotone' },
+  { value: 'motions', label: 'Motions', icon: 'i-solar:play-bold-duotone' },
+])
+const activeCustomizationTab = ref('expressions')
+
+// Expressions (Morphs) List State
 const showHiddenMorphs = ref(false)
 const filterRenamedOnly = ref(false)
 const editingMorphKey = ref<string | null>(null)
 const editingMorphValue = ref('')
 
 const filteredMorphs = computed(() => {
-  console.log('[MMD Settings] availableMorphs:', availableMorphs.value)
   return availableMorphs.value.filter((morph) => {
     // Filter hidden
     if (!showHiddenMorphs.value && hiddenMorphs.value.includes(morph)) {
@@ -113,8 +119,13 @@ function cancelEditing() {
 
 function handleMorphSelect(morph: string) {
   console.log('[MMD Settings] Previewing morph:', morph)
-  // TODO: Trigger morph preview in the scene!
-  // This will require exposing a method in MMD.vue or using a store action!
+}
+
+// Motions List State
+
+function handleMotionSelect(motion: string) {
+  console.log('[MMD Settings] Selecting motion:', motion)
+  currentMotion.value = motion
 }
 </script>
 
@@ -128,7 +139,11 @@ function handleMorphSelect(morph: string) {
     :expand="true"
   >
     <div class="w-full">
-      <div class="relative flex flex-col gap-2">
+      <!-- Tabs -->
+      <SelectTab v-model="activeCustomizationTab" :options="customizationTabs" size="sm" compact class="mb-4" />
+
+      <!-- Expressions Tab -->
+      <div v-if="activeCustomizationTab === 'expressions'" class="relative flex flex-col gap-2">
         <!-- Controls Bar -->
         <div class="mb-2 flex items-center justify-between gap-2">
           <div class="flex gap-1">
@@ -154,14 +169,14 @@ function handleMorphSelect(morph: string) {
             </Button>
           </div>
           <div class="text-xs text-neutral-500">
-            {{ filteredMorphs.length }} morphs
+            {{ filteredMorphs.length }} expressions
           </div>
         </div>
 
         <!-- Fixed Height Scrollable List -->
         <div class="max-h-[300px] overflow-y-auto border border-neutral-200 rounded-lg bg-white dark:border-neutral-700 dark:bg-neutral-900">
           <div v-if="filteredMorphs.length === 0" class="p-4 text-center text-sm text-neutral-500 dark:text-neutral-400">
-            No morphs match filters
+            No expressions match filters
           </div>
           <div
             v-for="morph in filteredMorphs"
@@ -219,6 +234,43 @@ function handleMorphSelect(morph: string) {
               >
                 <div :class="isHidden(morph) ? 'i-solar:eye-closed-bold-duotone' : 'i-solar:eye-bold-duotone'" class="text-sm" />
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Motions Tab -->
+      <div v-else-if="activeCustomizationTab === 'motions'" class="relative flex flex-col gap-2">
+        <!-- Controls Bar -->
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <div class="text-xs text-neutral-500">
+            {{ availableMotions.length }} motions available
+          </div>
+        </div>
+
+        <!-- Fixed Height Scrollable List -->
+        <div class="max-h-[300px] overflow-y-auto border border-neutral-200 rounded-lg bg-white dark:border-neutral-700 dark:bg-neutral-900">
+          <div
+            v-for="motion in availableMotions"
+            :key="motion"
+            :class="[
+              'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
+              currentMotion === motion ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+            ]"
+          >
+            <!-- Left Side: Name -->
+            <div class="min-w-0 flex-1 cursor-pointer" @click="handleMotionSelect(motion)">
+              <div class="flex items-center gap-2">
+                <!-- Active Indicator -->
+                <div v-if="currentMotion === motion" class="h-2 w-2 rounded-full bg-primary-500" />
+
+                <div class="max-w-[230px] truncate text-sm text-neutral-900 font-medium dark:text-neutral-100">
+                  {{ motion.replace('.vmd', '').replace(/_/g, ' ') }}
+                </div>
+              </div>
+              <div class="ml-4 max-w-[230px] truncate text-xs text-neutral-500 dark:text-neutral-400">
+                {{ motion }}
+              </div>
             </div>
           </div>
         </div>
