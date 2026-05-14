@@ -2,7 +2,7 @@
 import type { DisplayModel } from '../../../../stores/display-models'
 
 import { Live2DScene, useLive2d } from '@proj-airi/stage-ui-live2d'
-import { MMDScene } from '@proj-airi/stage-ui-mmd'
+import { MMDScene, useMmd } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { Button, Callout } from '@proj-airi/ui'
@@ -57,6 +57,8 @@ const {
 } = storeToRefs(settingsStore)
 
 const positioningStore = usePositioningStore()
+const mmdStore = useMmd()
+const { previewExpression } = storeToRefs(mmdStore)
 
 const computedScale = computed(() => {
   return positioningStore.getPosition(stageModelSelected.value).scale
@@ -118,6 +120,12 @@ async function handleApplyToActiveCharacter() {
       airi: updatedAiriExtension,
     },
   })
+}
+
+function handleScaleChange(newScale: number) {
+  const key = stageModelSelected.value
+  const current = positioningStore.getPosition(key)
+  positioningStore.setPosition(key, { ...current, scale: newScale })
 }
 </script>
 
@@ -238,6 +246,11 @@ async function handleApplyToActiveCharacter() {
       <MMDScene
         :model-src="stageModelSelectedUrl"
         :texture-map="settingsStore.mmdTextureMap"
+        :scale="computedScale"
+        :position-x="computedXOffset"
+        :position-y="computedYOffset"
+        :preview-expression="previewExpression"
+        @scale-change="handleScaleChange"
       />
     </div>
   </template>

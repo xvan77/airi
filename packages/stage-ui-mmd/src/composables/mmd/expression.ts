@@ -53,6 +53,12 @@ export function useMMDEmote(mmd: MMD) {
 
     const result = new Map<number, number>()
 
+    // If it's a direct morph target name in the model, use it!
+    if (dict[expressionName] != null) {
+      result.set(dict[expressionName], 1.0)
+      return result
+    }
+
     // Try Japanese names first
     const jpNames = EXPRESSION_MORPH_MAP[expressionName]
     if (jpNames) {
@@ -81,15 +87,23 @@ export function useMMDEmote(mmd: MMD) {
   }
 
   function setExpression(expressionName: string, intensity = 1.0, duration = 0.4) {
+    console.log('[useMMDEmote] setExpression requested:', expressionName, 'intensity:', intensity)
     if (currentEmotion.value === expressionName)
       return
 
     currentEmotion.value = expressionName
     const targetMorphs = resolveMorphIndices(expressionName)
+    console.log('[useMMDEmote] resolved targetMorphs:', targetMorphs)
 
-    // Scale by intensity
-    for (const [index, weight] of targetMorphs) {
-      targetMorphs.set(index, weight * Math.min(1, Math.max(0, intensity)))
+    // Apply directly for testing to see if it bypasses any issues!
+    if (mmd.mesh.morphTargetInfluences) {
+      for (const [index, weight] of targetMorphs) {
+        console.log('[useMMDEmote] Applying weight DIRECTLY to mesh:', index, 'weight:', weight)
+        mmd.mesh.morphTargetInfluences[index] = weight
+      }
+    }
+    else {
+      console.warn('[useMMDEmote] mesh.morphTargetInfluences is MISSING!')
     }
 
     transition.value = {
@@ -113,8 +127,15 @@ export function useMMDEmote(mmd: MMD) {
       return
 
     const t = transition.value
-    if (!t)
+    if (!t) {
+      // No transition active: continuously apply active morph weights to override animation mixer!
+      for (const [index, weight] of activeMorphWeights.value) {
+        if (mmd.mesh.morphTargetInfluences[index] != null) {
+          mmd.mesh.morphTargetInfluences[index] = weight
+        }
+      }
       return
+    }
 
     t.progress = Math.min(1, t.progress + delta / t.duration)
     const easedProgress = easeInOutCubic(t.progress)

@@ -21,11 +21,11 @@ const { t } = useI18n()
 const { stageModelSelected } = storeToRefs(useSettings())
 const positioningStore = usePositioningStore()
 const mmdStore = useMmd()
-const { availableMorphs, morphMappings, hiddenMorphs, availableMotions, currentMotion } = storeToRefs(mmdStore)
+const { availableMorphs, morphMappings, hiddenMorphs, availableMotions, currentMotion, previewExpression } = storeToRefs(mmdStore)
 
 const scale = computed({
   get: () => positioningStore.getPosition(props.modelId || stageModelSelected.value).scale,
-  set: (val) => {
+  set: (val: number) => {
     const key = props.modelId || stageModelSelected.value
     const current = positioningStore.getPosition(key)
     positioningStore.setPosition(key, { ...current, scale: val })
@@ -119,6 +119,7 @@ function cancelEditing() {
 
 function handleMorphSelect(morph: string) {
   console.log('[MMD Settings] Previewing morph:', morph)
+  previewExpression.value = morph
 }
 
 // Motions List State
@@ -183,12 +184,15 @@ function handleMotionSelect(motion: string) {
             :key="morph"
             :class="[
               'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
-              'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+              previewExpression === morph ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
             ]"
           >
             <!-- Left Side: Name -->
             <div class="min-w-0 flex-1 cursor-pointer" @click="handleMorphSelect(morph)">
               <div class="flex items-center gap-2">
+                <!-- Active Indicator -->
+                <div v-if="previewExpression === morph" class="h-2 w-2 rounded-full bg-primary-500" />
+
                 <!-- Name (Editable) -->
                 <div v-if="editingMorphKey === morph" class="flex flex-1 items-center gap-1" @click.stop>
                   <input
@@ -301,7 +305,7 @@ function handleMotionSelect(motion: string) {
         </div>
       </template>
     </FieldRange>
-    <FieldRange v-model="positionX" as="div" :min="-3000" :max="3000" :step="1" label="X Position">
+    <FieldRange v-model="positionX" as="div" :min="-20" :max="20" :step="0.1" label="X Position">
       <template #label>
         <div flex items-center>
           <div>X Position</div>
@@ -311,7 +315,7 @@ function handleMotionSelect(motion: string) {
         </div>
       </template>
     </FieldRange>
-    <FieldRange v-model="positionY" as="div" :min="-3000" :max="3000" :step="1" label="Y Position">
+    <FieldRange v-model="positionY" as="div" :min="-20" :max="20" :step="0.1" label="Y Position">
       <template #label>
         <div flex items-center>
           <div>Y Position</div>

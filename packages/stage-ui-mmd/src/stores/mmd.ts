@@ -8,6 +8,7 @@ export const useMmd = defineStore('mmd', () => {
   const hiddenMorphs = useLocalStorageManualReset<string[]>('settings/mmd/hidden-morphs', () => [])
 
   const currentMotion = ref<string>('swaying_arms_and_hips.vmd')
+  const previewExpression = ref<string | null>(null)
   const availableMotions = ref<string[]>([
     'brushoff_nice_and_tidy.vmd',
     'crossed_arms_look_around_confident.vmd',
@@ -36,6 +37,7 @@ export const useMmd = defineStore('mmd', () => {
     hiddenMorphs,
     availableMotions,
     currentMotion,
+    previewExpression,
     resetState,
   }
 })

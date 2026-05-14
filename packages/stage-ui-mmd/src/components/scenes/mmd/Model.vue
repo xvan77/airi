@@ -55,8 +55,11 @@ const props = withDefaults(defineProps<{
   eyeHeight: number
   cameraPosition: Vec3
   camera: PerspectiveCamera
+  scale?: number
+  previewExpression?: string
 }>(), {
   paused: false,
+  scale: 1,
 })
 
 const emit = defineEmits<{
@@ -295,10 +298,12 @@ async function loadModel(url: string) {
 
 // Watch idle animation changes
 watch(() => props.idleAnimation, async (newAnim) => {
+  console.log('[MMDModel] idleAnimation changed:', newAnim)
   if (newAnim && newAnim.endsWith('.vmd') && mmdInstance.value && mmdAnimationMixer.value) {
     try {
       const clip = await loadVMDAnimation(newAnim, mmdInstance.value)
       if (clip) {
+        console.log('[MMDModel] Playing new animation:', newAnim)
         mmdAnimationMixer.value.stopAllAction()
         const action = mmdAnimationMixer.value.clipAction(clip)
         action.play()
@@ -307,6 +312,10 @@ watch(() => props.idleAnimation, async (newAnim) => {
     catch (error) {
       console.warn('[MMDModel] Failed to load new idle animation:', error)
     }
+  }
+  else if (mmdAnimationMixer.value) {
+    console.log('[MMDModel] Stopping all actions (None or invalid animation)')
+    mmdAnimationMixer.value.stopAllAction()
   }
 })
 
@@ -327,6 +336,26 @@ watch([modelOffset, modelRotationY], ([offset, rotY]) => {
     return
   mmdGroup.value.position.set(offset.x, offset.y, offset.z)
   mmdGroup.value.rotation.y = rotY
+})
+
+// Watch scale changes
+watch(() => props.scale, (newScale) => {
+  if (!mmdGroup.value || newScale === undefined)
+    return
+  mmdGroup.value.scale.set(newScale, newScale, newScale)
+})
+
+// Watch preview expression changes
+watch(() => props.previewExpression, (newExpr) => {
+  console.log('[MMDModel] previewExpression changed:', newExpr)
+  if (newExpr && mmdEmote.value) {
+    console.log('[MMDModel] Setting expression:', newExpr)
+    mmdEmote.value.setExpression(newExpr, 1.0)
+  }
+  else if (mmdEmote.value) {
+    console.log('[MMDModel] Resetting expression')
+    mmdEmote.value.resetExpression()
+  }
 })
 
 const isComponentMounted = ref(false)
