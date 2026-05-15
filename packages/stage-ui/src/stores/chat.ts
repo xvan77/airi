@@ -43,6 +43,11 @@ export interface SendOptions {
    */
   skipAssistant?: boolean
   /**
+   * If true, the orchestrator will skip adding a new user message
+   * and just trigger inference on the existing history.
+   */
+  triggerOnly?: boolean
+  /**
    * Optional metadata to attach to the user message (e.g. source platform info).
    */
   metadata?: Record<string, any>
@@ -142,7 +147,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     let bridgedSteps = 0
     let needsBridgedFollowUp = false
 
-    if (!sendingMessage && !options.attachments?.length)
+    if (!options.triggerOnly && !sendingMessage && !options.attachments?.length)
       return
 
     chatSession.ensureSession(sessionId)
@@ -259,12 +264,13 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         return
 
       const userMessageId = nanoid()
-      const historicalUserMessage = { role: 'user' as const, content: historicalContent, createdAt: sendingCreatedAt, id: userMessageId, ...options.metadata }
-      const inferenceUserMessage = { role: 'user' as const, content: inferenceContent, createdAt: sendingCreatedAt, id: userMessageId }
-
       const sessionMessagesForSend = chatSession.getSessionMessages(sessionId)
-      const nextMessages = [...sessionMessagesForSend, historicalUserMessage]
-      chatSession.setSessionMessages(sessionId, nextMessages)
+
+      if (!options.triggerOnly) {
+        const historicalUserMessage = { role: 'user' as const, content: historicalContent, createdAt: sendingCreatedAt, id: userMessageId, ...options.metadata }
+        const nextMessages = [...sessionMessagesForSend, historicalUserMessage]
+        chatSession.setSessionMessages(sessionId, nextMessages)
+      }
 
       if (options.skipAssistant) {
         chatLog('skipAssistant is true, ending ingest.')
@@ -278,7 +284,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       // --- AUTONOMOUS ARTISTRY HOOK ---
       // Trigger now only if in user-centric mode. Assistant-centric runs after response is complete.
       const autonomousTarget = activeCard.value?.extensions?.airi?.artistry?.autonomousTarget || 'user'
-      if (autonomousTarget === 'user') {
+      if (autonomousTarget === 'user' && !options.triggerOnly) {
         void artistryAutonomousStore.runArtistTask(sendingMessage, sessionMessagesForSend as any)
       }
       // --------------------------------
@@ -298,16 +304,27 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           content: `[ENVIRONMENTAL AWARENESS]\nThe following telemetry describes your current environmental context. Use it to stay grounded in the user's reality and inform your response. You may reference specific values (like time or active applications) if relevant to the conversation, but avoid a dry, technical recitation of the data.\n---\n${sensorPayload}`,
         }
 
-        // Inject right before the user message (last element)
-        const lastIndex = sessionMessagesForSend.length
-        const nextInferenceMessages = [...sessionMessagesForSend, inferenceUserMessage]
-        nextInferenceMessages.splice(lastIndex, 0, groundingMessage)
+        if (options.triggerOnly) {
+          const nextInferenceMessages = [...sessionMessagesForSend]
+          nextInferenceMessages.splice(sessionMessagesForSend.length - 1, 0, groundingMessage)
+          inferenceMessages = nextInferenceMessages
+        }
+        else {
+          const inferenceUserMessage = { role: 'user' as const, content: inferenceContent, createdAt: sendingCreatedAt, id: userMessageId }
+          const nextInferenceMessages = [...sessionMessagesForSend, inferenceUserMessage]
+          nextInferenceMessages.splice(sessionMessagesForSend.length, 0, groundingMessage)
+          inferenceMessages = nextInferenceMessages
+        }
         chatLog('Grounding payload injected into inference step.')
-
-        inferenceMessages = nextInferenceMessages
       }
       else {
-        inferenceMessages = [...sessionMessagesForSend, inferenceUserMessage]
+        if (options.triggerOnly) {
+          inferenceMessages = [...sessionMessagesForSend]
+        }
+        else {
+          const inferenceUserMessage = { role: 'user' as const, content: inferenceContent, createdAt: sendingCreatedAt, id: userMessageId }
+          inferenceMessages = [...sessionMessagesForSend, inferenceUserMessage]
+        }
       }
       // ----------------------------
 

@@ -2,7 +2,9 @@
 import type { ChatHistoryItem, ChatMessage } from '../../../types/chat'
 
 import { computed } from 'vue'
+import { toast } from 'vue-sonner'
 
+import { useChatOrchestratorStore } from '../../../stores/chat'
 import { useChatSessionStore } from '../../../stores/chat/session-store'
 import { MarkdownRenderer } from '../../markdown'
 import { ChatActionMenu } from './components/action-menu'
@@ -22,6 +24,7 @@ const emit = defineEmits<{
 }>()
 
 const chatSession = useChatSessionStore()
+const chatOrchestrator = useChatOrchestratorStore()
 
 const formattedTime = computed(() => {
   if (!props.message.createdAt)
@@ -73,6 +76,36 @@ function handleDelete() {
     chatSession.deleteMessage(props.message.id)
   emit('delete')
 }
+
+async function handleFork() {
+  if (!props.message.id)
+    return
+
+  const activeSessionId = chatSession.activeSessionId
+  if (!activeSessionId)
+    return
+
+  const messages = chatSession.getSessionMessages(activeSessionId)
+  const index = messages.findIndex(msg => msg.id === props.message.id)
+
+  if (index === -1)
+    return
+
+  // Fork at index + 1 to include the user message!
+  const newSessionId = await chatSession.forkSession({
+    fromSessionId: activeSessionId,
+    atIndex: index + 1,
+  })
+
+  if (newSessionId) {
+    // Trigger inference on the new session!
+    // We pass empty string as message, and triggerOnly: true.
+    await chatOrchestrator.ingest('', { triggerOnly: true }, newSessionId)
+
+    // Show toast!
+    toast.success('Conversation forked and triggered!')
+  }
+}
 </script>
 
 <template>
@@ -82,6 +115,7 @@ function handleDelete() {
       placement="left"
       @copy="handleCopy"
       @delete="handleDelete"
+      @fork="handleFork"
     >
       <template #default="{ setMeasuredElement }">
         <div
