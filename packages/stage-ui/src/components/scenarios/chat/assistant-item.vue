@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesText } from '../../../types/chat'
 
-import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
+import JournalMomentModal from './JournalMomentModal.vue'
 import ChatResponsePart from './response-part.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
 
 import { useChatOrchestratorStore } from '../../../stores/chat'
 import { useChatSessionStore } from '../../../stores/chat/session-store'
+import { useTextJournalStore } from '../../../stores/memory-text-journal'
+import { useAiriCardStore } from '../../../stores/modules/airi-card'
+import { useConsciousnessStore } from '../../../stores/modules/consciousness'
 import { MarkdownRenderer } from '../../markdown'
 import { ChatActionMenu } from './components/action-menu'
 import { getChatHistoryItemCopyText } from './utils'
@@ -28,6 +33,8 @@ const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'delete'): void
 }>()
+
+const showJournalModal = ref(false)
 
 const chatSession = useChatSessionStore()
 const chatOrchestrator = useChatOrchestratorStore()
@@ -165,6 +172,58 @@ function handleDeleteFollowing() {
     chatSession.deleteMessagesFromHere(props.message.id)
     toast.success('Messages deleted from here.')
   }
+}
+
+function handleJournal() {
+  showJournalModal.value = true
+}
+
+async function handleJournalSubmit(data: { scope: 'all' | 'turns', turns?: number, instructions: string }) {
+  const activeSessionId = chatSession.activeSessionId
+  if (!activeSessionId)
+    return
+
+  const allMessages = chatSession.getSessionMessages(activeSessionId)
+  const clickedIndex = allMessages.findIndex(m => m.id === props.message.id)
+  if (clickedIndex === -1)
+    return
+
+  let contextMessages: any[] = []
+  if (data.scope === 'all') {
+    contextMessages = allMessages.slice(0, clickedIndex + 1)
+  }
+  else {
+    const turnsCount = data.turns || 15
+    contextMessages = allMessages.slice(Math.max(0, clickedIndex - turnsCount + 1), clickedIndex + 1)
+  }
+
+  const textJournalStore = useTextJournalStore()
+  const consciousnessStore = useConsciousnessStore()
+  const { activeCard } = storeToRefs(useAiriCardStore())
+
+  if (!activeCard.value)
+    return
+
+  // Get model/provider info
+  const extension = activeCard.value.extensions.airi
+  const modelId = extension.modules?.consciousness?.model || consciousnessStore.activeModel
+  const providerId = extension.modules?.consciousness?.provider || consciousnessStore.activeProvider
+
+  toast.promise(textJournalStore.createJournalMoment({
+    messages: contextMessages,
+    instructions: data.instructions,
+    modelId,
+    providerId,
+  }).catch((err) => {
+    console.error('[JournalMoment] Creation failed:', err)
+    throw err
+  }), {
+    loading: 'Generating journal entry...',
+    success: 'Journal entry created!',
+    error: 'Failed to create journal entry.',
+  })
+
+  showJournalModal.value = false
 }
 
 async function handleForkAndSwitch() {
@@ -416,6 +475,13 @@ const resolvedSlices = computed(() => {
 
 <template>
   <div v-if="message.role === 'assistant'" class="group ph-no-capture w-full !max-w-full" :class="containerClasses">
+    <JournalMomentModal
+      :open="showJournalModal"
+      :message-id="message.id"
+      :messages="chatSession.getSessionMessages(chatSession.activeSessionId || '')"
+      @close="showJournalModal = false"
+      @submit="handleJournalSubmit"
+    />
     <ChatActionMenu
       :copy-text="copyText"
       placement="right"
@@ -425,6 +491,7 @@ const resolvedSlices = computed(() => {
       @retry="handleRetry"
       @delete-following="handleDeleteFollowing"
       @fork-switch="handleForkAndSwitch"
+      @journal="handleJournal"
     >
       <template #default="{ setMeasuredElement }">
         <div class="w-full flex flex-row gap-2">

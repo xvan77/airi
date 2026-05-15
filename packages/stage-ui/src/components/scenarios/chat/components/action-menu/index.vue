@@ -52,6 +52,7 @@ const emit = defineEmits<{
   (e: 'retry'): void
   (e: 'fork-switch'): void
   (e: 'delete-following'): void
+  (e: 'journal'): void
 }>()
 defineSlots<{
   default: (props: { setMeasuredElement: (element: Element | ComponentPublicInstance | null) => void }) => unknown
@@ -165,6 +166,11 @@ async function handleAction(action: ChatActionMenuAction) {
 
   if (action === 'delete-following') {
     emit('delete-following')
+    return
+  }
+
+  if (action === 'journal') {
+    emit('journal')
     return
   }
 

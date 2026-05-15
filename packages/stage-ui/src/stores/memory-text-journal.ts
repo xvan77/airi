@@ -6,13 +6,17 @@ import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
+import * as v from 'valibot'
+
 import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
 import { shortTermMemoryRepo } from '../database/repos/short-term-memory.repo'
 import { textJournalRepo } from '../database/repos/text-journal.repo'
 import { layeredMemory } from '../libs/search/layered-memory'
 import { useAuthStore } from './auth'
 import { CHAT_STREAM_CHANNEL_NAME } from './chat/constants'
+import { useLLM } from './llm'
 import { useAiriCardStore } from './modules/airi-card'
+import { useProvidersStore } from './providers'
 
 function normalizeEntry(entry: TextJournalEntry): TextJournalEntry {
   return {
@@ -284,6 +288,69 @@ export const useTextJournalStore = defineStore('text-journal', () => {
     }
   })
 
+  async function createJournalMoment(input: {
+    messages: any[]
+    instructions?: string
+    modelId: string
+    providerId: string
+  }) {
+    console.log('[JournalMoment] Starting creation...', {
+      messageCount: input.messages.length,
+      modelId: input.modelId,
+      providerId: input.providerId,
+    })
+    const providersStore = useProvidersStore()
+    const llmStore = useLLM()
+    const { activeCard, activeCardId } = storeToRefs(useAiriCardStore())
+
+    if (!activeCard.value || !activeCardId.value) {
+      console.error('[JournalMoment] No active character found.')
+      throw new Error('No active character')
+    }
+
+    const chatProvider = await providersStore.getProviderInstance(input.providerId) as any
+    if (!chatProvider) {
+      console.error(`[JournalMoment] Provider not found: ${input.providerId}`)
+      throw new Error(`Provider not found: ${input.providerId}`)
+    }
+
+    const historyText = input.messages.map((m) => {
+      const role = m.role === 'user' ? 'User' : activeCard.value?.name ?? 'Assistant'
+      const content = typeof m.content === 'string' ? m.content : ''
+      return `${role}: ${content}`
+    }).join('\n')
+
+    const prompt = `You are ${activeCard.value.name}. Write a journal entry about the following conversation history.\n\n${input.instructions ? `Additional Instructions: ${input.instructions}\n\n` : ''}History:\n${historyText}\n\nReturn a JSON object with 'title' and 'content' for your journal entry. Write it in the first person as ${activeCard.value.name}.`
+
+    console.log('[JournalMoment] Calling LLM generateObject...')
+    try {
+      const res = await llmStore.generateObject<{ title: string, content: string }>(
+        input.modelId,
+        chatProvider,
+        {
+          messages: [{ role: 'user', content: prompt }],
+          schema: v.object({
+            title: v.string(),
+            content: v.string(),
+          }),
+        },
+      )
+      const object = res as unknown as { title: string, content: string }
+      console.log('[JournalMoment] LLM returned object:', object)
+
+      return await createEntry({
+        title: object.title,
+        content: object.content,
+        characterId: activeCardId.value,
+        source: 'user', // Manual trigger
+      })
+    }
+    catch (err) {
+      console.error('[JournalMoment] LLM or createEntry failed:', err)
+      throw err
+    }
+  }
+
   return {
     entries: sortedEntries,
     loading,
@@ -293,5 +360,6 @@ export const useTextJournalStore = defineStore('text-journal', () => {
     searchEntries,
     backgroundIndexAll,
     persist,
+    createJournalMoment,
   }
 })
