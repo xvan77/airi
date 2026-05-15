@@ -362,7 +362,6 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
 
       // 1. Compose the "Director" prompt based on target
       const airiExt = activeCard.extensions?.airi as any
-      const currentConceptIds = airiExt?.active_concepts || []
       artistLog('DEBUG: Full airi extension:', JSON.stringify(airiExt, null, 2))
       const visualAssets = airiExt?.visual_assets || {}
       artistLog('DEBUG: visual_assets resolved to:', JSON.stringify(visualAssets))
@@ -415,17 +414,6 @@ ${commonInstructions}`
       const historyText = recentHistory.map(m => `[${m.role === 'assistant' ? 'Companion' : 'User'}]: ${m.content}`).join('\n\n')
 
       const analysisPrompt = `Consider the recent history between the user and the character for context and inspiration, then analyze the latest ${target === 'assistant' ? 'response from the companion' : 'input from the user'} to decide if a visual manifestation is needed.
-
----
-CURRENTLY ACTIVE CONCEPTS:
-${currentConceptIds.length > 0 ? currentConceptIds.join(', ') : '(None)'}
-
-The list above indicates the visual concepts that were active in the previous turn. 
-
-CRITICAL DIRECTIVE FOR CONTINUITY: 
-To maintain visual and narrative continuity, you should default to keeping these concepts active unless the conversation or context explicitly implies a change in the environment, clothing, or situation. 
-
-If you wish to carry a state forward, you MUST include its ID again in your "selected_concepts" output. Only remove or change concepts when the dialogue or story progression calls for it.
 
 --- 
 CONTEXT HISTORY:
