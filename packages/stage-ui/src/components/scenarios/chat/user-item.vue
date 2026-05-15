@@ -130,6 +130,13 @@ async function handleFork() {
     toast.success('Conversation forked and triggered!')
   }
 }
+
+function handleDeleteFollowing() {
+  if (props.message.id) {
+    chatSession.deleteMessagesFromHere(props.message.id)
+    toast.success('Messages deleted from here.')
+  }
+}
 </script>
 
 <template>
@@ -141,6 +148,7 @@ async function handleFork() {
       @delete="handleDelete"
       @fork="handleFork"
       @retry="handleRetry"
+      @delete-following="handleDeleteFollowing"
     >
       <template #default="{ setMeasuredElement }">
         <div

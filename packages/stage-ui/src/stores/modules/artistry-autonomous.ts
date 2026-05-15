@@ -415,6 +415,17 @@ ${commonInstructions}`
 
       const analysisPrompt = `Consider the recent history between the user and the character for context and inspiration, then analyze the latest ${target === 'assistant' ? 'response from the companion' : 'input from the user'} to decide if a visual manifestation is needed.
 
+---
+CURRENTLY ACTIVE CONCEPTS:
+${(airiExt?.active_concepts || []).length > 0 ? airiExt.active_concepts.join(', ') : '(None)'}
+
+The list above indicates the visual concepts that were active in the previous turn. 
+
+CRITICAL DIRECTIVE FOR CONTINUITY: 
+To maintain visual and narrative continuity, you should default to keeping these concepts active unless the conversation or context explicitly implies a change in the environment, clothing, or situation. 
+
+If you wish to carry a state forward, you MUST include its ID again in your "selected_concepts" output. Only remove or change concepts when the dialogue or story progression calls for it.
+
 --- 
 CONTEXT HISTORY:
 ${historyText || '(No previous history)'}

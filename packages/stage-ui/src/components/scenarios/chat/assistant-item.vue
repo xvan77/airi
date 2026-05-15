@@ -160,6 +160,13 @@ async function handleFork() {
   }
 }
 
+function handleDeleteFollowing() {
+  if (props.message.id) {
+    chatSession.deleteMessagesFromHere(props.message.id)
+    toast.success('Messages deleted from here.')
+  }
+}
+
 // Visual FX state parsing (re-injected from main)
 const showLoader = computed(() => props.showPlaceholder)
 
@@ -393,6 +400,7 @@ const resolvedSlices = computed(() => {
       @delete="handleDelete"
       @fork="handleFork"
       @retry="handleRetry"
+      @delete-following="handleDeleteFollowing"
     >
       <template #default="{ setMeasuredElement }">
         <div class="w-full flex flex-row gap-2">

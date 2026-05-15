@@ -807,6 +807,18 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     }
   }
 
+  function deleteMessagesFromHere(messageId: string, sessionId = activeSessionId.value) {
+    if (!sessionId)
+      return
+    const current = sessionMessages.value[sessionId] ?? []
+    const index = current.findIndex(msg => msg.id === messageId)
+    if (index !== -1) {
+      const next = current.slice(0, index + 1)
+      sessionMessages.value[sessionId] = next
+      void persistSession(sessionId)
+    }
+  }
+
   async function exportSessions(): Promise<ChatSessionsExport> {
     if (!ready.value)
       await initialize()
@@ -981,6 +993,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
     deleteSession,
     deleteMessage,
+    deleteMessagesFromHere,
     forkSession,
     inscribeTurn,
     exportSessions,
