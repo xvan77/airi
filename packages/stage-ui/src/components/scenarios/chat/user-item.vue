@@ -137,6 +137,38 @@ function handleDeleteFollowing() {
     toast.success('Messages deleted from here.')
   }
 }
+
+async function handleForkAndSwitch() {
+  if (!props.message.id)
+    return
+
+  const activeSessionId = chatSession.activeSessionId
+  if (!activeSessionId)
+    return
+
+  const messages = chatSession.getSessionMessages(activeSessionId)
+  const index = messages.findIndex(msg => msg.id === props.message.id)
+
+  if (index === -1)
+    return
+
+  // Fork at index + 1 to include the user message!
+  const newSessionId = await chatSession.forkSession({
+    fromSessionId: activeSessionId,
+    atIndex: index + 1,
+  })
+
+  if (newSessionId) {
+    // Switch to the new session!
+    chatSession.activeSessionId = newSessionId
+
+    // Trigger inference on the new session!
+    await chatOrchestrator.ingest('', { triggerOnly: true }, newSessionId)
+
+    // Show toast!
+    toast.success('Conversation forked and switched!')
+  }
+}
 </script>
 
 <template>
@@ -149,6 +181,7 @@ function handleDeleteFollowing() {
       @fork="handleFork"
       @retry="handleRetry"
       @delete-following="handleDeleteFollowing"
+      @fork-switch="handleForkAndSwitch"
     >
       <template #default="{ setMeasuredElement }">
         <div

@@ -28,6 +28,14 @@ export function createChatActionMenuItems(options: {
           action: 'edit',
           label: 'Edit',
           icon: 'i-solar:pen-bold',
+          divider: options.canRetry === false, // Group 1 ends if no retry
+        }
+      : null,
+    options.canRetry !== false
+      ? {
+          action: 'retry',
+          label: 'Retry',
+          icon: 'i-solar:restart-bold',
           divider: true, // Group 1 ends
         }
       : null,
@@ -43,13 +51,6 @@ export function createChatActionMenuItems(options: {
           action: 'fork-switch',
           label: 'Fork & Switch',
           icon: 'i-solar:square-forward-bold',
-        }
-      : null,
-    options.canRetry !== false
-      ? {
-          action: 'retry',
-          label: 'Retry',
-          icon: 'i-solar:restart-bold',
         }
       : null,
     {

@@ -167,6 +167,29 @@ function handleDeleteFollowing() {
   }
 }
 
+async function handleForkAndSwitch() {
+  const messages = chatSession.getSessionMessages(chatSession.activeSessionId)
+  const index = messages.findIndex(m => m.id === props.message.id)
+  if (index !== -1) {
+    try {
+      const newSessionId = await chatSession.forkSession({
+        fromSessionId: chatSession.activeSessionId,
+        atIndex: index + 1, // Include this message
+      })
+
+      // Switch to the new session!
+      chatSession.activeSessionId = newSessionId
+
+      toast.success('Conversation forked and switched!')
+      console.log(`[AssistantItem] Forked session created: ${newSessionId}`)
+    }
+    catch (error) {
+      console.error('Failed to fork session:', error)
+      toast.error('Failed to fork conversation.')
+    }
+  }
+}
+
 // Visual FX state parsing (re-injected from main)
 const showLoader = computed(() => props.showPlaceholder)
 
@@ -401,6 +424,7 @@ const resolvedSlices = computed(() => {
       @fork="handleFork"
       @retry="handleRetry"
       @delete-following="handleDeleteFollowing"
+      @fork-switch="handleForkAndSwitch"
     >
       <template #default="{ setMeasuredElement }">
         <div class="w-full flex flex-row gap-2">
