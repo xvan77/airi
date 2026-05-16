@@ -12,7 +12,9 @@ const attached = ref(true)
 const scrollContainer = ref<HTMLElement | null>(null)
 const settingsStore = useSettings()
 const speakerText = ref('') // NOTICE: do NOT add 'caption-speaker' or user speech to captions. This is intentionally AI-only.
-const assistantText = ref('')
+
+export interface CaptionSegment { text: string, color: string, actorId: string }
+const assistantSegments = ref<CaptionSegment[]>([])
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const isOutsideWindowFor250Ms = refDebounced(isOutsideWindow, 250)
 const shouldFadeOnCursorWithin = computed(() => !isOutsideWindowFor250Ms.value)
@@ -32,7 +34,7 @@ const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
 // Broadcast channel for captions
 type CaptionChannelEvent
   = | { type: 'caption-speaker', text: string }
-    | { type: 'caption-assistant', text: string }
+    | { type: 'caption-assistant', segments: CaptionSegment[] }
 const { data } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
 
 // NOTICE: Secondary broadcast channel to listen for turn-resets (user messages)
@@ -62,7 +64,7 @@ onMounted(async () => {
       if (event?.type === 'session-updated' && event.message?.role === 'user') {
         console.log('[Caption] New user turn detected (via session-updated), resetting panel.')
         speakerText.value = ''
-        assistantText.value = ''
+        assistantSegments.value = []
       }
     })
 
@@ -98,12 +100,12 @@ onMounted(async () => {
       }
       else if (event.type === 'caption-assistant') {
         // Fallback reset for when assistant sends a reset signal
-        if (event.text === '') {
+        if (!event.segments || event.segments.length === 0) {
           speakerText.value = ''
-          assistantText.value = ''
+          assistantSegments.value = []
         }
         else {
-          assistantText.value = event.text
+          assistantSegments.value = event.segments
         }
       }
     }, { immediate: true })
@@ -111,15 +113,18 @@ onMounted(async () => {
   catch {}
 })
 
-// Auto-scroll to bottom when text changes
-watch(assistantText, () => {
+// Auto-scroll to bottom when text segments change
+watch(assistantSegments, () => {
   if (scrollContainer.value) {
-    scrollContainer.value.scrollTo({
-      top: scrollContainer.value.scrollHeight,
-      behavior: 'smooth',
-    })
+    // Delay slightly to allow DOM to update
+    setTimeout(() => {
+      scrollContainer.value?.scrollTo({
+        top: scrollContainer.value.scrollHeight,
+        behavior: 'smooth',
+      })
+    }, 10)
   }
-})
+}, { deep: true })
 
 const containerStyle = computed(() => ({
   backgroundColor: `rgba(0, 0, 0, ${settingsStore.captionOpacity / 100})`,
@@ -161,11 +166,18 @@ const containerStyle = computed(() => ({
             {{ speakerText }}
           </div>
           <div
-            v-if="assistantText"
-            class="rounded-md px-2 py-1 text-[1.25rem] text-primary-50 font-semibold text-stroke-4 text-stroke-primary-300/50 text-shadow-lg text-shadow-color-primary-700/50"
-            :style="{ paintOrder: 'stroke fill' }"
+            v-if="assistantSegments.length > 0"
+            class="rounded-md px-2 py-1 text-[1.25rem] font-semibold leading-relaxed text-shadow-lg"
+            style="white-space: pre-wrap;"
           >
-            {{ assistantText }}
+            <span
+              v-for="(segment, idx) in assistantSegments"
+              :key="idx"
+              :style="{
+                color: segment.color,
+                textShadow: `0 0 10px ${segment.color}44, 0 2px 4px rgba(0,0,0,0.5)`,
+              }"
+            >{{ segment.text }}</span>
           </div>
         </div>
       </div>

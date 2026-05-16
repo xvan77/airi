@@ -99,9 +99,10 @@ const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 const viewUpdateCleanups: Array<() => void> = []
 
 // Caption + Presentation broadcast channels
+interface CaptionSegment { text: string, color: string, actorId: string }
 type CaptionChannelEvent
   = | { type: 'caption-speaker', text: string }
-    | { type: 'caption-assistant', text: string }
+    | { type: 'caption-assistant', segments: CaptionSegment[] }
 // NOTICE: do NOT add 'caption-speaker' or user speech to captions. This is intentionally AI-only.
 const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
 
@@ -109,7 +110,32 @@ const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionCh
 // This is a hardware-level fix because the 'airi-caption-overlay' empty string reset was failing.
 const { data: sessionUpdate } = useBroadcastChannel<any, any>({ name: 'airi-chat-stream' })
 
-const assistantCaption = ref('')
+const actorColors = new Map<string, string>()
+const parserActorId = ref<string>('default')
+const playbackActorId = ref<string>('default')
+
+function getActorColor(id: string): string {
+  if (!actorColors.has(id)) {
+    // Generate a stable, vibrant HSL color from the actor ID
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+      hash = id.charCodeAt(i) + ((hash << 5) - hash)
+    }
+
+    const h = Math.abs(hash) % 360
+    // We lock saturation and lightness into high ranges (90-100% sat, 70-80% light)
+    // This ensures the text is always bright, punchy, and readable against dark backgrounds.
+    const s = 90 + (Math.abs(hash >> 8) % 10)
+    const l = 70 + (Math.abs(hash >> 16) % 10)
+
+    const color = `hsl(${h}, ${s}%, ${l}%)`
+    actorColors.set(id, color)
+    console.log(`[CaptionDebug] Assigned vibrant stable color to actor "${id}":`, color)
+  }
+  return actorColors.get(id)!
+}
+
+const assistantCaptionSegments = ref<CaptionSegment[]>([])
 
 type PresentEvent
   = | { type: 'assistant-reset' }
@@ -356,7 +382,8 @@ specialTokenQueue.onHandlerEvent('delay', (delay) => {
 })
 specialTokenQueue.onHandlerEvent('actor', (actorId) => {
   // eslint-disable-next-line no-console
-  console.log('[Stage] Actor swap token detected:', actorId)
+  console.log('[Stage] Actor swap token detected (parser):', actorId)
+  parserActorId.value = actorId
   void artistryAutonomousStore.activateConcept(actorId)
 })
 
@@ -560,8 +587,13 @@ const playbackManager = createPlaybackManager<AudioBuffer>({
 
 const speechPipeline = createSpeechPipeline<AudioBuffer>({
   tts: async (request, signal) => {
-    if (signal.aborted)
+    if (import.meta.env.DEV)
+      console.log('[Stage:TTS] Request received:', { text: request.text?.slice(0, 30), special: request.special })
+
+    if (signal.aborted) {
+      console.warn('[Stage:TTS] Request aborted early')
       return null
+    }
 
     if (request.special) {
       const actorId = parseActor(request.special)
@@ -685,8 +717,19 @@ speechPipeline.on('onSpecial', (segment) => {
 })
 
 playbackManager.onEnd(({ item }) => {
-  if (item.special)
-    playSpecialToken(item.special)
+  try {
+    if (item.special) {
+      const actorId = parseActor(item.special)
+      if (actorId) {
+        console.log('[Stage] Actor swap token reached playback:', actorId)
+        playbackActorId.value = actorId
+      }
+      playSpecialToken(item.special)
+    }
+  }
+  catch (error) {
+    console.error('[Stage] Error in playbackManager.onEnd:', error)
+  }
 
   nowSpeaking.value = false
   mouthOpenSize.value = 0
@@ -694,21 +737,35 @@ playbackManager.onEnd(({ item }) => {
 
 playbackManager.onStart(({ item }) => {
   nowSpeaking.value = true
-  // NOTICE: postCaption and postPresent may throw errors if the BroadcastChannel is closed
-  // (e.g., when navigating away from the page). We wrap these in try-catch to prevent
-  // breaking playback when the channel is unavailable.
-  assistantCaption.value += ` ${item.text}`
+
   try {
-    postCaption({ type: 'caption-assistant', text: assistantCaption.value })
+    // Update caption segments when a new audio segment starts
+    if (item.text?.trim()) {
+      const actorId = playbackActorId.value
+      const color = getActorColor(actorId)
+      assistantCaptionSegments.value.push({ text: item.text, color, actorId })
+
+      try {
+        // Use toRaw to ensure the Proxy doesn't interfere with BroadcastChannel cloning
+        postCaption({
+          type: 'caption-assistant',
+          segments: JSON.parse(JSON.stringify(assistantCaptionSegments.value)),
+        })
+      }
+      catch (error) {
+        console.warn('[Stage] Failed to broadcast caption update:', error)
+      }
+    }
   }
-  catch {
-    // BroadcastChannel may be closed - don't break playback
+  catch (error) {
+    console.error('[Stage] Error in playbackManager.onStart:', error)
   }
+
   try {
     postPresent({ type: 'assistant-append', text: item.text })
   }
   catch {
-    // BroadcastChannel may be closed - don't break playback
+    // ignore
   }
 })
 
@@ -781,9 +838,11 @@ function ensureSpeechIntent(behavior: 'interrupt' | 'queue' = 'interrupt') {
 chatHookCleanups.push(watch(sessionUpdate, (event) => {
   if (event?.type === 'session-updated' && event.message?.role === 'user') {
     console.log('[Stage] New user turn detected (via session-updated), resetting caption accumulator.')
-    assistantCaption.value = ''
+    assistantCaptionSegments.value = []
+    parserActorId.value = activeCardId.value
+    playbackActorId.value = activeCardId.value
     try {
-      postCaption({ type: 'caption-assistant', text: '' })
+      postCaption({ type: 'caption-assistant', segments: [] })
     }
     catch {}
   }
@@ -799,10 +858,12 @@ chatHookCleanups.push(onBeforeMessageComposed(async () => {
 
   setupAnalyser()
   await setupLipSync()
-  // Reset assistant caption for a new message
-  assistantCaption.value = ''
+  // Reset assistant caption and actor tracking for a new message
+  assistantCaptionSegments.value = []
+  parserActorId.value = activeCardId.value
+  playbackActorId.value = activeCardId.value
   try {
-    postCaption({ type: 'caption-assistant', text: '' })
+    postCaption({ type: 'caption-assistant', segments: [] })
   }
   catch (error) {
     // BroadcastChannel may be closed if user navigated away - don't break flow
