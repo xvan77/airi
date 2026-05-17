@@ -1,9 +1,10 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { ActiveWindowEntry, WindowInfo } from '@proj-airi/stage-shared'
 
-import os from 'node:os'
-
+import { Buffer } from 'node:buffer'
 import { createRequire } from 'node:module'
+import { loadavg } from 'node:os'
+import { platform, stdout } from 'node:process'
 
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
@@ -25,6 +26,9 @@ let si: any = null
 
 try {
   activeWindow = require('active-win')
+  if (activeWindow && typeof activeWindow.activeWindow === 'function') {
+    activeWindow = activeWindow.activeWindow
+  }
 }
 catch (err) {
   console.warn('[Sensors] Failed to load active-win native module. Will use fallbacks.', err)
@@ -55,9 +59,9 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
 
   // Initialize Win32 FFI bridge via Koffi once at startup
   let win32Bridge: any = null
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     try {
-      const koffi = require('koffi')
+      const koffi: any = require('koffi')
       const user32 = koffi.load('user32.dll')
       const kernel32 = koffi.load('kernel32.dll')
 
@@ -103,7 +107,7 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
           const hwnd = GetForegroundWindow()
 
           if (!hwnd) {
-            process.stdout.write('[getActiveWindowInfo] No foreground window found.\n')
+            stdout.write('[getActiveWindowInfo] No foreground window found.\n')
             return null
           }
 
@@ -111,7 +115,7 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
           const titleBuffer = Buffer.alloc(1024)
           const titleLen = GetWindowTextW(hwnd, titleBuffer, 512)
           const title = titleBuffer.toString('utf16le', 0, titleLen * 2).replace(/\0/g, '').trim() || 'Untitled'
-          process.stdout.write(`[getActiveWindowInfo] detected title: ${title}\n`)
+          stdout.write(`[getActiveWindowInfo] detected title: ${title}\n`)
 
           // Get Process Name
           let processName = 'Unknown'
@@ -140,7 +144,7 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
           }
           // Only log if we finally found something or if it's still unknown after fallback
           if (processName !== 'Unknown') {
-            process.stdout.write(`[getActiveWindowInfo] detected processName: ${processName}\n`)
+            stdout.write(`[getActiveWindowInfo] detected processName: ${processName}\n`)
           }
 
           return {
@@ -149,7 +153,7 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
           }
         }
         catch (nativeErr) {
-          process.stdout.write(`[getActiveWindowInfo] Koffi fallback execution failed: ${String(nativeErr)}\n`)
+          stdout.write(`[getActiveWindowInfo] Koffi fallback execution failed: ${String(nativeErr)}\n`)
         }
       }
     }
@@ -271,7 +275,7 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
     }
     catch (err) {
       log.withError(err).warn('Failed to get CPU load via systeminformation')
-      cpuLoads = os.loadavg() as [number, number, number]
+      cpuLoads = loadavg() as [number, number, number]
     }
 
     try {

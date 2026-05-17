@@ -17,7 +17,7 @@ export default defineConfig({
     'locales/zh-Hant/index': 'src/locales/zh-Hant/index.ts',
   },
   copy: [
-    { from: 'src/locales/**/*.yaml', to: 'dist/locales' },
+    { from: 'src/locales/**/*.yaml', to: 'dist', flatten: false },
   ],
   plugins: [
     Yaml(),
