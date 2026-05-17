@@ -1,12 +1,18 @@
-### **AIRI v0.9.1-stable.20260514**
+### **AIRI v0.9.1-stable.20260517**
 **What's New**
-*   **Core Stability**:
-    *   **Cross-Window Sync**: Resolved a critical "Lost Update" race condition in `IndexedDB`. Chat sessions and long-term memory entries are now synchronized across all Electron windows, preventing data loss during restarts.
-    *   **Automated Backups**: Implemented a background service that automatically backs up your local data every 24 hours, ensuring character memories and sessions are always recoverable.
-*   **MMD Support (Stage 2)**: Significant progress on MMD integration. Added thumbnail generation, idle animation cycling, and precise camera positioning. MMD morphs and motions are now fully integrated into the Acting tab of the AIRI Card Editor.
-*   **Spine Enhancements**: Refined hitbox math for bone-based tactile interaction, fixed canvas-resize scaling issues, and added dynamic tactile mode toggles.
-*   **Enhanced Chat Management**:
-    *   Added toast notifications and progress tracking for Chat History imports.
-    *   Implemented "Clear Chat" archival: Director notes are now archived instead of simply cleared, keeping the history tidy while preserving context.
-*   **Lifetime Memory**: Introduced dynamic token budget controls to the Lifetime Provisioning modal, allowing users to tune the density of the character's canonical Soul Blueprint.
-*   **Localization**: Improved i18n bundling for better reliability and faster resolution in production builds.
+*   **Caption System Overhaul**:
+    *   Introduced colored, segmented captions with actor-aware tracking, making it easier to distinguish who is speaking.
+    *   Added real-time active segment highlighting and improved the legibility of inactive text.
+    *   Implemented smart caption click-through functionality for better desktop usability.
+*   **Enhanced Chat & Messaging UX**:
+    *   **Screenplay Actor Formatting**: Chat bubbles now support screenplay formatting with high-contrast dynamic chips, typography overrides, and actor-aware colored text segments.
+    *   **Journal Moments**: Added a new Journal Moment feature enabling real-time previews and seamless LLM integration.
+    *   **Timeline Management**: Implemented powerful timeline controls like "Fork & Switch", "Trim Timeline", and "Delete Following" directly from the message action menu.
+    *   **Session Management**: Added inline editing for session titles and introduced a redesigned action menu with a quick retry handler.
+*   **Backups & Artistry Integration**:
+    *   **Manual Backups**: Fully restored the backup UI and successfully hooked it up to the main process handlers.
+    *   **Autonomous Artistry**: Refined concept filtering and improved how active concepts are passed to the Director to ensure strong visual continuity.
+*   **Core Stability & Tooling**:
+    *   Resolved a critical PNPM hoist leak on Windows CI by migrating the i18n bundler script to the `yaml` package.
+    *   Addressed various TypeScript compiler errors across the chat orchestrator and backup stores.
+    *   Patched `node-gyp` to properly support Visual Studio 2026.

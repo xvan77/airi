@@ -36,9 +36,9 @@ export function setupMicToggleShortcut(mainWindow: BrowserWindow, hotkey: MicTog
   cleanupMicToggleShortcut()
 
   const keyMap = {
-    Scroll: { electron: 'Scrolllock', send: 'SCROLLLOCK' },
-    Caps: { electron: 'Capslock', send: 'CAPSLOCK' },
-    Num: { electron: 'Numlock', send: 'NUMLOCK' },
+    Scroll: { electron: 'ScrollLock', send: 'SCROLLLOCK' },
+    Caps: { electron: 'CapsLock', send: 'CAPSLOCK' },
+    Num: { electron: 'NumLock', send: 'NUMLOCK' },
   }
 
   const { electron: electronKey } = keyMap[currentHotkey]
@@ -121,7 +121,12 @@ export function setupMicToggleShortcut(mainWindow: BrowserWindow, hotkey: MicTog
     }
   }
 
-  registerShortcut()
+  // NOTICE: In Electron 40.x, registering global shortcuts synchronously during
+  // service initialization may trigger V8 "unreachable code" fatal errors
+  // depending on the underlying OS event loop state. Deferring to next tick.
+  setTimeout(() => {
+    registerShortcut()
+  }, 100)
 
   // 2. Listen to renderer state changes to sync the LED
   // NOTICE: Disabled backend Scroll Lock state syncing as requested by user.
