@@ -46,6 +46,10 @@ function injectActorColors(content: string): string {
   let result = ''
   let lastSpanOpen = false
 
+  console.log('[ChatDebug:injectActorColors] Analyzing content for speaker tags...', {
+    contentPreview: content.slice(0, 150) + (content.length > 150 ? '...' : ''),
+  })
+
   while ((match = regex.exec(content)) !== null) {
     const actorId = match[1].trim()
     const matchIndex = match.index
@@ -61,6 +65,7 @@ function injectActorColors(content: string): string {
 
     // Open a new span with the actor's color
     const color = getActorColor(actorId)
+    console.log(`[ChatDebug:injectActorColors] Speaker tag detected: "${actorId}". Mapping to color: "${color}"`)
     result += `<span style="color: ${color}">`
     lastSpanOpen = true
 
@@ -76,6 +81,10 @@ function injectActorColors(content: string): string {
   if (lastSpanOpen) {
     result += '</span>'
   }
+
+  console.log('[ChatDebug:injectActorColors] Finished processing. Resulting HTML structure preview:', {
+    htmlPreview: result.slice(0, 150) + (result.length > 150 ? '...' : ''),
+  })
 
   return result
 }
@@ -529,6 +538,14 @@ const resolvedSlices = computed(() => {
 
 function getSegmentedText(sliceText: string): string {
   const raw = (props.message as any).rawContent
+  console.log('[ChatDebug:getSegmentedText] Processing text segment:', {
+    messageId: props.message.id,
+    sliceTextLength: sliceText?.length,
+    hasRaw: !!raw,
+    rawLength: raw?.length,
+    containsActorTag: raw ? raw.includes('<|ACTOR:') : false,
+  })
+
   if (!raw || typeof raw !== 'string' || !raw.includes('<|ACTOR:')) {
     return injectActorColors(sliceText)
   }
@@ -541,9 +558,12 @@ function getSegmentedText(sliceText: string): string {
     const cleanedRaw = raw
       .replace(/<\|ACT\b[\s\S]*?(?:\|>|>)/gi, '')
       .replace(/<\|DELAY\b[\s\S]*?(?:\|>|>)/gi, '')
+
+    console.log('[ChatDebug:getSegmentedText] Single text slice found. Cleaned rawContent (emotion/delay tags stripped):', cleanedRaw)
     return injectActorColors(cleanedRaw)
   }
 
+  console.log('[ChatDebug:getSegmentedText] Multiple text slices found, falling back to standard sliceText')
   return injectActorColors(sliceText)
 }
 </script>
