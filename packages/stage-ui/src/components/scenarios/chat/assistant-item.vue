@@ -10,7 +10,6 @@ import JournalMomentModal from './JournalMomentModal.vue'
 import ChatResponsePart from './response-part.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
 
-import { getActorColor } from '../../../composables/queues'
 import { useChatOrchestratorStore } from '../../../stores/chat'
 import { useChatSessionStore } from '../../../stores/chat/session-store'
 import { useTextJournalStore } from '../../../stores/memory-text-journal'
@@ -39,51 +38,15 @@ function injectActorColors(content: string): string {
   if (!content)
     return ''
 
-  const actorRegex = /<\|ACTOR:\s*([\w-]+)\s*(?:\|>|>)/gi
-  const regex = new RegExp(actorRegex)
-  let match
-  let lastIndex = 0
-  let result = ''
-  let lastSpanOpen = false
-
-  console.log('[ChatDebug:injectActorColors] Analyzing content for speaker tags...', {
+  console.log('[ChatDebug:injectActorColors] Translating actor tags to safe text markers [ACTOR:xxx]...', {
     contentPreview: content.slice(0, 150) + (content.length > 150 ? '...' : ''),
   })
 
-  while ((match = regex.exec(content)) !== null) {
-    const actorId = match[1].trim()
-    const matchIndex = match.index
+  // Translate actor tags to stable plain text markers so the markdown parser won't strip them
+  const result = content.replace(/<\|ACTOR:\s*([\w-]+)\s*(?:\|>|>)/gi, '[ACTOR:$1]')
 
-    // Add text before this tag
-    result += content.slice(lastIndex, matchIndex)
-
-    // If there was a previous span open, close it
-    if (lastSpanOpen) {
-      result += '</span>'
-      lastSpanOpen = false
-    }
-
-    // Open a new span with the actor's color
-    const color = getActorColor(actorId)
-    console.log(`[ChatDebug:injectActorColors] Speaker tag detected: "${actorId}". Mapping to color: "${color}"`)
-    result += `<span style="color: ${color}">`
-    lastSpanOpen = true
-
-    lastIndex = regex.lastIndex
-  }
-
-  // Add the remaining text
-  if (lastIndex < content.length) {
-    result += content.slice(lastIndex)
-  }
-
-  // Close the last span if it was open
-  if (lastSpanOpen) {
-    result += '</span>'
-  }
-
-  console.log('[ChatDebug:injectActorColors] Finished processing. Resulting HTML structure preview:', {
-    htmlPreview: result.slice(0, 150) + (result.length > 150 ? '...' : ''),
+  console.log('[ChatDebug:injectActorColors] Translation complete:', {
+    resultPreview: result.slice(0, 150) + (result.length > 150 ? '...' : ''),
   })
 
   return result
@@ -566,10 +529,44 @@ function getSegmentedText(sliceText: string): string {
   console.log('[ChatDebug:getSegmentedText] Multiple text slices found, falling back to standard sliceText')
   return injectActorColors(sliceText)
 }
+
+const dynamicStyles = computed(() => {
+  const raw = (props.message as any).rawContent
+  if (!raw || typeof raw !== 'string')
+    return ''
+
+  const actorRegex = /<\|ACTOR:\s*([\w-]+)\s*(?:\|>|>)/gi
+  const actorIds = new Set<string>()
+  let match
+  actorRegex.lastIndex = 0
+  while ((match = actorRegex.exec(raw)) !== null) {
+    actorIds.add(match[1].trim())
+  }
+
+  let css = ''
+  for (const actorId of actorIds) {
+    // Generate a stable Hue based on the actor's ID string
+    let hash = 0
+    for (let i = 0; i < actorId.length; i++) {
+      hash = actorId.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    const h = Math.abs(hash) % 360
+
+    // Light Mode colors (Rich, deep, high contrast)
+    css += `.actor-color-${actorId} { color: hsl(${h}, 70%, 35%) !important; }\n`
+    css += `.actor-chip-${actorId} { background-color: hsla(${h}, 70%, 35%, 0.08) !important; color: hsl(${h}, 70%, 35%) !important; border: 1px solid hsla(${h}, 70%, 35%, 0.2) !important; }\n`
+
+    // Dark Mode colors (Bright, pastel, glowing)
+    css += `.dark .actor-color-${actorId} { color: hsl(${h}, 90%, 75%) !important; }\n`
+    css += `.dark .actor-chip-${actorId} { background-color: hsla(${h}, 90%, 75%, 0.15) !important; color: hsl(${h}, 90%, 75%) !important; border: 1px solid hsla(${h}, 90%, 75%, 0.25) !important; }\n`
+  }
+  return css
+})
 </script>
 
 <template>
   <div v-if="message.role === 'assistant'" class="group ph-no-capture w-full !max-w-full" :class="containerClasses">
+    <component is="style" v-html="dynamicStyles" />
     <JournalMomentModal
       :open="showJournalModal"
       :message-id="message.id"

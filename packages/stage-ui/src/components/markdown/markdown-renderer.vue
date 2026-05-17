@@ -16,6 +16,68 @@ const props = defineProps<Props>()
 const processedContent = ref('')
 const { process, processSync } = useMarkdown()
 
+function formatActorName(id: string): string {
+  let name = id.replace(/^(actress_|actor_)/i, '')
+  const customNames: Record<string, string> = {
+    cg1: 'Nia',
+    cg2: 'Vara',
+    juewa: 'Juewa',
+    rumi: 'Rumi',
+  }
+  const lower = name.toLowerCase()
+  if (customNames[lower])
+    return customNames[lower]
+
+  return name
+    .split(/[-_]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function postProcessActorColors(html: string): string {
+  if (!html.includes('[ACTOR:'))
+    return html
+
+  console.log('[ChatDebug:postProcessActorColors] Post-processing HTML to color segments...', {
+    htmlLength: html.length,
+  })
+
+  // Match standard paragraph <p>...</p> or list item <li>...</li> blocks
+  const blockRegex = /(<p>|<li>)([\s\S]*?)(<\/p>|<\/li>)/gi
+  let activeActorId: string | null = null
+
+  const result = html.replace(blockRegex, (match, openTag, innerContent, closeTag) => {
+    // Check if this block contains an actor marker: [ACTOR:xxx]
+    const markerRegex = /\[ACTOR:\s*([\w-]+)\s*\]/i
+    const markerMatch = markerRegex.exec(innerContent)
+
+    let isNewMarker = false
+    if (markerMatch) {
+      activeActorId = markerMatch[1].trim()
+      // Strip the marker from the block content
+      innerContent = innerContent.replace(markerRegex, '')
+      isNewMarker = true
+      console.log(`[ChatDebug:postProcessActorColors] Actor marker matched: "${activeActorId}". Setting as active speaker.`)
+    }
+
+    if (activeActorId) {
+      // If this was a new marker block, prepend the polished pill badge!
+      let chipHtml = ''
+      if (isNewMarker) {
+        const displayName = formatActorName(activeActorId)
+        chipHtml = `<span class="actor-chip actor-chip-${activeActorId}">${displayName}</span>`
+      }
+      // Wrap only the inner content of this block in our inline styled class
+      return `${openTag}${chipHtml}<span class="actor-color-${activeActorId}">${innerContent}</span>${closeTag}`
+    }
+
+    return match
+  })
+
+  console.log('[ChatDebug:postProcessActorColors] Post-processing finished.')
+  return result
+}
+
 async function processContent() {
   if (!props.content) {
     processedContent.value = ''
@@ -57,11 +119,12 @@ async function processContent() {
   }
 
   try {
-    processedContent.value = DOMPurify.sanitize(await process(healed))
+    const rawCompiled = await process(healed)
+    processedContent.value = postProcessActorColors(DOMPurify.sanitize(rawCompiled))
   }
   catch (error) {
     console.warn('Failed to process markdown with syntax highlighting, using fallback:', error)
-    processedContent.value = DOMPurify.sanitize(processSync(healed))
+    processedContent.value = postProcessActorColors(DOMPurify.sanitize(processSync(healed)))
   }
 }
 
@@ -188,5 +251,21 @@ onMounted(() => {
   background: rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.markdown-content :deep(.actor-chip) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 8px;
+  vertical-align: middle;
+  line-height: 1;
+  user-select: none;
 }
 </style>
