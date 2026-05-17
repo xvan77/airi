@@ -99,7 +99,7 @@ const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 const viewUpdateCleanups: Array<() => void> = []
 
 // Caption + Presentation broadcast channels
-interface CaptionSegment { text: string, color: string, actorId: string }
+interface CaptionSegment { text: string, color: string, actorId: string, isActive?: boolean }
 type CaptionChannelEvent
   = | { type: 'caption-speaker', text: string }
     | { type: 'caption-assistant', segments: CaptionSegment[] }
@@ -726,6 +726,18 @@ playbackManager.onEnd(({ item }) => {
       }
       playSpecialToken(item.special)
     }
+
+    // Deactivate segment when playback ends
+    if (item.text?.trim()) {
+      const segment = assistantCaptionSegments.value.find(s => s.text === item.text && s.isActive)
+      if (segment) {
+        segment.isActive = false
+        postCaption({
+          type: 'caption-assistant',
+          segments: JSON.parse(JSON.stringify(assistantCaptionSegments.value)),
+        })
+      }
+    }
   }
   catch (error) {
     console.error('[Stage] Error in playbackManager.onEnd:', error)
@@ -743,7 +755,16 @@ playbackManager.onStart(({ item }) => {
     if (item.text?.trim()) {
       const actorId = playbackActorId.value
       const color = getActorColor(actorId)
-      assistantCaptionSegments.value.push({ text: item.text, color, actorId })
+
+      // Deactivate any currently active segments
+      assistantCaptionSegments.value.forEach(s => s.isActive = false)
+
+      assistantCaptionSegments.value.push({
+        text: item.text,
+        color,
+        actorId,
+        isActive: true,
+      })
 
       try {
         // Use toRaw to ensure the Proxy doesn't interfere with BroadcastChannel cloning

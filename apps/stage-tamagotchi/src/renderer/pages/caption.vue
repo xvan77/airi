@@ -13,7 +13,7 @@ const scrollContainer = ref<HTMLElement | null>(null)
 const settingsStore = useSettings()
 const speakerText = ref('') // NOTICE: do NOT add 'caption-speaker' or user speech to captions. This is intentionally AI-only.
 
-export interface CaptionSegment { text: string, color: string, actorId: string }
+export interface CaptionSegment { text: string, color: string, actorId: string, isActive?: boolean }
 const assistantSegments = ref<CaptionSegment[]>([])
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const isOutsideWindowFor250Ms = refDebounced(isOutsideWindow, 250)
@@ -175,8 +175,19 @@ const containerStyle = computed(() => ({
               :key="idx"
               :style="{
                 color: segment.color,
-                textShadow: `0 0 10px ${segment.color}44, 0 2px 4px rgba(0,0,0,0.5)`,
+                textShadow: segment.isActive
+                  ? `0 0 10px ${segment.color}, 0 2px 4px rgba(0,0,0,0.9)`
+                  : `0 1px 3px rgba(0,0,0,0.9)`,
+                transform: segment.isActive ? 'scale(1.06) translateY(-1px)' : 'scale(1)',
+                display: 'inline-block',
+                transition: 'all 0.25s ease-out',
+                filter: segment.isActive ? 'brightness(1.2)' : 'brightness(0.95)',
+                margin: segment.isActive ? '0 1px' : '0',
               }"
+              :class="[
+                'origin-center',
+                segment.isActive ? 'z-10 relative font-bold' : 'opacity-95',
+              ]"
             >{{ segment.text }}</span>
           </div>
         </div>
