@@ -14,18 +14,29 @@
 
 export type SpineVersion = string
 
-/**
- * Detects the Spine editor version from a binary `.skel` file.
- *
- * The binary format header is:
- * - string: hash
- * - string: version (e.g. "4.2.18" or "3.8.99")
- * Strings are varint-length-prefixed.
- */
 export function detectSpineVersionFromBinary(data: Uint8Array): SpineVersion | undefined {
+  // 1. Try Spine 4.0+ format (8-byte non-varint hash followed by varint-prefixed version string)
+  try {
+    const offset = 8
+    if (data.byteLength > offset) {
+      const { value: verLenEncoded, bytesRead: verBytes } = readVarint(data, offset)
+      const tempOffset = offset + verBytes
+      if (verLenEncoded > 1) {
+        const verLen = verLenEncoded - 1
+        if (tempOffset + verLen <= data.byteLength) {
+          const versionStr = new TextDecoder().decode(data.subarray(tempOffset, tempOffset + verLen))
+          if (/^\d+\.\d+\.\d+/.test(versionStr)) {
+            return parseSpineVersionString(versionStr)
+          }
+        }
+      }
+    }
+  }
+  catch {}
+
+  // 2. Fallback to Spine 3.8 and below format (varint-prefixed hash string followed by varint-prefixed version string)
   try {
     let offset = 0
-    // Read hash string length
     const { value: hashLenEncoded, bytesRead: hashBytes } = readVarint(data, offset)
     offset += hashBytes
 
@@ -34,23 +45,32 @@ export function detectSpineVersionFromBinary(data: Uint8Array): SpineVersion | u
       offset += hashLen
     }
 
-    // Read version string length
     const { value: verLenEncoded, bytesRead: verBytes } = readVarint(data, offset)
     offset += verBytes
 
-    if (verLenEncoded <= 1)
-      return undefined
-
-    const verLen = verLenEncoded - 1
-    if (offset + verLen > data.byteLength)
-      return undefined
-
-    const versionStr = new TextDecoder().decode(data.slice(offset, offset + verLen))
-    return parseSpineVersionString(versionStr)
+    if (verLenEncoded > 1) {
+      const verLen = verLenEncoded - 1
+      if (offset + verLen <= data.byteLength) {
+        const versionStr = new TextDecoder().decode(data.subarray(offset, offset + verLen))
+        if (/^\d+\.\d+\.\d+/.test(versionStr)) {
+          return parseSpineVersionString(versionStr)
+        }
+      }
+    }
   }
-  catch {
-    return undefined
+  catch {}
+
+  // 3. Robust regex fallback on first 200 bytes (matches python implementation exactly)
+  try {
+    const headerStr = new TextDecoder().decode(data.subarray(0, 200))
+    const match = headerStr.match(/(\d+\.\d+\.\d+)/)
+    if (match) {
+      return parseSpineVersionString(match[1])
+    }
   }
+  catch {}
+
+  return undefined
 }
 
 /**
