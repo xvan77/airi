@@ -142,6 +142,16 @@ function handleScaleChange(newScale: number) {
   positioningStore.setPosition(key, { ...current, scale: newScale })
 }
 
+function handleOffsetChange(offset: { x: number, y: number }) {
+  const key = stageModelSelected.value
+  const current = positioningStore.getPosition(key)
+  positioningStore.setPosition(key, {
+    ...current,
+    x: offset.x,
+    y: stageModelRenderer.value === 'live2d' ? -offset.y : offset.y,
+  })
+}
+
 watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
 
 const { pause, resume } = watch(isTransparent, (transparent) => {
@@ -632,6 +642,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           mb="<md:18"
           @hit-area-hover="(val) => isSpineHitAreaHovered = val?.hovered || false"
           @scale-change="handleScaleChange"
+          @offset-change="handleOffsetChange"
         />
         <ControlsIsland
           ref="controlsIslandRef"
