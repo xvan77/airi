@@ -31,6 +31,24 @@ export const useSettingsControlStrip = defineStore('settings-control-strip', () 
   const stageEnabled = useLocalStorageManualReset<boolean>('settings/stage-enabled', true)
   const buttons = useLocalStorageManualReset<ControlStripButton[]>('settings/control-strip/buttons', DEFAULT_BUTTONS)
 
+  // Synchronize icons and labels with DEFAULT_BUTTONS to overwrite stale cached attributes (like the old paw print)
+  if (Array.isArray(buttons.value)) {
+    let changed = false
+    const updated = buttons.value.map((btn) => {
+      const def = DEFAULT_BUTTONS.find(d => d.id === btn.id)
+      if (def) {
+        if (def.icon !== btn.icon || def.label !== btn.label) {
+          changed = true
+          return { ...btn, icon: def.icon, label: def.label }
+        }
+      }
+      return btn
+    })
+    if (changed) {
+      buttons.value = updated
+    }
+  }
+
   function toggleOrientation() {
     orientation.value = orientation.value === 'vertical' ? 'horizontal' : 'vertical'
   }

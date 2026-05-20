@@ -20,6 +20,7 @@ import {
   electronCaptionSyncDocking,
   electronCaptionToggleVisibility,
   electronSetIgnoreMouseEvents,
+  electronStageToggleVisibility,
 } from '../shared/eventa'
 import { openDebugger, setupDebugger } from './app/debugger'
 import { createGlobalAppConfig } from './configs/global'
@@ -227,7 +228,7 @@ app.whenReady().then(async () => {
   })
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager, appConfig, i18n, captionWindow },
+    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager, appConfig, i18n, captionWindow, stageWindow },
     callback: (deps) => {
       const context = createContext(ipcMain).context
       createServerChannelService({ serverChannel: deps.serverChannel })
@@ -248,6 +249,17 @@ app.whenReady().then(async () => {
       defineInvokeHandler(context, electronSetIgnoreMouseEvents, async (ignore) => {
         // @ts-ignore - window might be undefined if context is global, but here it's window-specific
         context.window?.setIgnoreMouseEvents(ignore, { forward: true })
+      })
+      defineInvokeHandler(context, electronStageToggleVisibility, async (enabled) => {
+        console.log('[@proj-airi/stage-tamagotchi] [Main] Actor Stage visibility changed:', enabled)
+        if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
+          if (enabled) {
+            deps.stageWindow.show()
+          }
+          else {
+            deps.stageWindow.hide()
+          }
+        }
       })
 
       const restoreCaption = () => {

@@ -1,5 +1,3 @@
-import type { BrowserWindow } from 'electron'
-
 import type { I18n } from '../../../libs/i18n'
 import type { ServerChannel } from '../../../services/airi/channel-server'
 import type { McpStdioManager } from '../../../services/airi/mcp-servers'
@@ -13,7 +11,7 @@ import clickDragPlugin from 'electron-click-drag-plugin'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { isLinux } from 'std-env'
 
 import {
@@ -68,9 +66,11 @@ export async function setupMainWindowElectronInvokes(params: {
   })
 
   if (!isLinux) {
-    defineInvokeHandler(context, electronStartDraggingWindow, () => {
+    defineInvokeHandler(context, electronStartDraggingWindow, (_payload, handlerOptions: any) => {
       try {
-        const windowId = params.window.getNativeWindowHandle()
+        const sender = handlerOptions?.raw?.ipcMainEvent?.sender
+        const win = sender ? (BrowserWindow.fromWebContents(sender) ?? params.window) : params.window
+        const windowId = win.getNativeWindowHandle()
         clickDragPlugin.startDrag(windowId)
       }
       catch (error) {

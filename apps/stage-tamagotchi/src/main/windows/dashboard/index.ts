@@ -153,9 +153,11 @@ export async function setupDashboardWindow(params: {
    * Workaround: https://github.com/noobfromph/electron-click-drag-plugin
    */
   if (!isLinux) {
-    function handleStartDraggingWindow() {
+    function handleStartDraggingWindow(_payload: any, handlerOptions: any) {
       try {
-        const windowId = window.getNativeWindowHandle()
+        const sender = handlerOptions?.raw?.ipcMainEvent?.sender
+        const win = sender ? (BrowserWindow.fromWebContents(sender) ?? window) : window
+        const windowId = win.getNativeWindowHandle()
         clickDragPlugin.startDrag(windowId)
       }
       catch (error) {

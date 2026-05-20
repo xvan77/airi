@@ -40,6 +40,7 @@ import {
   electronGetMainWindowConfig,
   electronOpenChat,
   electronOpenSettings,
+  electronStageToggleVisibility,
   widgetsAdd,
 } from '../../shared/eventa'
 import { useControlsIslandStore } from '../stores/controls-island'
@@ -126,6 +127,13 @@ const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
 const viewControlsActiveMode = ref<'x' | 'y' | 'z' | 'scale'>('scale')
 
 const positioningStore = usePositioningStore()
+const controlStripStore = useSettingsControlStrip()
+const { stageEnabled } = storeToRefs(controlStripStore)
+const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
+
+watch(stageEnabled, (val) => {
+  toggleStageVisibility(val)
+}, { immediate: true })
 
 const computedScale = computed(() => {
   return positioningStore.getPosition(stageModelSelected.value).scale
@@ -579,7 +587,6 @@ function handleControlStripAction(e: Event) {
     settingsAudioDeviceStore.enabled = !settingsAudioDeviceStore.enabled
   }
   else if (action === 'stage') {
-    const controlStripStore = useSettingsControlStrip()
     controlStripStore.stageEnabled = !controlStripStore.stageEnabled
   }
   else if (action === 'layout') {

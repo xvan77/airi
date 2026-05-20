@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { WhisperDock } from '@proj-airi/stage-ui/components'
 import { RendererStage } from '@proj-airi/stage-ui/components/scenes'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
@@ -56,7 +56,8 @@ const tools = ref<any[]>([])
 function handleSpawnStandalone() {}
 
 // Window Dragging Handle
-const startDraggingWindowInvoke = useElectronEventaInvoke(electronStartDraggingWindow)
+const context = useElectronEventaContext()
+const startDraggingWindowInvoke = useElectronEventaInvoke(electronStartDraggingWindow, context.value)
 function startDraggingWindow() {
   startDraggingWindowInvoke()
 }

@@ -51,9 +51,11 @@ export async function setupActorStageWindow(params: {
   await setupBaseWindowElectronInvokes({ context, window, serverChannel: params.serverChannel, i18n: params.i18n })
 
   if (!isLinux) {
-    defineInvokeHandler(context, electronStartDraggingWindow, () => {
+    defineInvokeHandler(context, electronStartDraggingWindow, (_payload, handlerOptions: any) => {
       try {
-        const windowId = window.getNativeWindowHandle()
+        const sender = handlerOptions?.raw?.ipcMainEvent?.sender
+        const win = sender ? (BrowserWindow.fromWebContents(sender) ?? window) : window
+        const windowId = win.getNativeWindowHandle()
         clickDragPlugin.startDrag(windowId)
       }
       catch (error) {
