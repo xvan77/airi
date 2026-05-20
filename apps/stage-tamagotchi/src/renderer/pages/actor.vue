@@ -68,68 +68,75 @@ const showDragHandle = ref(false)
 
 <template>
   <div
-    class="relative h-screen w-screen flex flex-col justify-between overflow-hidden"
+    class="relative h-full w-full flex flex-col overflow-hidden rounded-xl bg-transparent"
     @mouseenter="showDragHandle = true"
     @mouseleave="showDragHandle = false"
   >
-    <!-- Scene Background Layer -->
-    <div
-      v-if="activeBackgroundUrl"
-      :class="[
-        'absolute inset-0 z-0',
-        'transition-opacity duration-500',
-      ]"
-      :style="{
-        backgroundImage: `url(${activeBackgroundUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }"
-    />
-
-    <!-- Standalone Graphics Model Scene Renderer -->
-    <div class="absolute inset-0 z-10">
-      <RendererStage
-        v-if="stageEnabled"
-        :paused="false"
-        :focus-at="{ x: 0, y: 0 }"
-        :x-offset="xOffset"
-        :y-offset="yOffset"
-        :scale="scale"
-        @scale-change="handleScaleChange"
-        @offset-change="handleOffsetChange"
-      />
-    </div>
-
-    <!-- Floating Window Drag Control (Fades on hover) -->
-    <Transition
-      enter-active-class="transition-opacity duration-300 ease-out"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition-opacity duration-300 ease-in"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
+    <div class="relative h-full w-full overflow-hidden rounded-2xl">
+      <!-- Scene Background Layer -->
       <div
-        v-if="showDragHandle"
-        class="pointer-events-auto absolute left-4 top-1/2 z-50 -translate-y-1/2"
-      >
-        <button
-          class="h-10 w-10 flex cursor-move items-center justify-center border border-white/20 rounded-full bg-neutral-900/60 text-white shadow-lg transition-transform duration-200 active:scale-90 hover:bg-neutral-900/80"
-          title="Drag to Reposition Stage"
-          @mousedown="startDraggingWindow"
-        >
-          <span class="i-ph:arrows-out-cardinal text-xl" />
-        </button>
-      </div>
-    </Transition>
-
-    <!-- WhisperDock horizontal input overlay centered at bottom -->
-    <div class="pointer-events-auto absolute bottom-4 left-1/2 z-40 w-auto -translate-x-1/2">
-      <WhisperDock
-        :tools="tools"
-        @spawn-standalone="handleSpawnStandalone"
+        v-if="activeBackgroundUrl"
+        :class="[
+          'absolute inset-0 z-0',
+          'transition-opacity duration-500',
+        ]"
+        :style="{
+          backgroundImage: `url(${activeBackgroundUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }"
       />
+
+      <!-- Standalone Graphics Model Scene Renderer -->
+      <div class="absolute inset-0 z-10">
+        <RendererStage
+          v-if="stageEnabled"
+          :paused="false"
+          :focus-at="{ x: 0, y: 0 }"
+          :x-offset="xOffset"
+          :y-offset="yOffset"
+          :scale="scale"
+          @scale-change="handleScaleChange"
+          @offset-change="handleOffsetChange"
+        />
+      </div>
+
+      <!-- Floating Window Drag Control (Fades on hover) -->
+      <Transition
+        enter-active-class="transition-opacity duration-300 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition-opacity duration-300 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showDragHandle"
+          class="pointer-events-auto absolute bottom-4 right-4 z-50"
+        >
+          <button
+            class="w-fit flex cursor-pointer items-center self-end justify-center border-2 border-neutral-200/60 rounded-xl border-solid bg-neutral-50/80 p-2 backdrop-blur-md transition-all transition-duration-300 transition-ease-out active:scale-95 dark:border-neutral-800/10 dark:bg-neutral-800/70 hover:transition-none"
+            title="Drag to Reposition Stage"
+            @mousedown="startDraggingWindow"
+          >
+            <div class="i-ph:arrows-out-cardinal size-5 text-neutral-800 dark:text-neutral-300" />
+          </button>
+        </div>
+      </Transition>
+
+      <!-- WhisperDock horizontal input overlay centered at bottom -->
+      <div class="pointer-events-auto absolute bottom-4 left-1/2 z-40 w-auto -translate-x-1/2">
+        <WhisperDock
+          :tools="tools"
+          @spawn-standalone="handleSpawnStandalone"
+        />
+      </div>
     </div>
   </div>
 </template>
+
+<route lang="yaml">
+meta:
+  layout: stage
+</route>
