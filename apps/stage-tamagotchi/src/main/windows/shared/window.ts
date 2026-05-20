@@ -24,7 +24,7 @@ export function toggleWindowShow(window?: BrowserWindow | null): void {
     window.show()
     window.focus()
   }
-  else if (window.isVisible() && window.isFocused()) {
+  else if (window.isVisible()) {
     window.hide()
   }
   else {

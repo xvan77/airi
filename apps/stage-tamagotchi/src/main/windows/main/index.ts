@@ -64,6 +64,7 @@ export async function setupMainWindow(params: {
 
   // Attach config for RPC sync
   ;(window as any).__airi_config = mainWindowConfig
+  ;(window as any).__is_main_window = true
 
   window.setMovable(!mainWindowConfig?.locked)
   window.setResizable(!mainWindowConfig?.locked)
