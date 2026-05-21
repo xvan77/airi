@@ -922,30 +922,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
       </div>
     </div>
   </div>
-  <Transition
-    enter-active-class="transition-opacity duration-250"
-    enter-from-class="opacity-0"
-    enter-to-class="opacity-100"
-    leave-active-class="transition-opacity duration-250"
-    leave-from-class="opacity-100"
-    leave-to-class="opacity-0"
-  >
-    <div
-      v-if="stageViewControlsEnabled && controlStripStore.interactionMode === 'drag'"
-      class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden drag-region"
-    >
-      <div
-        class="absolute h-32 w-full flex items-center justify-center overflow-hidden rounded-xl"
-        bg="white/80 dark:neutral-950/80" backdrop-blur="md"
-      >
-        <div class="wall absolute top-0 h-8" />
-        <div class="absolute left-0 top-0 h-full w-full flex animate-flash animate-duration-5s animate-count-infinite select-none items-center justify-center text-1.5rem text-primary-400 font-normal drag-region">
-          DRAG HERE TO MOVE
-        </div>
-        <div class="wall absolute bottom-0 h-8 drag-region" />
-      </div>
-    </div>
-  </Transition>
+
   <Transition
     enter-active-class="transition-opacity duration-250 ease-in-out"
     enter-from-class="opacity-50"
@@ -996,32 +973,6 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     </div>
   </Transition>
 </template>
-
-<style scoped>
-@keyframes wall-move {
-  0% {
-    transform: translateX(calc(var(--wall-width) * -2));
-  }
-  100% {
-    transform: translateX(calc(var(--wall-width) * 1));
-  }
-}
-
-.wall {
-  --at-apply: text-primary-300;
-
-  --wall-width: 8px;
-  animation: wall-move 1s linear infinite;
-  background-image: repeating-linear-gradient(
-    45deg,
-    currentColor,
-    currentColor var(--wall-width),
-    #ff00 var(--wall-width),
-    #ff00 calc(var(--wall-width) * 2)
-  );
-  width: calc(100% + 4 * var(--wall-width));
-}
-</style>
 
 <route lang="yaml">
 meta:
