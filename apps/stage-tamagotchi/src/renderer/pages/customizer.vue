@@ -188,7 +188,7 @@ onMounted(() => {
 <template>
   <div class="h-screen w-screen flex flex-col select-none overflow-hidden bg-transparent p-3 font-sans">
     <!-- Premium Container with intense glassmorphism -->
-    <div class="relative h-full w-full flex flex-col overflow-hidden border border-white/10 rounded-2xl bg-neutral-950/80 shadow-2xl backdrop-blur-2xl dark:border-neutral-800/80">
+    <div class="relative h-full w-full flex flex-col overflow-hidden border border-white/10 rounded-2xl bg-neutral-950/90 shadow-2xl backdrop-blur-2xl dark:border-neutral-800/80">
       <!-- Radial background glowing anomalies -->
       <div class="pointer-events-none absolute h-44 w-44 rounded-full bg-emerald-500/10 blur-3xl -left-16 -top-16" />
       <div class="pointer-events-none absolute h-44 w-44 rounded-full bg-sky-500/10 blur-3xl -bottom-16 -right-16" />

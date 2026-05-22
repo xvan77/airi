@@ -106,22 +106,6 @@ export const CUSTOMIZER_CATALOG: CustomizerGroup[] = [
     icon: 'i-solar:settings-linear',
     items: [
       {
-        id: 'layout',
-        label: 'Customizer',
-        description: 'Toggles visibility of the Control Customizer configuration window.',
-        icon: 'i-solar:widget-linear',
-        type: 'action',
-        defaultOnStrip: true,
-      },
-      {
-        id: 'settings',
-        label: 'Settings',
-        description: 'Opens the main configuration settings menu pane.',
-        icon: 'i-solar:settings-linear',
-        type: 'action',
-        defaultOnStrip: true,
-      },
-      {
         id: 'chat',
         label: 'Chat Toggle',
         description: 'Toggles visibility of the chat overlay bubble.',
@@ -140,6 +124,14 @@ export const CUSTOMIZER_CATALOG: CustomizerGroup[] = [
         binding: 'micEnabled',
       },
       {
+        id: 'settings',
+        label: 'Settings',
+        description: 'Opens the main configuration settings menu pane.',
+        icon: 'i-solar:settings-linear',
+        type: 'action',
+        defaultOnStrip: true,
+      },
+      {
         id: 'theme-mode',
         label: 'Theme Mode',
         description: 'Swaps light/dark application color themes.',
@@ -155,11 +147,19 @@ export const CUSTOMIZER_CATALOG: CustomizerGroup[] = [
         type: 'action',
         defaultOnStrip: true,
       },
+      {
+        id: 'layout',
+        label: 'Customizer',
+        description: 'Toggles visibility of the Control Customizer configuration window.',
+        icon: 'i-solar:widget-linear',
+        type: 'action',
+        defaultOnStrip: true,
+      },
     ],
   },
   {
     id: 'captions-layout',
-    name: 'Captions & Layout',
+    name: 'Captions',
     description: 'Subtitles layout, caption styling alignment, and attaching behaviors.',
     icon: 'i-solar:window-frame-linear',
     items: [
