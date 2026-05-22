@@ -77,12 +77,16 @@ export function setupCustomizerWindowManager(params: {
     window.on('show', () => {
       emitVisibilityChanged()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Customizer window shown, broadcasting state')
-      params.mainWindow.webContents.send('customizer-window-state', true)
+      if (params.mainWindow && !params.mainWindow.isDestroyed()) {
+        params.mainWindow.webContents.send('customizer-window-state', true)
+      }
     })
     window.on('hide', () => {
       emitVisibilityChanged()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Customizer window hidden, broadcasting state')
-      params.mainWindow.webContents.send('customizer-window-state', false)
+      if (params.mainWindow && !params.mainWindow.isDestroyed()) {
+        params.mainWindow.webContents.send('customizer-window-state', false)
+      }
     })
 
     await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/customizer'))
@@ -93,7 +97,9 @@ export function setupCustomizerWindowManager(params: {
       }
       emitVisibilityChanged()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Customizer window closed, broadcasting state')
-      params.mainWindow.webContents.send('customizer-window-state', false)
+      if (params.mainWindow && !params.mainWindow.isDestroyed()) {
+        params.mainWindow.webContents.send('customizer-window-state', false)
+      }
     })
 
     return window

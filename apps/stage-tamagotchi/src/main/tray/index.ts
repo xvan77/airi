@@ -106,7 +106,7 @@ export function setupTray(params: {
     })
 
     const rebuildContextMenu = debounce((): void => {
-      if (!appTray || appTray.isDestroyed())
+      if (!appTray || appTray.isDestroyed() || !params.mainWindow || params.mainWindow.isDestroyed())
         return
 
       const { width: windowWidth, height: windowHeight } = params.mainWindow.getBounds()

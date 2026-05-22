@@ -119,6 +119,9 @@ export async function setupMainWindow(params: {
   })
 
   function handleNewBounds(newBounds: Rectangle) {
+    if (window.isDestroyed())
+      return
+
     const config = getConfig()
     if (!config.windows || !Array.isArray(config.windows)) {
       config.windows = []
@@ -156,8 +159,16 @@ export async function setupMainWindow(params: {
   }
 
   const throttledHandleNewBounds = throttle(handleNewBounds, 200)
-  window.on('resize', () => throttledHandleNewBounds(window.getBounds()))
-  window.on('move', () => throttledHandleNewBounds(window.getBounds()))
+  window.on('resize', () => {
+    if (!window.isDestroyed()) {
+      throttledHandleNewBounds(window.getBounds())
+    }
+  })
+  window.on('move', () => {
+    if (!window.isDestroyed()) {
+      throttledHandleNewBounds(window.getBounds())
+    }
+  })
 
   return window
 }

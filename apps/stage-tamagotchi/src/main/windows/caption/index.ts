@@ -333,8 +333,10 @@ export function setupCaptionWindowManager(params: {
     detachMainMoveListener = () => {
       moveThrottled.cancel()
       settleDebounced.cancel()
-      params.stageWindow.removeListener('move', onMainChange)
-      params.stageWindow.removeListener('resize', onMainChange)
+      if (params.stageWindow && !params.stageWindow.isDestroyed()) {
+        params.stageWindow.removeListener('move', onMainChange)
+        params.stageWindow.removeListener('resize', onMainChange)
+      }
       triggerMoveInternal = undefined
     }
 
@@ -384,6 +386,8 @@ export function setupCaptionWindowManager(params: {
     }
 
     const persistBounds = () => {
+      if (window.isDestroyed())
+        return
       const config = getConfig() ?? { isFollowing, matrices: {} }
       const b = window.getBounds()
       config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b }
@@ -401,13 +405,17 @@ export function setupCaptionWindowManager(params: {
       emitVisibilityChanged()
       syncGlobalConfig()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Caption window shown, broadcasting state')
-      params.mainWindow.webContents.send('caption-window-state', true)
+      if (params.mainWindow && !params.mainWindow.isDestroyed()) {
+        params.mainWindow.webContents.send('caption-window-state', true)
+      }
     })
     window.on('hide', () => {
       emitVisibilityChanged()
       syncGlobalConfig()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Caption window hidden, broadcasting state')
-      params.mainWindow.webContents.send('caption-window-state', false)
+      if (params.mainWindow && !params.mainWindow.isDestroyed()) {
+        params.mainWindow.webContents.send('caption-window-state', false)
+      }
     })
 
     await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/caption'))
@@ -435,7 +443,9 @@ export function setupCaptionWindowManager(params: {
       eventaContext = undefined
       emitVisibilityChanged()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Caption window closed, broadcasting state')
-      params.mainWindow.webContents.send('caption-window-state', false)
+      if (params.mainWindow && !params.mainWindow.isDestroyed()) {
+        params.mainWindow.webContents.send('caption-window-state', false)
+      }
     })
 
     // Captions are click-through by default so you can click whatever is behind them.

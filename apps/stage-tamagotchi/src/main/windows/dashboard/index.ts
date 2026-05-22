@@ -93,6 +93,9 @@ export async function setupDashboardWindow(params: {
   }
 
   function handleNewBounds(newBounds: Rectangle) {
+    if (window.isDestroyed())
+      return
+
     const config = getConfig()
     if (!config.windows || !Array.isArray(config.windows)) {
       config.windows = []
@@ -125,10 +128,22 @@ export async function setupDashboardWindow(params: {
   }
 
   const throttledHandleNewBounds = throttle(handleNewBounds, 200)
-  window.on('resize', () => throttledHandleNewBounds(window.getBounds()))
-  window.on('move', () => throttledHandleNewBounds(window.getBounds()))
+  window.on('resize', () => {
+    if (!window.isDestroyed()) {
+      throttledHandleNewBounds(window.getBounds())
+    }
+  })
+  window.on('move', () => {
+    if (!window.isDestroyed()) {
+      throttledHandleNewBounds(window.getBounds())
+    }
+  })
 
-  window.on('ready-to-show', () => window!.show())
+  window.on('ready-to-show', () => {
+    if (!window.isDestroyed()) {
+      window.show()
+    }
+  })
   window.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
