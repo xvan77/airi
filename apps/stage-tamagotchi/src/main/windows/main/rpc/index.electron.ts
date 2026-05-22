@@ -15,6 +15,7 @@ import { BrowserWindow, ipcMain } from 'electron'
 import { isLinux } from 'std-env'
 
 import {
+  electronControlStripSyncState,
   electronGetMainWindowConfig,
   electronOpenChat,
   electronOpenMainDevtools,
@@ -41,6 +42,7 @@ export async function setupMainWindowElectronInvokes(params: {
   mcpStdioManager: McpStdioManager
   i18n: I18n
   onboardingWindowManager: OnboardingWindowManager
+  appConfig: any
 }) {
   // TODO: once we refactored eventa to support window-namespaced contexts,
   // we can remove the setMaxListeners call below since eventa will be able to dispatch and
@@ -80,6 +82,35 @@ export async function setupMainWindowElectronInvokes(params: {
 
   defineInvokeHandler(context, electronGetMainWindowConfig, () => {
     return (params.window as any).__airi_config
+  })
+
+  defineInvokeHandler(context, electronControlStripSyncState, (payload) => {
+    if (payload) {
+      ;(params.window as any).__control_strip_state = payload
+
+      const config = params.appConfig.get()
+      if (config) {
+        if (!config.windows) {
+          config.windows = []
+        }
+        const existingConfigIndex = config.windows.findIndex((w: any) => w.title === 'AIRI' && w.tag === 'main')
+        if (existingConfigIndex !== -1) {
+          config.windows[existingConfigIndex].orientation = payload.orientation
+          params.appConfig.update(config)
+          ;(params.window as any).__airi_config = config.windows[existingConfigIndex]
+        }
+        else {
+          const newWin = {
+            title: 'AIRI',
+            tag: 'main',
+            orientation: payload.orientation,
+          }
+          config.windows.push(newWin)
+          params.appConfig.update(config)
+          ;(params.window as any).__airi_config = newWin
+        }
+      }
+    }
   })
 
   if (!isLinux) {

@@ -1,3 +1,5 @@
+import type { Rectangle } from 'electron'
+
 import { dirname } from 'node:path'
 import { env, platform, stderr, stdout } from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -10,18 +12,20 @@ import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, session } from 'electron'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { isLinux } from 'std-env'
 
 import icon from '../../resources/icon.png?asset'
 
 import {
+  electronApplySizePreset,
   electronCaptionSetFollowWindow,
   electronCaptionSyncDocking,
   electronCaptionToggleVisibility,
   electronGetCaptionWindowState,
   electronGetChatWindowState,
+  electronResetWindowPositions,
   electronSetIgnoreMouseEvents,
   electronStageSetAlwaysOnTop,
   electronStageToggleVisibility,
@@ -53,6 +57,7 @@ import { setupMainWindow } from './windows/main'
 import { setupNoticeWindowManager } from './windows/notice'
 import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
+import { ensureWindowInVisibleBounds } from './windows/shared/display'
 import { setStageVisibleState, setupActorStageWindow } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
 
@@ -246,7 +251,7 @@ app.whenReady().then(async () => {
   })
 
   const chatWindow = injeca.provide('windows:chat', {
-    dependsOn: { widgetsManager, serverChannel, mcpStdioManager, i18n },
+    dependsOn: { widgetsManager, serverChannel, mcpStdioManager, i18n, appConfig },
     build: ({ dependsOn }) => setupChatWindowReusableFunc(dependsOn),
   })
 
@@ -365,6 +370,238 @@ app.whenReady().then(async () => {
           }
         }
       })
+
+      defineInvokeHandler(context, electronApplySizePreset, async (payload) => {
+        if (!payload)
+          return
+        const { target, preset } = payload
+        console.log(`[@proj-airi/stage-tamagotchi] [Main] Apply size preset: ${preset} for target: ${target}`)
+
+        let centerX: number | undefined
+        let centerY: number | undefined
+        let targetDisplay: any | undefined
+
+        if (target === 'actor') {
+          const win = deps.stageWindow
+          if (win && !win.isDestroyed()) {
+            const bounds = win.getBounds()
+            centerX = bounds.x + bounds.width / 2
+            centerY = bounds.y + bounds.height / 2
+            targetDisplay = screen.getDisplayMatching(bounds)
+          }
+        }
+        else if (target === 'chat') {
+          const win = await deps.chatWindow()
+          if (win && !win.isDestroyed() && win.isVisible()) {
+            const bounds = win.getBounds()
+            centerX = bounds.x + bounds.width / 2
+            centerY = bounds.y + bounds.height / 2
+            targetDisplay = screen.getDisplayMatching(bounds)
+          }
+        }
+
+        const appConfig = deps.appConfig.get()
+        const winConfig = appConfig?.windows?.find((w: any) => w.tag === target)
+        if (centerX === undefined || centerY === undefined || !targetDisplay) {
+          if (winConfig && winConfig.x !== undefined && winConfig.y !== undefined && winConfig.width !== undefined && winConfig.height !== undefined) {
+            centerX = winConfig.x + winConfig.width / 2
+            centerY = winConfig.y + winConfig.height / 2
+            targetDisplay = screen.getDisplayNearestPoint({ x: Math.round(centerX), y: Math.round(centerY) })
+          }
+        }
+
+        if (centerX === undefined || centerY === undefined || !targetDisplay) {
+          targetDisplay = screen.getPrimaryDisplay()
+          const workArea = targetDisplay.workArea
+          centerX = workArea.x + workArea.width / 2
+          centerY = workArea.y + workArea.height / 2
+        }
+
+        const workArea = targetDisplay.workArea
+        let width = 0
+        let height = 0
+
+        if (target === 'actor') {
+          switch (preset) {
+            case 'mini':
+              width = 220
+              height = 315
+              break
+            case 'medium':
+              width = 450
+              height = 600
+              break
+            case 'large':
+              width = 800
+              height = 1000
+              break
+            case 'full':
+              width = workArea.width
+              height = workArea.height
+              break
+          }
+        }
+        else if (target === 'chat') {
+          switch (preset) {
+            case 'mini':
+              width = 400
+              height = 500
+              break
+            case 'medium':
+              width = 600
+              height = 800
+              break
+            case 'large':
+              width = 900
+              height = 900
+              break
+            case 'full':
+              width = Math.max(400, workArea.width - 80)
+              height = Math.max(500, workArea.height - 80)
+              break
+          }
+        }
+
+        const newBounds = ensureWindowInVisibleBounds({
+          x: Math.round(centerX! - width / 2),
+          y: Math.round(centerY! - height / 2),
+          width,
+          height,
+        })
+
+        if (appConfig) {
+          const windows = appConfig.windows || []
+          const idx = windows.findIndex((w: any) => w.tag === target)
+          if (idx !== -1) {
+            windows[idx] = {
+              ...windows[idx],
+              x: newBounds.x,
+              y: newBounds.y,
+              width: newBounds.width,
+              height: newBounds.height,
+            }
+          }
+          else {
+            windows.push({
+              title: target === 'actor' ? 'AIRI' : 'AIRI',
+              tag: target,
+              x: newBounds.x,
+              y: newBounds.y,
+              width: newBounds.width,
+              height: newBounds.height,
+            })
+          }
+          appConfig.windows = windows
+          deps.appConfig.update(appConfig)
+        }
+
+        if (target === 'actor') {
+          if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
+            deps.stageWindow.setBounds(newBounds)
+          }
+        }
+        else if (target === 'chat') {
+          const win = await deps.chatWindow()
+          if (win && !win.isDestroyed() && win.isVisible()) {
+            win.setBounds(newBounds)
+          }
+        }
+      })
+
+      defineInvokeHandler(context, electronResetWindowPositions, async () => {
+        console.log('[@proj-airi/stage-tamagotchi] [Main] Resetting all window positions...')
+        const primaryDisplay = screen.getPrimaryDisplay()
+        const workArea = primaryDisplay.workArea
+
+        const orientation = deps.appConfig.get()?.windows?.find((w: any) => w.tag === 'main')?.orientation || 'vertical'
+        const mainW = orientation === 'vertical' ? 56 : 300
+        const mainH = orientation === 'vertical' ? 300 : 56
+
+        const mainBounds = ensureWindowInVisibleBounds({
+          x: Math.round(workArea.x + (workArea.width - mainW) / 2),
+          y: Math.round(workArea.y + (workArea.height - mainH) / 2),
+          width: mainW,
+          height: mainH,
+        })
+
+        const actorBounds = ensureWindowInVisibleBounds({
+          x: Math.round(workArea.x + (workArea.width - 450) / 2),
+          y: Math.round(workArea.y + (workArea.height - 600) / 2),
+          width: 450,
+          height: 600,
+        })
+
+        const chatBounds = ensureWindowInVisibleBounds({
+          x: Math.round(workArea.x + (workArea.width - 600) / 2),
+          y: Math.round(workArea.y + (workArea.height - 800) / 2),
+          width: 600,
+          height: 800,
+        })
+
+        const captionBounds = ensureWindowInVisibleBounds({
+          x: Math.round(workArea.x + (workArea.width - 480) / 2),
+          y: Math.round(workArea.y + (workArea.height - 180) / 2),
+          width: 480,
+          height: 180,
+        })
+
+        const appConfig = deps.appConfig.get()
+        if (appConfig) {
+          const windows = appConfig.windows || []
+          const updateWin = (tag: string, bounds: Rectangle, extra = {}) => {
+            const idx = windows.findIndex((w: any) => w.tag === tag)
+            if (idx !== -1) {
+              windows[idx] = {
+                ...windows[idx],
+                ...bounds,
+                ...extra,
+              }
+            }
+            else {
+              windows.push({
+                title: 'AIRI',
+                tag,
+                ...bounds,
+                ...extra,
+              })
+            }
+          }
+          updateWin('main', mainBounds, { orientation })
+          updateWin('actor', actorBounds)
+          updateWin('chat', chatBounds)
+          updateWin('caption', captionBounds)
+          appConfig.windows = windows
+          deps.appConfig.update(appConfig)
+        }
+
+        if (deps.mainWindow && !deps.mainWindow.isDestroyed()) {
+          deps.mainWindow.setBounds(mainBounds)
+        }
+        if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
+          deps.stageWindow.setBounds(actorBounds)
+        }
+        const chatWin = await deps.chatWindow()
+        if (chatWin && !chatWin.isDestroyed() && chatWin.isVisible()) {
+          chatWin.setBounds(chatBounds)
+        }
+        const capWin = await deps.captionWindow.getWindow()
+        if (capWin && !capWin.isDestroyed()) {
+          capWin.setBounds(captionBounds)
+        }
+      })
+
+      if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
+        deps.stageWindow.on('show', () => {
+          if (deps.captionWindow.getIsFollowingWindow()) {
+            deps.captionWindow.toggleVisibility(true)
+          }
+        })
+        deps.stageWindow.on('hide', () => {
+          if (deps.captionWindow.getIsFollowingWindow()) {
+            deps.captionWindow.toggleVisibility(false)
+          }
+        })
+      }
 
       const restoreCaption = () => {
         // Auto-restore caption window if enabled in config

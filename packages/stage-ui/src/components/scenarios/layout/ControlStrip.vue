@@ -55,6 +55,36 @@ onClickOutside(popoverRef, () => {
   activePopover.value = null
 })
 
+const PRESETS = [
+  { name: 'mini', icon: 'i-solar:minimize-square-3-linear', label: 'Mini' },
+  { name: 'medium', icon: 'i-solar:maximize-square-2-linear', label: 'Medium' },
+  { name: 'large', icon: 'i-solar:maximize-square-3-linear', label: 'Large' },
+  { name: 'full', icon: 'i-solar:screencast-linear', label: 'Full' },
+] as const
+
+function openPresetPopover(btnId: string) {
+  if (btnId === 'stage') {
+    activePopover.value = 'stage-preset'
+  }
+  else if (btnId === 'chat') {
+    activePopover.value = 'chat-preset'
+  }
+  else {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('control-strip:open-customizer'))
+    }
+  }
+}
+
+function applySizePreset(target: 'actor' | 'chat', preset: 'mini' | 'medium' | 'large' | 'full') {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('control-strip:apply-size-preset', {
+      detail: { target, preset },
+    }))
+  }
+  activePopover.value = null
+}
+
 const isElectron = computed(() => typeof window !== 'undefined' && !!(window as any).electron)
 
 const popoverPlacement = computed(() => {
@@ -545,6 +575,7 @@ function getShortLabel(btnId: string): string {
         @mouseenter="hoveredButtonId = btn.id"
         @mouseleave="hoveredButtonId = null"
         @click="handleAction(btn.id)"
+        @contextmenu.prevent.stop="openPresetPopover(btn.id)"
       >
         <!-- Icon fades out on hover -->
         <span
@@ -722,6 +753,48 @@ function getShortLabel(btnId: string): string {
         ]"
         @click.stop
       >
+        <!-- STAGE PRESETS POPOVER -->
+        <div v-if="activePopover === 'stage-preset'" class="flex flex-col gap-2">
+          <div class="flex items-center justify-between border-b border-neutral-200 pb-2 dark:border-neutral-800">
+            <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Stage Size Presets</span>
+            <button class="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" @click="activePopover = null">
+              <span class="i-solar:close-circle-outline text-lg" />
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 py-1">
+            <button
+              v-for="p in PRESETS"
+              :key="p.name"
+              class="flex flex-col cursor-pointer items-center justify-center gap-1.5 border border-neutral-200/50 rounded-xl bg-neutral-50/50 px-2 py-3 text-xs text-neutral-700 font-semibold transition-all duration-200 active:scale-95 dark:border-neutral-800/20 hover:border-sky-400/50 dark:bg-neutral-800/40 hover:bg-sky-500/10 dark:text-neutral-300 hover:text-sky-600 dark:hover:bg-sky-500/20 dark:hover:text-sky-300"
+              @click="applySizePreset('actor', p.name)"
+            >
+              <span :class="[p.icon, 'text-lg']" />
+              <span>{{ p.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- CHAT PRESETS POPOVER -->
+        <div v-if="activePopover === 'chat-preset'" class="flex flex-col gap-2">
+          <div class="flex items-center justify-between border-b border-neutral-200 pb-2 dark:border-neutral-800">
+            <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Chat Size Presets</span>
+            <button class="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" @click="activePopover = null">
+              <span class="i-solar:close-circle-outline text-lg" />
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 py-1">
+            <button
+              v-for="p in PRESETS"
+              :key="p.name"
+              class="flex flex-col cursor-pointer items-center justify-center gap-1.5 border border-neutral-200/50 rounded-xl bg-neutral-50/50 px-2 py-3 text-xs text-neutral-700 font-semibold transition-all duration-200 active:scale-95 dark:border-neutral-800/20 hover:border-sky-400/50 dark:bg-neutral-800/40 hover:bg-sky-500/10 dark:text-neutral-300 hover:text-sky-600 dark:hover:bg-sky-500/20 dark:hover:text-sky-300"
+              @click="applySizePreset('chat', p.name)"
+            >
+              <span :class="[p.icon, 'text-lg']" />
+              <span>{{ p.label }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- CHARACTERS POPOVER -->
         <div v-if="activePopover === 'actor-characters'" class="flex flex-col gap-2">
           <div class="flex items-center justify-between border-b border-neutral-200 pb-2 dark:border-neutral-800">

@@ -25,6 +25,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, load } from '../../libs/electron/location'
 import { transparentWindowConfig } from '../shared'
+import { ensureWindowInVisibleBounds } from '../shared/display'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
 
 export async function setupMainWindow(params: {
@@ -44,13 +45,30 @@ export async function setupMainWindow(params: {
   const updateConfig = (newData: InferOutput<typeof globalAppConfigSchema>) => params.appConfig.update(newData)
 
   const mainWindowConfig = getConfig().windows?.find((w: any) => w.title === 'AIRI' && w.tag === 'main')
+  const orientation = mainWindowConfig?.orientation || 'vertical'
+  let width = mainWindowConfig?.width ?? mainWindowConfig?.snapshot?.width ?? (orientation === 'vertical' ? 56.0 : 300.0)
+  let height = mainWindowConfig?.height ?? mainWindowConfig?.snapshot?.height ?? (orientation === 'vertical' ? 300.0 : 56.0)
+  let x = mainWindowConfig?.x ?? mainWindowConfig?.snapshot?.x
+  let y = mainWindowConfig?.y ?? mainWindowConfig?.snapshot?.y
+  if (x !== undefined && y !== undefined) {
+    const valid = ensureWindowInVisibleBounds({
+      x: Math.round(x),
+      y: Math.round(y),
+      width: Math.round(width),
+      height: Math.round(height),
+    })
+    x = valid.x
+    y = valid.y
+    width = valid.width
+    height = valid.height
+  }
 
   const window = new BrowserWindow({
     title: 'AIRI',
-    width: mainWindowConfig?.width ?? mainWindowConfig?.snapshot?.width ?? 450.0,
-    height: mainWindowConfig?.height ?? mainWindowConfig?.snapshot?.height ?? 600.0,
-    x: mainWindowConfig?.x ?? mainWindowConfig?.snapshot?.x,
-    y: mainWindowConfig?.y ?? mainWindowConfig?.snapshot?.y,
+    width,
+    height,
+    x,
+    y,
     show: false,
     icon,
     webPreferences: {
@@ -61,6 +79,9 @@ export async function setupMainWindow(params: {
     alwaysOnTop: true,
     ...transparentWindowConfig(),
   })
+
+  // Elevate Control Strip window layering above the Stage window
+  window.setAlwaysOnTop(true, 'screen-saver', 2)
 
   // Attach config for RPC sync
   ;(window as any).__airi_config = mainWindowConfig
@@ -88,15 +109,17 @@ export async function setupMainWindow(params: {
     const mainWindow = getConfig().windows?.find((w: any) => w.title === 'AIRI' && w.tag === 'main')
     const x = mainWindow?.x ?? mainWindow?.snapshot?.x
     const y = mainWindow?.y ?? mainWindow?.snapshot?.y
-    const width = mainWindow?.width ?? mainWindow?.snapshot?.width ?? 450.0
-    const height = mainWindow?.height ?? mainWindow?.snapshot?.height ?? 600.0
+    const orientation = mainWindow?.orientation || 'vertical'
+    const width = mainWindow?.width ?? (orientation === 'vertical' ? 56.0 : 300.0)
+    const height = mainWindow?.height ?? (orientation === 'vertical' ? 300.0 : 56.0)
     if (x !== undefined && y !== undefined) {
-      window.setBounds({
+      const valid = ensureWindowInVisibleBounds({
         x: Math.round(x),
         y: Math.round(y),
         width: Math.round(width),
         height: Math.round(height),
       })
+      window.setBounds(valid)
     }
   }
 
@@ -125,6 +148,7 @@ export async function setupMainWindow(params: {
     mcpStdioManager: params.mcpStdioManager,
     i18n: params.i18n,
     onboardingWindowManager: params.onboardingWindowManager,
+    appConfig: params.appConfig,
   })
 
   function handleNewBounds(newBounds: Rectangle) {
@@ -143,28 +167,56 @@ export async function setupMainWindow(params: {
       return
     }
 
+    let savedX = newBounds.x
+    let savedY = newBounds.y
+    const state = (window as any).__control_strip_state
+    const orientation = state?.orientation || existingConfig?.orientation || 'vertical'
+    const stripLength = state?.stripLength || 300
+    const activePopover = state?.activePopover || null
+    const placement = state?.lastPlacement || 'bottom'
+
+    const savedW = orientation === 'vertical' ? 56 : stripLength
+    const savedH = orientation === 'vertical' ? stripLength : 56
+
+    if (activePopover) {
+      if (orientation === 'vertical') {
+        savedX = newBounds.x + (placement === 'left' ? 268 : 0)
+        savedY = newBounds.y + (newBounds.height - stripLength) / 2
+      }
+      else {
+        savedX = newBounds.x + (newBounds.width - stripLength) / 2
+        savedY = newBounds.y + (placement === 'top' ? 280 : 0)
+      }
+    }
+
     if (existingConfigIndex === -1) {
-      config.windows.push({
+      const newWin = {
         title: 'AIRI',
         tag: 'main',
-        x: newBounds.x,
-        y: newBounds.y,
-        width: newBounds.width,
-        height: newBounds.height,
-      })
+        x: Math.round(savedX),
+        y: Math.round(savedY),
+        width: Math.round(savedW),
+        height: Math.round(savedH),
+        orientation,
+      }
+      config.windows.push(newWin)
+      ;(window as any).__airi_config = newWin
     }
     else {
       const currentConfig = config.windows[existingConfigIndex]
-      config.windows[existingConfigIndex] = defu({
-        x: newBounds.x,
-        y: newBounds.y,
-        width: newBounds.width,
-        height: newBounds.height,
+      const updatedWin = defu({
+        x: Math.round(savedX),
+        y: Math.round(savedY),
+        width: Math.round(savedW),
+        height: Math.round(savedH),
+        orientation,
       }, currentConfig)
+      config.windows[existingConfigIndex] = updatedWin
+      ;(window as any).__airi_config = updatedWin
     }
 
     updateConfig(config)
-    window.webContents.send('eventa:event:electron:windows:main:config-changed', config.windows.find((w: any) => w.title === 'AIRI' && w.tag === 'main'))
+    window.webContents.send('eventa:event:electron:windows:main:config-changed', (window as any).__airi_config)
   }
 
   const throttledHandleNewBounds = throttle(handleNewBounds, 200)

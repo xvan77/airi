@@ -30,10 +30,13 @@ import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 import {
+  electronApplySizePreset,
   electronAppQuit,
   electronCaptionSyncDocking,
   electronCaptionToggleVisibility,
+  electronControlStripSyncState,
   electronCustomizerToggleVisibility,
+  electronGetMainWindowConfig,
   electronOpenChat,
   electronOpenSettings,
   electronStageSetAlwaysOnTop,
@@ -58,6 +61,9 @@ const syncCaptionDocking = useElectronEventaInvoke(electronCaptionSyncDocking)
 const startDraggingWindow = useElectronEventaInvoke(electronStartDraggingWindow)
 const getBounds = useElectronEventaInvoke(electron.window.getBounds)
 const setBounds = useElectronEventaInvoke(electron.window.setBounds)
+const syncControlStripState = useElectronEventaInvoke(electronControlStripSyncState)
+const applySizePreset = useElectronEventaInvoke(electronApplySizePreset)
+const getMainWindowConfig = useElectronEventaInvoke(electronGetMainWindowConfig)
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
 const colorMode = useColorMode()
@@ -279,6 +285,24 @@ watch([stripLength, () => controlStripStore.orientation], async ([newLength, new
     lastOrientation.value = newOrientation
   }
 })
+
+watch(
+  [activePopover, lastPlacement, () => controlStripStore.orientation, stripLength],
+  async ([popover, placement, orient, len]) => {
+    await syncControlStripState({
+      activePopover: popover,
+      lastPlacement: placement || 'bottom',
+      orientation: orient || 'vertical',
+      stripLength: len,
+    })
+  },
+  { immediate: true },
+)
+
+async function handleApplySizePreset(e: Event) {
+  const { target, preset } = (e as CustomEvent).detail
+  await applySizePreset({ target, preset })
+}
 
 const hearingDialogOpen = ref(false)
 const whisperDockOpen = ref(false)
@@ -712,6 +736,12 @@ onMounted(async () => {
     console.error('[Main Page] VAD initialization failed:', err)
   })
 
+  // Initialize orientation from main process config
+  const mainConfig = await getMainWindowConfig()
+  if (mainConfig?.orientation) {
+    controlStripStore.orientation = mainConfig.orientation
+  }
+
   // Resize window to fit Control Strip initially
   lastOrientation.value = controlStripStore.orientation
   const w = controlStripStore.orientation === 'vertical' ? 56 : stripLength.value
@@ -749,6 +779,7 @@ onMounted(async () => {
       const { activePopover: nextPopover, placement: nextPlacement } = (e as CustomEvent).detail
       await applyBoundsUpdate(nextPopover, nextPlacement)
     })
+    window.addEventListener('control-strip:apply-size-preset', handleApplySizePreset as EventListener)
   }
 })
 
@@ -768,6 +799,7 @@ onUnmounted(async () => {
     window.removeEventListener('control-strip:action', handleControlStripAction as EventListener)
     window.removeEventListener('control-strip:open-customizer', handleOpenCustomizer as EventListener)
     window.removeEventListener('control-strip:open-settings', handleOpenSettings as EventListener)
+    window.removeEventListener('control-strip:apply-size-preset', handleApplySizePreset as EventListener)
   }
 })
 

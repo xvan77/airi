@@ -257,6 +257,16 @@ export const electronMainWindowConfigChanged = defineEventa<any>('eventa:event:e
 export const electronGetChatWindowState = defineInvokeEventa<boolean>('eventa:invoke:electron:windows:chat:get-state')
 export const electronGetCaptionWindowState = defineInvokeEventa<boolean>('eventa:invoke:electron:windows:caption:get-state')
 
+export interface ControlStripStatePayload {
+  activePopover: string | null
+  lastPlacement: string
+  orientation: 'vertical' | 'horizontal'
+  stripLength: number
+}
+export const electronControlStripSyncState = defineInvokeEventa<void, ControlStripStatePayload>('eventa:invoke:electron:windows:control-strip:sync-state')
+export const electronApplySizePreset = defineInvokeEventa<void, { target: 'actor' | 'chat', preset: 'mini' | 'medium' | 'large' | 'full' }>('eventa:invoke:electron:windows:apply-size-preset')
+export const electronResetWindowPositions = defineInvokeEventa<void>('eventa:invoke:electron:windows:reset-positions')
+
 // Internal event from main -> widgets renderer when a widget should render
 export const widgetsRenderEvent = defineEventa<WidgetSnapshot>('eventa:event:electron:windows:widgets:render')
 export const widgetsRemoveEvent = defineEventa<{ id: string }>('eventa:event:electron:windows:widgets:remove')

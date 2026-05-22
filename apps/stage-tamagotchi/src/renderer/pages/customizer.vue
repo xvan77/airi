@@ -8,7 +8,7 @@ import { useBroadcastChannel, useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-import { electronCustomizerToggleVisibility } from '../../shared/eventa'
+import { electronCustomizerToggleVisibility, electronResetWindowPositions } from '../../shared/eventa'
 
 const settingsStore = useSettings()
 const controlStripStore = useSettingsControlStrip()
@@ -135,6 +135,7 @@ function disableButton(id: string) {
 }
 
 const toggleCustomizerVisibility = useElectronEventaInvoke(electronCustomizerToggleVisibility)
+const resetWindowPositions = useElectronEventaInvoke(electronResetWindowPositions)
 const { post: postControlStripAction } = useBroadcastChannel<string, string>({ name: 'airi-control-strip-actions' })
 const colorMode = useColorMode()
 
@@ -314,13 +315,20 @@ onMounted(() => {
           <span class="text-xs text-neutral-100 font-bold tracking-widest uppercase">Control Customizer</span>
         </div>
         <!-- Action Buttons (non-draggable) -->
-        <button
-          class="pointer-events-auto cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-all duration-200 active:scale-95 hover:bg-white/10 hover:text-neutral-100 dark:hover:bg-neutral-800/60"
-          style="-webkit-app-region: no-drag;"
-          @click="closeWindow"
-        >
-          <div class="i-solar:close-circle-outline text-lg" />
-        </button>
+        <div class="flex items-center gap-2" style="-webkit-app-region: no-drag;">
+          <button
+            class="pointer-events-auto cursor-pointer border border-neutral-700/50 rounded-lg bg-neutral-900/60 px-2.5 py-1 text-[10px] text-neutral-300 font-bold tracking-wide uppercase transition-all duration-200 active:scale-95 dark:border-neutral-800 hover:bg-white/10 hover:text-neutral-100"
+            @click="resetWindowPositions"
+          >
+            Reset Positions
+          </button>
+          <button
+            class="pointer-events-auto cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-all duration-200 active:scale-95 hover:bg-white/10 hover:text-neutral-100 dark:hover:bg-neutral-800/60"
+            @click="closeWindow"
+          >
+            <div class="i-solar:close-circle-outline text-lg" />
+          </button>
+        </div>
       </div>
 
       <!-- Option B: Main Workspace Splitter -->
