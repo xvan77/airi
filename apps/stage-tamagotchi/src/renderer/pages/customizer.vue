@@ -6,7 +6,7 @@ import { useSettings, useSettingsAudioDevice, useSettingsControlStrip } from '@p
 import { useSettingsControlsIsland } from '@proj-airi/stage-ui/stores/settings/controls-island'
 import { useBroadcastChannel, useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import { electronCustomizerToggleVisibility } from '../../shared/eventa'
 
@@ -169,6 +169,20 @@ function handleAction(actionId: string) {
 async function closeWindow() {
   await toggleCustomizerVisibility(false)
 }
+
+onMounted(() => {
+  if (window.electron?.ipcRenderer) {
+    const handleSetGroup = (_event: any, group: string) => {
+      if (CUSTOMIZER_CATALOG.some(g => g.id === group)) {
+        activeGroupId.value = group
+      }
+    }
+    window.electron.ipcRenderer.on('set-customizer-group', handleSetGroup)
+    onUnmounted(() => {
+      window.electron.ipcRenderer.removeListener('set-customizer-group', handleSetGroup)
+    })
+  }
+})
 </script>
 
 <template>

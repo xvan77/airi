@@ -103,7 +103,10 @@ export function setupCustomizerWindowManager(params: {
     return Boolean(currentWindow && !currentWindow.isDestroyed() && currentWindow.isVisible())
   }
 
-  async function toggleVisibility(enabled?: boolean) {
+  async function toggleVisibility(payload?: boolean | { enabled?: boolean, group?: string }) {
+    const enabled = typeof payload === 'object' ? payload.enabled : payload
+    const group = typeof payload === 'object' ? payload.group : undefined
+
     if (enabled === undefined) {
       if (isVisible()) {
         currentWindow?.hide()
@@ -116,10 +119,8 @@ export function setupCustomizerWindowManager(params: {
         window.show()
         window.focus()
       }
-      return
     }
-
-    if (enabled) {
+    else if (enabled) {
       const window = await reusable.getWindow()
       if (window.isMinimized()) {
         window.restore()
@@ -130,12 +131,16 @@ export function setupCustomizerWindowManager(params: {
     else {
       currentWindow?.hide()
     }
+
+    if (group && currentWindow && !currentWindow.isDestroyed() && isVisible()) {
+      currentWindow.webContents.send('set-customizer-group', group)
+    }
   }
 
   // Bind Eventa Invokes to this manager
   const { context: mainContext } = createContext(ipcMain, params.mainWindow)
-  defineInvokeHandler(mainContext, electronCustomizerToggleVisibility, async (enabled) => {
-    await toggleVisibility(enabled)
+  defineInvokeHandler(mainContext, electronCustomizerToggleVisibility, async (payload) => {
+    await toggleVisibility(payload)
   })
   defineInvokeHandler(mainContext, electronGetCustomizerWindowState, async () => {
     return isVisible()

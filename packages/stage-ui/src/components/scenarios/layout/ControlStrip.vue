@@ -4,7 +4,7 @@ import { useLive2d } from '@proj-airi/stage-ui-live2d'
 import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
 import { onClickOutside, useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, ref, toRef } from 'vue'
+import { computed, ref, toRef, watch } from 'vue'
 // Ported stores & states for Popovers
 import { toast } from 'vue-sonner'
 
@@ -45,6 +45,85 @@ const wardrobeFilter = ref<'all' | 'base' | 'overlay'>('all')
 
 onClickOutside(popoverRef, () => {
   activePopover.value = null
+})
+
+const isElectron = computed(() => typeof window !== 'undefined' && !!(window as any).electron)
+
+const popoverPlacement = computed(() => {
+  if (typeof window === 'undefined')
+    return 'bottom'
+
+  const screenX = window.screenX || 0
+  const screenY = window.screenY || 0
+  const screenWidth = window.screen?.width || window.innerWidth
+  const screenHeight = window.screen?.height || window.innerHeight
+
+  if (orientation.value === 'vertical') {
+    return screenX < screenWidth / 2 ? 'right' : 'left'
+  }
+  else {
+    return screenY < screenHeight / 2 ? 'bottom' : 'top'
+  }
+})
+
+const stripLength = computed(() => {
+  const N = activeButtons.value.length
+  return N === 0 ? 60 : 60 + 46 * N
+})
+
+const containerStyle = computed(() => {
+  if (isElectron.value) {
+    const styles: Record<string, string> = {
+      backgroundColor: backgroundTint.value || '',
+      opacity: '0.85',
+    }
+    if (activePopover.value) {
+      if (orientation.value === 'vertical') {
+        const windowHeight = Math.max(336, stripLength.value)
+        styles.top = `${(windowHeight - stripLength.value) / 2}px`
+        if (popoverPlacement.value === 'right') {
+          styles.left = '0px'
+        }
+        else {
+          styles.left = '268px'
+        }
+      }
+      else {
+        const windowWidth = Math.max(336, stripLength.value)
+        styles.left = `${(windowWidth - stripLength.value) / 2}px`
+        if (popoverPlacement.value === 'bottom') {
+          styles.top = '0px'
+        }
+        else {
+          styles.top = '280px'
+        }
+      }
+    }
+    else {
+      styles.left = '0px'
+      styles.top = '0px'
+    }
+    return styles
+  }
+  else {
+    return {
+      top: `${position.value.y}px`,
+      right: `${position.value.x}px`,
+      backgroundColor: backgroundTint.value || '',
+      opacity: '0.85',
+    }
+  }
+})
+
+watch(activePopover, (newVal) => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('control-strip:popover-changed', {
+      detail: {
+        activePopover: newVal,
+        placement: popoverPlacement.value,
+      },
+    }))
+  }
 })
 
 const ACT_EMOTIONS = [
@@ -184,21 +263,25 @@ const position = useLocalStorageManualReset<{ x: number, y: number }>('settings/
 
 // Dragging states
 const isDragging = ref(false)
-let startX = 0
-let startY = 0
+let isMouseDown = false
+let startMouseX = 0
+let startMouseY = 0
 let startPosX = 0
 let startPosY = 0
 let dragDistance = 0
 
 function onDragStart(e: MouseEvent | TouchEvent) {
-  isDragging.value = true
+  if ('button' in e && e.button !== 0)
+    return
+
+  isMouseDown = true
   dragDistance = 0
 
   const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
   const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
 
-  startX = clientX
-  startY = clientY
+  startMouseX = clientX
+  startMouseY = clientY
   startPosX = position.value.x
   startPosY = position.value.y
 
@@ -211,36 +294,58 @@ function onDragStart(e: MouseEvent | TouchEvent) {
 }
 
 function onDragging(e: MouseEvent | TouchEvent) {
-  if (!isDragging.value)
+  if (!isMouseDown)
     return
 
   const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
   const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
 
-  const diffX = clientX - startX
-  const diffY = clientY - startY
+  const diffX = clientX - startMouseX
+  const diffY = clientY - startMouseY
   dragDistance = Math.sqrt(diffX * diffX + diffY * diffY)
 
-  // Since anchored to absolute 'right', moving cursor to the left increases x coordinate offset
-  const deltaX = startX - clientX
-  const deltaY = clientY - startY
+  if (dragDistance >= 4) {
+    isDragging.value = true
+  }
 
-  position.value.x = Math.max(10, Math.min(window.innerWidth - 80, startPosX + deltaX))
-  position.value.y = Math.max(10, Math.min(window.innerHeight - 300, startPosY + deltaY))
+  if (isElectron.value) {
+    if (dragDistance >= 4) {
+      cleanupDragListeners()
+      isMouseDown = false
+      isDragging.value = false
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('control-strip:drag-start'))
+      }
+    }
+  }
+  else {
+    if (isDragging.value) {
+      const deltaX = startMouseX - clientX
+      const deltaY = startMouseY - clientY
+      position.value.x = Math.max(10, Math.min(window.innerWidth - 80, startPosX + deltaX))
+      position.value.y = Math.max(10, Math.min(window.innerHeight - 300, startPosY + deltaY))
+    }
+  }
 }
 
 function onDragEnd() {
+  const wasDown = isMouseDown
+  const wasDragging = isDragging.value
+  cleanupDragListeners()
+  isMouseDown = false
   isDragging.value = false
+
+  if (wasDown && !wasDragging) {
+    toggleOrientation()
+  }
+}
+
+function cleanupDragListeners() {
   if (typeof window !== 'undefined') {
     window.removeEventListener('mousemove', onDragging)
     window.removeEventListener('mouseup', onDragEnd)
     window.removeEventListener('touchmove', onDragging)
     window.removeEventListener('touchend', onDragEnd)
-  }
-
-  // Tap/click trigger if pointer didn't move significantly
-  if (dragDistance < 5) {
-    toggleOrientation()
   }
 }
 
@@ -347,12 +452,7 @@ function getButtonTitle(btnId: string, defaultLabel: string): string {
       isDragging ? 'scale-102 border-primary-500/30 shadow-primary-500/5' : '',
       orientation === 'vertical' ? 'flex flex-col items-center py-3 px-2 gap-2.5 w-14' : 'flex flex-row items-center px-3 py-2 gap-2.5 h-14',
     ]"
-    :style="{
-      top: `${position.y}px`,
-      right: `${position.x}px`,
-      backgroundColor: backgroundTint,
-      opacity: 0.85,
-    }"
+    :style="containerStyle"
     @contextmenu="handleRightClick"
   >
     <!-- TOP/LEFT ENDCAP: Perpendicular Drag & Layout Handle -->
@@ -548,7 +648,10 @@ function getButtonTitle(btnId: string, defaultLabel: string): string {
         ref="popoverRef"
         :class="[
           'absolute z-50 bg-neutral-100/90 dark:bg-neutral-900/95 border border-neutral-200/50 dark:border-neutral-800/80 backdrop-blur-xl rounded-2xl shadow-xl p-3 text-neutral-800 dark:text-neutral-200',
-          'top-full mt-3 left-1/2 -translate-x-1/2',
+          popoverPlacement === 'bottom' ? 'top-full mt-3 left-1/2 -translate-x-1/2' : '',
+          popoverPlacement === 'top' ? 'bottom-full mb-3 left-1/2 -translate-x-1/2' : '',
+          popoverPlacement === 'right' ? 'left-full ml-3 top-1/2 -translate-y-1/2' : '',
+          popoverPlacement === 'left' ? 'right-full mr-3 top-1/2 -translate-y-1/2' : '',
           'w-64 max-w-xs',
         ]"
         @click.stop

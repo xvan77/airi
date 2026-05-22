@@ -29,7 +29,6 @@ import { categorizeResponse } from '../../composables/response-categoriser'
 import { llmInferenceEndToken } from '../../constants'
 import { EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
-import { useBackgroundStore } from '../../stores/background'
 import { useChatOrchestratorStore } from '../../stores/chat'
 import { useModsServerChannelStore } from '../../stores/mods/api/channel-server'
 import { useAiriCardStore } from '../../stores/modules'
@@ -151,9 +150,6 @@ const { ssmlEnabled, activeSpeechProvider, activeSpeechModel, activeSpeechVoice,
 const { activeProvider: activeChatProvider } = storeToRefs(consciousnessStore)
 const activeCardId = computed(() => activeCard.value?.name ?? 'default')
 const speechRuntimeStore = useSpeechRuntimeStore()
-const backgroundStore = useBackgroundStore()
-
-const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 const discordStore = useDiscordStore()
 const artistryAutonomousStore = useAutonomousArtistryStore()
 const resizeStateEventName = useElectronWindowResizeStateEvent()
@@ -930,21 +926,6 @@ defineExpose({
 
 <template>
   <div :class="['relative h-full w-full']">
-    <!-- Scene Background Layer -->
-    <div
-      v-if="activeBackgroundUrl"
-      :class="[
-        'absolute left-0 top-0 z-0 h-full w-full',
-        'transition-opacity duration-500',
-      ]"
-      :style="{
-        backgroundImage: `url(${activeBackgroundUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }"
-    />
-
     <!-- Graphics scene renderer has been moved to standalone Actor Stage Window -->
     <div :class="['relative h-full w-full']" />
 
