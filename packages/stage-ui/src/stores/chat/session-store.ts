@@ -318,10 +318,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     // 2. Set the store value
     sessionMessages.value[sessionId] = nextWithIds
 
-    // 3. Persist
-    await persistSession(sessionId)
-
-    // 4. Broadcast ONLY truly new messages based on stable IDs
+    // 3. Broadcast ONLY truly new messages based on stable IDs
     for (const msg of nextWithIds) {
       if (msg.id && !prevIds.has(msg.id)) {
         console.log(`[ChatStore] Adding message to history (setSessionMessages):`, {
@@ -336,11 +333,14 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       }
     }
 
-    // 5. Broadcast session-refreshed if any previous messages were removed
+    // 4. Broadcast session-refreshed if any previous messages were removed
     const removedAny = prev.some(m => m.id && !nextWithIds.some(n => n.id === m.id))
     if (removedAny) {
       broadcastStreamEvent({ type: 'session-refreshed', sessionId })
     }
+
+    // 5. Persist
+    await persistSession(sessionId)
   }
 
   function inscribeTurn(message: ChatHistoryItem, sessionId = activeSessionId.value) {
