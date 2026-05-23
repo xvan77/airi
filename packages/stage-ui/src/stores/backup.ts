@@ -40,7 +40,7 @@ export const useBackupStore = defineStore('backup', () => {
       files[`airi-localstorage-${timestamp}.json`] = JSON.stringify(storageData, null, 2)
 
       // Save as bundle (ZIP)
-      const result = await window.electron.ipcRenderer.invoke('save-backup-bundle', {
+      const result = await (window as any).electron.ipcRenderer.invoke('save-backup-bundle', {
         timestamp,
         files,
         customPath: backupPath.value,
