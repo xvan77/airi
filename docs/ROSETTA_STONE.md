@@ -124,6 +124,9 @@ Concise mapping of conceptual features to technical file paths for rapid context
   3. When the main window processes the input and writes it to history, the `session-store` broadcasts `session-updated` cross-window.
   4. The secondary window's store receives the broadcast, appends the message, and the watcher resolves the promise.
   5. If it times out, the promise rejects, allowing the UI (`InteractiveArea` and `WhisperDock`) to restore the draft text/attachments and show a toast warning.
+- **Unicode & Mojibake Healing**: The system intercepts LLM text streaming deltas and final outputs using `healMozibake` (in `packages/stage-shared/src/text.ts`) to repair UTF-8 byte streams that were mis-decoded as Windows-1252/Latin-1 (common in raw SSE streams).
+  - *Pitfall*: Iterating over text characters by UTF-16 code units (e.g. `healed[i]` or `healed.charCodeAt(i)`) splits supplementary plane characters (like emojis and compound emojis with Zero-Width Joiners) into individual surrogates. Each isolated surrogate is invalid UTF-16 and gets encoded by `TextEncoder` to the replacement character `\uFFFD` (``), corrupting all emojis.
+  - *Fix*: The loop iterates by code point (`for (const char of healed)`). Multi-unit characters (`char.length > 1`) bypass the mis-decoded byte check and are encoded as unified code points, successfully preserving all emojis, ZWJs, and complex pictograms.
 
 ## Toast Notifications & Event Bridging (Lessons Learned)
 
