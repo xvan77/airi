@@ -805,7 +805,16 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   }
 
   async function deleteSession(sessionId: string) {
-    const characterId = sessionMetas.value[sessionId]?.characterId
+    let characterId = sessionMetas.value[sessionId]?.characterId
+    if (!characterId && index.value) {
+      for (const [id, charIndex] of Object.entries(index.value.characters)) {
+        if (charIndex.sessions && charIndex.sessions[sessionId]) {
+          characterId = id
+          break
+        }
+      }
+    }
+
     if (!characterId)
       return
 
@@ -830,6 +839,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       }
       await persistIndex()
     }
+
+    broadcastStreamEvent({ type: 'session-deleted', sessionId })
   }
 
   async function deleteMessage(messageId: string, sessionId = activeSessionId.value) {
@@ -988,6 +999,15 @@ export const useChatSessionStore = defineStore('chat-session', () => {
           void ensureActiveSessionForCharacter()
         })
       }
+      return
+    }
+    if (event.type === 'session-deleted') {
+      const { sessionId } = event
+      console.info('[ChatSession] Cross-window session-deleted, clearing session from memory', { sessionId })
+      delete sessionMessages.value[sessionId]
+      delete sessionMetas.value[sessionId]
+      delete sessionGenerations.value[sessionId]
+      loadedSessions.delete(sessionId)
       return
     }
     if (event.type !== 'session-updated')
