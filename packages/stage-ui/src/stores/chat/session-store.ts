@@ -309,7 +309,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
   async function setSessionMessages(sessionId: string, next: ChatHistoryItem[]) {
     const prev = sessionMessages.value[sessionId] ?? []
-    const prevIds = new Set(prev.map(m => m.id).filter(Boolean))
 
     // 1. Assign IDs to all messages in the new array first
     const nextWithIds = next.map(msg => ({
@@ -320,16 +319,24 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     // 2. Set the store value
     sessionMessages.value[sessionId] = nextWithIds
 
-    // 3. Broadcast ONLY truly new messages based on stable IDs
+    // 3. Broadcast new or updated messages
     for (const msg of nextWithIds) {
-      if (msg.id && !prevIds.has(msg.id)) {
-        console.log(`[ChatStore] Adding message to history (setSessionMessages):`, {
+      const prevMsg = prev.find(m => m.id === msg.id)
+      const isNew = !prevMsg
+      const isUpdated = prevMsg && (
+        prevMsg.content !== msg.content
+        || JSON.stringify((prevMsg as any).slices) !== JSON.stringify((msg as any).slices)
+        || JSON.stringify((prevMsg as any).tool_results) !== JSON.stringify((msg as any).tool_results)
+        || JSON.stringify((prevMsg as any).categorization) !== JSON.stringify((msg as any).categorization)
+      )
+
+      if (isNew || isUpdated) {
+        console.log(`[ChatStore] Broadcasting message (setSessionMessages):`, {
           id: msg.id,
           role: msg.role,
-          createdAt: msg.createdAt,
+          isNew,
+          isUpdated,
           contentPreview: typeof msg.content === 'string' ? msg.content.slice(0, 60) : '[Complex Content]',
-          source: (msg as any).metadata?.source ?? 'unknown',
-          metadata: (msg as any).metadata,
         })
         broadcastStreamEvent({ type: 'session-updated', sessionId, message: JSON.parse(JSON.stringify(msg)) })
       }
@@ -1020,13 +1027,15 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
     const { sessionId, message } = event
     const current = sessionMessages.value[sessionId] ?? []
-    // Deduplicate by message id if present
-    if (message.id && current.some(m => m.id === message.id)) {
-      console.log(`[ChatStore] Cross-window session-updated DEDUPLICATED message:`, {
+    const existingIndex = message.id ? current.findIndex(m => m.id === message.id) : -1
+    if (existingIndex !== -1) {
+      console.log(`[ChatStore] Cross-window session-updated UPDATING existing message:`, {
         id: message.id,
         role: message.role,
         contentPreview: typeof message.content === 'string' ? message.content.slice(0, 60) : '[Complex Content]',
       })
+      current[existingIndex] = message
+      sessionMessages.value[sessionId] = [...current]
       return
     }
 
