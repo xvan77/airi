@@ -388,7 +388,8 @@ async function loadModel() {
   modelLoading.value = true
   availableExpressions.value = []
   expressionData.value = []
-  activeExpressions.value = {}
+
+  // activeExpressions.value is NOT wiped here to preserve card state, ghost keys are cleaned up later
   componentState.value = 'loading'
 
   if (!pixiApp.value || !pixiApp.value.stage) {
@@ -591,7 +592,7 @@ async function loadModel() {
     motionManagerUpdate.register(useMotionUpdatePluginAutoEyeBlink(), 'post')
 
     // NOTICE: ArtMesh colors must be applied after coreModel.update(), not in the motion hook.
-    // See Cubism4InternalModel.update(): motionManager.update ÔåÆ ÔÇª ÔåÆ model.update() ÔåÆ draw.
+    // See Cubism4InternalModel.update(): motionManager.update → … → model.update() → draw.
     hookArtMeshColorsAfterModelUpdate(internalModel, artMeshColors)
 
     // Pre-allocate the standardKeys set outside the ticker loop to prevent massive GC pressure (60fps)
@@ -783,7 +784,7 @@ async function loadModel() {
                 p.groupName = group.Name || group.name
             })
           }
-          console.info('Ô£à Populated parameterMetadata from CDI:', parameterMetadata.value.length)
+          console.info('✅ Populated parameterMetadata from CDI:', parameterMetadata.value.length)
         }
       }
 
@@ -810,7 +811,7 @@ async function loadModel() {
           }
         }
         catch (e) {
-          console.warn('ÔÜá´©Å Could not extract parameter IDs from core model:', e)
+          console.warn('⚠️ Could not extract parameter IDs from core model:', e)
         }
       }
 
@@ -823,7 +824,7 @@ async function loadModel() {
         }))
         // Also store the full expression data so the UI can apply them
         expressionData.value = expFiles
-        console.info('Ô£à Populated expressions from zip-extracted files:', expFiles.length)
+        console.info('✅ Populated expressions from zip-extracted files:', expFiles.length)
       }
       else {
         const expressions = fileRefs?.Expressions || fileRefs?.expressions
@@ -852,10 +853,10 @@ async function loadModel() {
             const results = await Promise.all(fetchPromises)
             if (!isUnmounted && model.value) {
               expressionData.value = results.filter((r): r is any => r !== null)
-              console.info('Ô£à Fetched expression data from URLs:', expressionData.value.length)
+              console.info('✅ Fetched expression data from URLs:', expressionData.value.length)
             }
           }
-          console.info('Ô£à Populated expressions from FileRefs:', availableExpressions.value.length)
+          console.info('✅ Populated expressions from FileRefs:', availableExpressions.value.length)
         }
         else {
           const expressionManager = (internalModel as any).expressionManager
@@ -865,13 +866,17 @@ async function loadModel() {
               name,
               fileName: defs[name]?.File || defs[name]?.file || name,
             }))
-            console.info('Ô£à Populated expressions from expressionManager:', availableExpressions.value.length)
+            console.info('✅ Populated expressions from expressionManager:', availableExpressions.value.length)
           }
         }
       }
 
       // 2b. Initialize activeExpressions from .vtube.json saved active expressions if available
-      if (resolvedMeta.savedActiveExpressions && resolvedMeta.savedActiveExpressions.length > 0) {
+      const modelKey = props.modelId || props.modelSrc
+      const defaultsLoadedKey = modelKey ? `live2d_vtube_defaults_loaded_${modelKey}` : null
+      const hasLoadedDefaults = defaultsLoadedKey ? localStorage.getItem(defaultsLoadedKey) === 'true' : false
+
+      if (!hasLoadedDefaults && resolvedMeta.savedActiveExpressions && resolvedMeta.savedActiveExpressions.length > 0) {
         console.info('[Live2D] Activating saved active expressions from .vtube.json:', resolvedMeta.savedActiveExpressions)
         for (const savedExp of resolvedMeta.savedActiveExpressions) {
           const expEntry = expressionData.value.find((e: any) => {
@@ -883,6 +888,24 @@ async function loadModel() {
             activeExpressions.value[expEntry.fileName] = 1
           }
         }
+        if (defaultsLoadedKey) {
+          localStorage.setItem(defaultsLoadedKey, 'true')
+        }
+      }
+
+      // 2c. Clean up any activeExpressions keys that do not exist in the current availableExpressions
+      // This ensures we don't keep ghost expressions from previously loaded models when switching.
+      const validKeys = new Set(availableExpressions.value.map(e => e.fileName))
+      const nextActiveExpressions = { ...activeExpressions.value }
+      let hasDeletes = false
+      for (const key of Object.keys(nextActiveExpressions)) {
+        if (!validKeys.has(key)) {
+          delete nextActiveExpressions[key]
+          hasDeletes = true
+        }
+      }
+      if (hasDeletes) {
+        activeExpressions.value = nextActiveExpressions
       }
 
       // 3. Restore saved active expressions on model load
@@ -904,7 +927,7 @@ async function loadModel() {
       }
     }
     catch (e) {
-      console.error('ÔØî [Live2D-Alpha] Metadata parsing failure:', e)
+      console.error('❌ [Live2D-Alpha] Metadata parsing failure:', e)
     }
 
     emits('modelLoaded')

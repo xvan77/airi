@@ -2450,6 +2450,9 @@ importers:
       dompurify:
         specifier: ^3.3.1
         version: 3.3.1
+      jszip:
+        specifier: 'catalog:'
+        version: 3.10.1
       nanoid:
         specifier: 'catalog:'
         version: 5.1.6
