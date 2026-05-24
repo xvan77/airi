@@ -262,6 +262,46 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
             const manifestBasename = model.manifestPath.split(/[\\/]/).pop()!
             const modelName = manifestBasename.replace(/\.model3\.json$/i, '').replace(/\.json$/i, '')
 
+            // Auto-discover loose motion files for this model index in the original ZIP
+            let modelIndex = null
+            const mocMatch = model.mocFile.match(/Moc_(\d+)\.moc3$/i)
+            if (mocMatch) {
+              modelIndex = mocMatch[1]
+            }
+
+            if (modelIndex !== null) {
+              if (!model.data.FileReferences) {
+                model.data.FileReferences = {}
+              }
+              if (!model.data.FileReferences.Motions) {
+                model.data.FileReferences.Motions = {}
+              }
+
+              const motionRegex = new RegExp(`^Motions_(.+)_(\\d+)_File_${modelIndex}\\.json$`, 'i')
+              for (const pathKey of allPaths) {
+                if (zipInstance.files[pathKey].dir)
+                  continue
+                const filename = pathKey.split(/[\\/]/).pop()!
+                const match = filename.match(motionRegex)
+                if (match) {
+                  const groupName = match[1]
+                  const groupList = model.data.FileReferences.Motions[groupName] || []
+                  const alreadyExists = groupList.some((m: any) => m.File && m.File.toLowerCase() === filename.toLowerCase())
+                  if (!alreadyExists) {
+                    if (!model.data.FileReferences.Motions[groupName]) {
+                      model.data.FileReferences.Motions[groupName] = []
+                    }
+                    model.data.FileReferences.Motions[groupName].push({
+                      File: filename,
+                      FadeIn: 0,
+                      FadeOut: 0,
+                    })
+                    console.log(`[DisplayModels] Auto-discovered and injected motion: ${filename} into group: ${groupName}`)
+                  }
+                }
+              }
+            }
+
             if (index > 1) {
               toast.info(`[${index}/${modernModels.length}] Extracting next model "${modelName}"...`)
             }
@@ -277,9 +317,12 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
               return rBase !== manifestBasename
             })
 
-            // Add manifest at the root
+            // Add manifest at the root. Ensure it ends in .model3.json so standard ZipLoader recognizes it
+            const finalManifestName = manifestBasename.toLowerCase().endsWith('.model3.json')
+              ? manifestBasename
+              : `${modelName}.model3.json`
             const manifestString = JSON.stringify(model.data, null, 4)
-            subZip.file(manifestBasename, manifestString)
+            subZip.file(finalManifestName, manifestString)
 
             // Add referenced assets
             for (const ref of uniqueRefs) {
