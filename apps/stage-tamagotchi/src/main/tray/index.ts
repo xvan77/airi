@@ -281,7 +281,9 @@ export function setupTray(params: {
     })
 
     appTray.setToolTip('Project AIRI')
-    appTray.addListener('click', () => toggleWindowShow(params.mainWindow))
+    if (!isMacOS) {
+      appTray.addListener('click', () => toggleWindowShow(params.mainWindow))
+    }
 
     // On macOS, there's a special double-click event
     if (isMacOS) {
