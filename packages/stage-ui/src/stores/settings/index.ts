@@ -7,6 +7,7 @@ import { useSettingsControlStrip } from './control-strip'
 import { useSettingsControlsIsland } from './controls-island'
 import { useSettingsGeneral } from './general'
 import { useSettingsLive2d } from './live2d'
+import { useSettingsSpine } from './spine'
 import { useSettingsStageModel } from './stage-model'
 import { useSettingsTheme } from './theme'
 
@@ -17,6 +18,7 @@ export * from './control-strip'
 export * from './controls-island'
 export * from './general'
 export * from './live2d'
+export * from './spine'
 export * from './stage-model'
 export * from './theme'
 // Export constants
@@ -38,6 +40,7 @@ export const useSettings = defineStore('settings', () => {
   const controlsIsland = useSettingsControlsIsland()
   const controlStrip = useSettingsControlStrip()
   const captions = useSettingsCaptions()
+  const spine = useSettingsSpine()
 
   async function resetState() {
     await stageModel.resetState()
@@ -48,6 +51,7 @@ export const useSettings = defineStore('settings', () => {
     controlsIsland.resetState()
     controlStrip.resetState()
     captions.resetState()
+    spine.resetState()
   }
 
   return {
@@ -78,6 +82,13 @@ export const useSettings = defineStore('settings', () => {
     live2dForceAutoBlinkEnabled: toRef(live2d, 'live2dForceAutoBlinkEnabled'),
     live2dShadowEnabled: toRef(live2d, 'live2dShadowEnabled'),
     live2dMaxFps: toRef(live2d, 'live2dMaxFps'),
+
+    // Spine settings
+    spinePremultipliedAlpha: toRef(spine, 'spinePremultipliedAlpha'),
+    spineDefaultMixDuration: toRef(spine, 'spineDefaultMixDuration'),
+    spineIdleAnimationEnabled: toRef(spine, 'spineIdleAnimationEnabled'),
+    spineMaxFps: toRef(spine, 'spineMaxFps'),
+    spineRenderScale: toRef(spine, 'spineRenderScale'),
 
     // Theme settings
     themeColorsHue: toRef(theme, 'themeColorsHue'),

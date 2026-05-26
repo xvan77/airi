@@ -485,7 +485,7 @@ async function loadModel() {
       spineCanvas = new spine.SpineCanvas(canvas.value!, {
         app,
         pathPrefix,
-        webglConfig: { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true },
+        webglConfig: { alpha: true, premultipliedAlpha: props.premultipliedAlpha, preserveDrawingBuffer: true },
       })
     })
   }

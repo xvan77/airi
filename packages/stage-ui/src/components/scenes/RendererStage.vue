@@ -61,6 +61,11 @@ const {
   live2dShadowEnabled,
   live2dMaxFps,
   mmdTextureMap,
+  spinePremultipliedAlpha,
+  spineDefaultMixDuration,
+  spineIdleAnimationEnabled,
+  spineMaxFps,
+  spineRenderScale,
 } = storeToRefs(settingsStore)
 
 const vrmStore = useModelStore()
@@ -160,6 +165,11 @@ defineExpose({
       :x-offset="xOffset !== undefined ? Number(xOffset) : undefined"
       :y-offset="yOffset !== undefined ? Number(yOffset) : undefined"
       :scale="scale !== undefined ? Number(scale) : undefined"
+      :premultiplied-alpha="spinePremultipliedAlpha"
+      :default-mix-duration="spineDefaultMixDuration"
+      :idle-animation-enabled="spineIdleAnimationEnabled"
+      :max-fps="spineMaxFps"
+      :render-scale="spineRenderScale"
       @hit-area-hover="(val) => emits('hitAreaHover', val)"
     />
     <MMDScene

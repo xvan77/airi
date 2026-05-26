@@ -229,7 +229,7 @@ export async function loadSpineModelPreview(file: File): Promise<string | undefi
             canvasApp.gl.clearColor(0, 0, 0, 0)
             canvasApp.gl.clear(canvasApp.gl.COLOR_BUFFER_BIT)
             renderer.begin()
-            renderer.drawSkeleton(skeleton, false)
+            renderer.drawSkeleton(skeleton, true)
             renderer.end()
 
             frameCount++
@@ -305,7 +305,7 @@ export async function loadSpineModelPreview(file: File): Promise<string | undefi
         new SpineCanvasCtor(canvas!, {
           app,
           pathPrefix: '',
-          webglConfig: { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true },
+          webglConfig: { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true },
         })
       }
       catch (err) {
