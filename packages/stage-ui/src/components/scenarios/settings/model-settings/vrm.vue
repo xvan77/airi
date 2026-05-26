@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
-import { Button, Callout, Checkbox, Select, SelectTab } from '@proj-airi/ui'
+import { Button, Callout, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -9,7 +9,8 @@ import VRMExpressions from './vrm-expressions.vue'
 
 import { useAiriCardStore } from '../../../../stores/modules'
 import { useVHackStore } from '../../../../stores/vhack'
-import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
+import { PropertyColor, PropertyNumber } from '../../../data-pane'
+import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
 
 defineProps<{
@@ -51,7 +52,6 @@ const {
   envSelect,
   skyBoxIntensity,
   vrmIdleAnimation,
-  vrmIdleCycleEnabled,
 } = storeToRefs(modelStore)
 const { animationOptions } = storeToRefs(customVrmAnimationsStore)
 
@@ -76,8 +76,8 @@ const vrmTabs = computed(() => [
 
 const activeCharacterTab = ref<'expressions' | 'animations'>('expressions')
 const characterTabs = computed(() => [
-  { label: 'Expressions', value: 'expressions', icon: 'i-solar:smile-circle-bold-duotone' },
-  { label: 'Animations', value: 'animations', icon: 'i-solar:play-bold-duotone' },
+  { label: t('settings.live2d.customization.tabs.expressions'), value: 'expressions', icon: 'i-solar:smile-circle-bold-duotone' },
+  { label: t('settings.live2d.customization.tabs.animations'), value: 'animations', icon: 'i-solar:play-bold-duotone' },
 ])
 
 // switch between hemisphere light and sky box
@@ -101,6 +101,27 @@ const envOptions = computed(() => [
       : 'i-solar:gallery-circle-linear',
   },
 ])
+
+const animationMappings = ref<Record<string, string>>({})
+const hiddenAnimations = ref<string[]>([])
+const showHiddenAnimations = ref(false)
+const filterRenamedOnly = ref(false)
+const editingAnimationKey = ref<string | null>(null)
+const editingAnimationValue = ref('')
+
+const filteredAnimations = computed(() => {
+  return animationOptions.value.filter((animation) => {
+    // Filter hidden
+    if (!showHiddenAnimations.value && hiddenAnimations.value.includes(animation.value)) {
+      return false
+    }
+    // Filter renamed
+    if (filterRenamedOnly.value && !animationMappings.value[animation.value]) {
+      return false
+    }
+    return true
+  })
+})
 
 function isAnimationSelected(key: string) {
   return activeCard.value?.extensions?.airi?.acting?.idleAnimations?.includes(key) ?? false
@@ -128,23 +149,83 @@ function toggleAnimation(key: string) {
     },
   })
 }
+
+function toggleVisibility(name: string) {
+  if (hiddenAnimations.value.includes(name)) {
+    hiddenAnimations.value = hiddenAnimations.value.filter(p => p !== name)
+  }
+  else {
+    hiddenAnimations.value = [...hiddenAnimations.value, name]
+  }
+}
+
+function startEditing(animation: any) {
+  editingAnimationKey.value = animation.value
+  editingAnimationValue.value = animationMappings.value[animation.value] || ''
+}
+
+function saveAnimationName(name: string) {
+  if (editingAnimationValue.value.trim() === '') {
+    const updated = { ...animationMappings.value }
+    delete updated[name]
+    animationMappings.value = updated
+  }
+  else {
+    animationMappings.value = { ...animationMappings.value, [name]: editingAnimationValue.value.trim() }
+  }
+  editingAnimationKey.value = null
+  editingAnimationValue.value = ''
+}
+
+function cancelEditing() {
+  editingAnimationKey.value = null
+  editingAnimationValue.value = ''
+}
+
+function handleAnimationSelect(animationName: string | number | undefined) {
+  if (animationName === '') {
+    vrmIdleAnimation.value = ''
+    if (activeCardId.value && activeCard.value) {
+      // Filter out prefix-less (VRM) animations from card idleAnimations cycle list
+      const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
+      const next = current.filter(key => key.includes(':'))
+      updateCard(activeCardId.value, {
+        extensions: {
+          ...activeCard.value.extensions,
+          airi: {
+            ...activeCard.value.extensions.airi,
+            acting: {
+              ...activeCard.value.extensions.airi.acting,
+              idleAnimations: next,
+            },
+          },
+        },
+      })
+    }
+    return
+  }
+  if (typeof animationName !== 'string')
+    return
+  vrmIdleAnimation.value = animationName
+}
 </script>
 
 <template>
   <div flex="~ col gap-4 w-full">
     <!-- === Character Customizations === -->
-    <Container
+    <Section
       title="Character Customizations"
       icon="i-solar:user-bold-duotone"
-      :expanded="true"
       :class="[
         'rounded-xl',
         'bg-white/80  dark:bg-black/75',
         'backdrop-blur-lg',
       ]"
+      size="sm"
+      :expand="true"
     >
       <div class="mb-4 px-2 pt-2">
-        <SelectTab v-model="activeCharacterTab" :options="characterTabs" size="sm" />
+        <SelectTab v-model="activeCharacterTab" :options="characterTabs" size="sm" compact class="mb-4" />
       </div>
 
       <div :class="settingsLockClass">
@@ -153,59 +234,140 @@ function toggleAnimation(key: string) {
           <VRMExpressions />
         </div>
 
-        <!-- === Animations Tab === -->
-        <div v-if="activeCharacterTab === 'animations'" flex="~ col gap-4" p-2>
-          <div grid="~ cols-5 gap-y-2 gap-x-1" items-center>
-            <div class="text-xs text-neutral-500 font-medium dark:text-neutral-400">
-              {{ t('settings.vrm.idle-animation.title') }}
+        <!-- === Motions Tab === -->
+        <div v-else-if="activeCharacterTab === 'animations'" :class="['w-full', 'min-w-0']">
+          <!-- Base Idle Animation -->
+          <div class="mb-2 px-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+            Base Idle Animation
+          </div>
+          <!-- Controls Bar -->
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <div class="flex gap-1">
+              <Button
+                size="sm"
+                :variant="showHiddenAnimations ? 'primary' : 'secondary'"
+                @click="showHiddenAnimations = !showHiddenAnimations"
+              >
+                <template #icon>
+                  <div :class="showHiddenAnimations ? 'i-solar:eye-bold-duotone' : 'i-solar:eye-closed-bold-duotone'" />
+                </template>
+                {{ showHiddenAnimations ? 'Showing Hidden' : 'Hide Hidden' }}
+              </Button>
+              <Button
+                size="sm"
+                :variant="filterRenamedOnly ? 'primary' : 'secondary'"
+                @click="filterRenamedOnly = !filterRenamedOnly"
+              >
+                <template #icon>
+                  <div class="i-solar:pen-bold-duotone" />
+                </template>
+                {{ filterRenamedOnly ? 'Renamed Only' : 'All' }}
+              </Button>
             </div>
-            <div />
-            <div grid-col-span-3>
-              <Select
-                v-model="vrmIdleAnimation"
-                :options="animationOptions"
-                :disabled="sceneMutationLocked"
-                class="w-full"
-              />
+            <div class="text-xs text-neutral-500">
+              {{ filteredAnimations.length }} animations
             </div>
-
-            <div class="text-xs text-neutral-500 font-medium dark:text-neutral-400">
-              Random Cycle
-            </div>
-            <div />
-            <div grid-col-span-3 flex items-center>
-              <Checkbox v-model="vrmIdleCycleEnabled" />
-              <span class="ml-2 text-[10px] text-neutral-400 italic">Automatically cycle through idle animations</span>
-            </div>
-
-            <template v-if="activeCard">
-              <div class="col-span-full mb-2 mt-4 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-                Cycle Subset
-              </div>
-              <div class="col-span-full max-h-40 flex flex-col gap-2 overflow-y-auto rounded-lg bg-black/5 p-2 dark:bg-white/5">
-                <div
-                  v-for="option in animationOptions"
-                  :key="option.value"
-                  class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 transition hover:bg-black/5 dark:hover:bg-white/5"
-                  @click="toggleAnimation(option.value)"
-                >
-                  <Checkbox
-                    :model-value="isAnimationSelected(option.value)"
-                    @update:model-value="toggleAnimation(option.value)"
-                  />
-                  <span class="text-xs text-neutral-600 dark:text-neutral-300">{{ option.label }}</span>
+          </div>
+          <!-- Fixed Height Scrollable List -->
+          <div class="mb-4 max-h-[300px] overflow-y-auto border border-neutral-200 rounded-lg bg-white dark:border-neutral-700 dark:bg-neutral-900">
+            <!-- None Option -->
+            <div
+              :class="[
+                'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 transition-colors cursor-pointer',
+                !vrmIdleAnimation ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+              ]"
+              @click="handleAnimationSelect('')"
+            >
+              <div class="flex items-center gap-2">
+                <div v-if="!vrmIdleAnimation" class="h-2 w-2 rounded-full bg-primary-500" />
+                <div class="text-sm text-neutral-900 font-medium dark:text-neutral-100">
+                  None
                 </div>
               </div>
-              <p class="col-span-full mt-1 text-[10px] text-neutral-400 italic">
-                If none are selected, all animations will be included in the cycle.
-              </p>
-            </template>
+            </div>
+
+            <div v-if="filteredAnimations.length === 0" class="p-4 text-center text-sm text-neutral-500 dark:text-neutral-400">
+              No animations match filters
+            </div>
+            <div
+              v-for="animation in filteredAnimations"
+              :key="animation.value"
+              :class="[
+                'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
+                vrmIdleAnimation === animation.value || isAnimationSelected(animation.value) ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+              ]"
+            >
+              <!-- Left Side: Name -->
+              <div class="min-w-0 flex-1 cursor-pointer" @click="handleAnimationSelect(animation.value)">
+                <div class="flex items-center gap-2">
+                  <!-- Active Indicator -->
+                  <div v-if="vrmIdleAnimation === animation.value" class="h-2 w-2 rounded-full bg-primary-500" />
+
+                  <!-- Name (Editable) -->
+                  <div v-if="editingAnimationKey === animation.value" class="flex flex-1 items-center gap-1" @click.stop>
+                    <input
+                      v-model="editingAnimationValue"
+                      type="text"
+                      :placeholder="animation.label"
+                      class="max-w-[230px] w-full border-b border-primary-500 bg-transparent text-sm dark:text-neutral-100 focus:outline-none"
+                      @keydown.enter="saveAnimationName(animation.value)"
+                      @keydown.esc="cancelEditing"
+                    >
+                    <button class="text-xs text-green-500 hover:text-green-600" @click="saveAnimationName(animation.value)">
+                      <div class="i-solar:check-circle-bold-duotone text-lg" />
+                    </button>
+                    <button class="text-xs text-red-500 hover:text-red-600" @click="cancelEditing">
+                      <div class="i-solar:close-circle-bold-duotone text-lg" />
+                    </button>
+                  </div>
+                  <div v-else class="max-w-[230px] truncate text-sm text-neutral-900 font-medium dark:text-neutral-100">
+                    {{ animationMappings[animation.value] || animation.label }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Side: Actions -->
+              <div class="flex items-center gap-1" @click.stop>
+                <!-- Loop / Cycle Toggle -->
+                <button
+                  v-if="activeCard"
+                  :class="[
+                    'rounded p-1 transition-colors',
+                    isAnimationSelected(animation.value)
+                      ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
+                      : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
+                  ]"
+                  :title="isAnimationSelected(animation.value) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
+                  @click="toggleAnimation(animation.value)"
+                >
+                  <div class="i-solar:infinity-bold-duotone text-sm" />
+                </button>
+
+                <!-- Edit Button -->
+                <button
+                  class="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                  title="Rename"
+                  @click="startEditing(animation)"
+                >
+                  <div class="i-solar:pen-bold-duotone text-sm" />
+                </button>
+
+                <!-- Visibility Toggle -->
+                <button
+                  class="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                  :title="hiddenAnimations.includes(animation.value) ? 'Show' : 'Hide'"
+                  @click="toggleVisibility(animation.value)"
+                >
+                  <div :class="hiddenAnimations.includes(animation.value) ? 'i-solar:eye-closed-bold-duotone' : 'i-solar:eye-bold-duotone'" class="text-sm" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </Container>
+    </Section>
 
-    <Container
+    <Section
       :title="t('settings.pages.models.sections.section.scene')"
       icon="i-solar:people-nearby-bold-duotone"
       :class="[
@@ -213,6 +375,8 @@ function toggleAnimation(key: string) {
         'bg-white/80  dark:bg-black/75',
         'backdrop-blur-lg',
       ]"
+      size="sm"
+      :expand="true"
     >
       <ColorPalette class="mb-4 mt-2" :colors="palette.map(hex => ({ hex, name: hex }))" mx-auto />
 
@@ -358,18 +522,19 @@ function toggleAnimation(key: string) {
           </div>
         </div>
       </div>
-    </Container>
+    </Section>
 
     <!-- === Advanced Tools === -->
-    <Container
+    <Section
       title="Advanced"
       icon="i-solar:settings-bold-duotone"
-      :expanded="false"
       :class="[
         'rounded-xl',
         'bg-white/80  dark:bg-black/75',
         'backdrop-blur-lg',
       ]"
+      size="sm"
+      :expand="false"
     >
       <div flex="~ col gap-4" p-2 :class="settingsLockClass">
         <div flex="~ col gap-2">
@@ -432,6 +597,6 @@ function toggleAnimation(key: string) {
           </div>
         </Callout>
       </div>
-    </Container>
+    </Section>
   </div>
 </template>
