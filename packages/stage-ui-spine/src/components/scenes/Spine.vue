@@ -21,6 +21,7 @@ const props = withDefaults(defineProps<{
   yOffset?: number
   scale?: number
   draggable?: boolean
+  idleAnimations?: string[]
 }>(), {
   paused: false,
   premultipliedAlpha: false,
@@ -33,6 +34,7 @@ const props = withDefaults(defineProps<{
   yOffset: 0,
   scale: 1,
   draggable: false,
+  idleAnimations: () => [],
 })
 
 const emits = defineEmits<{
@@ -169,6 +171,7 @@ defineExpose({
         :x-offset="xOffset"
         :y-offset="yOffset"
         :scale="scale"
+        :idle-animations="idleAnimations"
         @hit-area-hover="handleHitAreaHover"
       />
     </SpineCanvas>

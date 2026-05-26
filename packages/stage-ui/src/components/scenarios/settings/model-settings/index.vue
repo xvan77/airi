@@ -255,6 +255,7 @@ function handleOffsetChange(offset: { x: number, y: number }) {
         :x-offset="computedXOffset"
         :y-offset="computedYOffset"
         :scale="computedScale"
+        :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       />
     </div>
   </template>

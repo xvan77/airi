@@ -7,6 +7,7 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useSettingsSpine } from '../../../../stores/settings/spine'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
@@ -34,6 +35,9 @@ const {
 
 const { stageModelSelected } = storeToRefs(useSettings())
 const positioningStore = usePositioningStore()
+
+const airiCardStore = useAiriCardStore()
+const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 
 const spineStore = useSpine()
 const {
@@ -127,9 +131,53 @@ function toggleAnimation(name: string) {
   }
 }
 
+function isAnimationInCycle(name: string) {
+  return activeCard.value?.extensions?.airi?.acting?.idleAnimations?.includes(`spine:${name}`) ?? false
+}
+
+function toggleAnimationInCycle(name: string) {
+  if (!activeCardId.value || !activeCard.value)
+    return
+
+  const key = `spine:${name}`
+  const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
+  const next = current.includes(key)
+    ? current.filter(k => k !== key)
+    : [...current, key]
+
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions.airi,
+        acting: {
+          ...activeCard.value.extensions.airi.acting,
+          idleAnimations: next,
+        },
+      },
+    },
+  })
+}
+
 function handleAnimationSelect(animationName: string | number | undefined) {
   if (animationName === '') {
     currentAnimation.value = { ...currentAnimation.value, name: '' }
+    if (activeCardId.value && activeCard.value) {
+      const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
+      const next = current.filter(key => !key.startsWith('spine:'))
+      airiCardStore.updateCard(activeCardId.value, {
+        extensions: {
+          ...activeCard.value.extensions,
+          airi: {
+            ...activeCard.value.extensions.airi,
+            acting: {
+              ...activeCard.value.extensions.airi.acting,
+              idleAnimations: next,
+            },
+          },
+        },
+      })
+    }
     return
   }
   if (typeof animationName !== 'string')
@@ -354,7 +402,7 @@ const activeCustomizationTab = ref('expressions')
           :key="animation.name"
           :class="[
             'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
-            currentAnimation.name === animation.name ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+            currentAnimation.name === animation.name || isAnimationInCycle(animation.name) ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
           ]"
         >
           <!-- Left Side: Name -->
@@ -391,6 +439,21 @@ const activeCustomizationTab = ref('expressions')
 
           <!-- Right Side: Actions -->
           <div class="flex items-center gap-1" @click.stop>
+            <!-- Loop / Cycle Toggle -->
+            <button
+              v-if="activeCard"
+              :class="[
+                'rounded p-1 transition-colors',
+                isAnimationInCycle(animation.name)
+                  ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
+                  : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
+              ]"
+              :title="isAnimationInCycle(animation.name) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
+              @click="toggleAnimationInCycle(animation.name)"
+            >
+              <div class="i-solar:infinity-bold-duotone text-sm" />
+            </button>
+
             <!-- Edit Button -->
             <button
               class="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"

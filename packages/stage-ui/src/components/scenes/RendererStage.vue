@@ -171,6 +171,7 @@ defineExpose({
       :max-fps="spineMaxFps"
       :render-scale="spineRenderScale"
       :draggable="stageViewControlsEnabled"
+      :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       @scale-change="(val) => emits('scaleChange', val)"
       @offset-change="(val) => emits('offsetChange', val)"
       @hit-area-hover="(val) => emits('hitAreaHover', val)"

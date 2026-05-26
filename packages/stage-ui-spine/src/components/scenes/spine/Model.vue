@@ -10,7 +10,7 @@ import { storeToRefs } from 'pinia'
 import { onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
 import { useSpineAnimationManager } from '../../../composables/spine'
-import { EMOTION_SpineAnimationName_value, SpineAnimationName } from '../../../constants/emotions'
+import { EMOTION_SpineAnimationName_value, SPINE_IDLE_TRACK, SpineAnimationName } from '../../../constants/emotions'
 import { useSpine } from '../../../stores/spine'
 import { loadSpineRuntime } from '../../../utils/spine-runtime'
 import { detectSpineVersionFromBinary, detectSpineVersionFromJson } from '../../../utils/spine-version'
@@ -31,6 +31,7 @@ const props = withDefaults(defineProps<{
   xOffset?: number
   yOffset?: number
   scale?: number
+  idleAnimations?: string[]
 }>(), {
   paused: false,
   premultipliedAlpha: false,
@@ -41,6 +42,7 @@ const props = withDefaults(defineProps<{
   xOffset: 0,
   yOffset: 0,
   scale: 1,
+  idleAnimations: () => [],
 })
 
 const emits = defineEmits<{
@@ -366,6 +368,14 @@ async function loadModel() {
             stateData.defaultMix = props.defaultMixDuration
             animationState = new spine.AnimationState(stateData)
 
+            animationState.addListener({
+              complete: (entry) => {
+                if (entry.trackIndex === SPINE_IDLE_TRACK && props.idleAnimationEnabled) {
+                  playNextIdleCycleAnimation()
+                }
+              },
+            })
+
             animationManager = useSpineAnimationManager(animationState, skeleton, {
               mixDuration: props.defaultMixDuration,
               idleAnimationEnabled: props.idleAnimationEnabled,
@@ -404,8 +414,13 @@ async function loadModel() {
             // Apply the user's saved skin (if any).
             applySkin(currentSkin.value)
 
-            // Apply the user's saved idle animation.
-            applyCurrentAnimation()
+            // Apply the user's saved idle animation or start cycle.
+            if (props.idleAnimations && parseCycleAnimations(props.idleAnimations).length > 0) {
+              playNextIdleCycleAnimation()
+            }
+            else {
+              applyCurrentAnimation()
+            }
 
             // Apply active independent animations.
             applyActiveAnimations(props.modelId ? activeAnimations.value[props.modelId] || {} : {})
@@ -600,6 +615,40 @@ function applyCurrentAnimation() {
   animationManager.setIdle(desired)
 }
 
+function parseCycleAnimations(idleAnimations: string[] | undefined) {
+  return idleAnimations
+    ? idleAnimations
+        .filter(key => key.startsWith('spine:'))
+        .map(key => key.substring(6))
+    : []
+}
+
+function playNextIdleCycleAnimation() {
+  if (!animationState || !animationManager)
+    return
+
+  const cycle = parseCycleAnimations(props.idleAnimations)
+  if (cycle.length === 0) {
+    applyCurrentAnimation()
+    return
+  }
+
+  let nextAnim = cycle[0]
+  if (cycle.length > 1) {
+    const currentTrack = animationState.getCurrent(SPINE_IDLE_TRACK)
+    const currentName = currentTrack?.animation?.name
+    const choices = cycle.filter(name => name !== currentName)
+    const selection = choices.length > 0 ? choices : cycle
+    nextAnim = selection[Math.floor(Math.random() * selection.length)]
+  }
+
+  const resolved = animationManager.resolveAnimation(nextAnim)
+  if (resolved) {
+    const loop = cycle.length === 1
+    animationState.setAnimation(SPINE_IDLE_TRACK, resolved, loop)
+  }
+}
+
 function applyActiveAnimations(activeAnims: Record<string, boolean>) {
   const state = animationState
   if (!state || !availableAnimations.value)
@@ -726,7 +775,27 @@ watch([() => props.width, () => props.height, () => props.xOffset, () => props.y
 })
 
 watch(currentAnimation, () => {
-  applyCurrentAnimation()
+  const cycle = parseCycleAnimations(props.idleAnimations)
+  if (cycle.length === 0) {
+    applyCurrentAnimation()
+  }
+}, { deep: true })
+
+watch(() => props.idleAnimations, (newAnims) => {
+  if (!animationState || !animationManager || !props.idleAnimationEnabled)
+    return
+
+  const cycle = parseCycleAnimations(newAnims)
+  if (cycle.length > 0) {
+    const currentTrack = animationState.getCurrent(SPINE_IDLE_TRACK)
+    const currentName = currentTrack?.animation?.name
+    if (!currentName || !cycle.includes(currentName)) {
+      playNextIdleCycleAnimation()
+    }
+  }
+  else {
+    applyCurrentAnimation()
+  }
 }, { deep: true })
 
 watch(activeAnimations, (newVal) => {
