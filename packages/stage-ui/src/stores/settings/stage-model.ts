@@ -30,7 +30,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
   const stageViewControlsEnabled = useLocalStorageManualReset<boolean>('settings/stage/view-controls-enabled', false)
   const stageViewControlsMode = ref<'x' | 'y' | 'z' | 'scale'>('scale')
   const lastReloadReason = ref<string | undefined>(undefined)
-  const mmdTextureMap = ref<Map<string, string>>(new Map())
+  const mmdTextureMap = ref<Map<string, string | ImageBitmap>>(new Map())
 
   function isSameFile(f1?: File, f2?: File) {
     if (f1 === f2)
@@ -43,6 +43,18 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
   function revokeStageModelUrl(url?: string) {
     if (url?.startsWith('blob:'))
       URL.revokeObjectURL(url)
+  }
+
+  function cleanupMmdTextures() {
+    for (const value of mmdTextureMap.value.values()) {
+      if (value instanceof ImageBitmap) {
+        value.close()
+      }
+      else if (typeof value === 'string' && value.startsWith('blob:')) {
+        URL.revokeObjectURL(value)
+      }
+    }
+    mmdTextureMap.value.clear()
   }
 
   function replaceStageModelUrl(nextUrl?: string) {
@@ -61,6 +73,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
 
     if (!selectedModelId) {
       replaceStageModelUrl(undefined)
+      cleanupMmdTextures()
       stageModelSelectedDisplayModel.value = undefined
       stageModelSelectedFile.value = undefined
       stageModelRenderer.value = 'disabled'
@@ -74,6 +87,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
 
     if (!model) {
       replaceStageModelUrl(undefined)
+      cleanupMmdTextures()
       stageModelSelectedDisplayModel.value = undefined
       stageModelSelectedFile.value = undefined
       stageModelRenderer.value = 'disabled'
@@ -101,16 +115,30 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
       }
 
       if (model.format === DisplayModelFormat.PMXZip || model.format === DisplayModelFormat.PMD) {
-        const toastId = toast.loading('Loading MMD model textures...')
+        const toastId = toast.loading('Loading and decoding MMD model textures...')
         try {
           const textureFiles = await displayModelsStore.getDisplayModelTextures(model.id)
           if (requestId !== stageModelUpdateSequence)
             return
 
-          const map = new Map<string, string>()
-          for (const tex of textureFiles) {
-            map.set(tex.relativePath.toLowerCase(), URL.createObjectURL(tex.file))
-          }
+          cleanupMmdTextures()
+
+          const map = new Map<string, string | ImageBitmap>()
+          await Promise.all(textureFiles.map(async (tex) => {
+            const pathKey = tex.relativePath.toLowerCase()
+            if (pathKey.endsWith('.tga')) {
+              map.set(pathKey, URL.createObjectURL(tex.file))
+              return
+            }
+            try {
+              const bitmap = await createImageBitmap(tex.file)
+              map.set(pathKey, bitmap)
+            }
+            catch (e) {
+              console.warn(`[StageModel] Failed to pre-decode ${tex.relativePath}, falling back to Blob URL:`, e)
+              map.set(pathKey, URL.createObjectURL(tex.file))
+            }
+          }))
           mmdTextureMap.value = map
 
           const nextUrl = `${URL.createObjectURL(model.file)}#${model.file.name}`
@@ -174,6 +202,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
 
   useEventListener('unload', () => {
     revokeStageModelUrl(stageModelSelectedUrl.value)
+    cleanupMmdTextures()
   })
 
   watch(stageModelSelectedState, (_newValue, _oldValue) => {
@@ -190,7 +219,7 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
     stageModelRenderer.reset()
     stageViewControlsEnabled.reset()
     stageViewControlsMode.value = 'scale'
-    mmdTextureMap.value = new Map()
+    cleanupMmdTextures()
 
     await updateStageModel('reset state')
   }

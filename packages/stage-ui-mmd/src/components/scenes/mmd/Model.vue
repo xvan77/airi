@@ -46,7 +46,7 @@ const props = withDefaults(defineProps<{
   currentAudioSource?: AudioBufferSourceNode
   lastCommittedModelSrc?: string
   modelSrc?: string
-  textureMap?: Map<string, string>
+  textureMap?: Map<string, string | ImageBitmap>
   idleAnimation?: string
   paused?: boolean
   modelOffset: Vec3

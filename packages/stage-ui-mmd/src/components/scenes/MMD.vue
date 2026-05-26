@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
   modelSrc?: string
   paused?: boolean
   currentAudioSource?: AudioBufferSourceNode
-  textureMap?: Map<string, string>
+  textureMap?: Map<string, string | ImageBitmap>
   scale?: number
   positionX?: number
   positionY?: number

@@ -20,7 +20,7 @@ import { createMMDLoader, createTextureRemappingManager } from './loader'
  */
 export async function loadMmd(modelUrl: string, options?: {
   scene?: Scene
-  textureMap?: Map<string, string>
+  textureMap?: Map<string, string | ImageBitmap>
   onProgress?: (progress: ProgressEvent) => void | Promise<void>
 }): Promise<{
   mmd: MMD
@@ -32,11 +32,24 @@ export async function loadMmd(modelUrl: string, options?: {
   console.log('[MMD:Core] Starting loadMmd for URL:', modelUrl)
   console.log('[MMD:Core] Texture map size:', options?.textureMap?.size ?? 0)
 
-  // Create a loader with texture remapping if a texture map is provided
-  const manager = options?.textureMap
-    ? createTextureRemappingManager(options.textureMap)
-    : undefined
+  // Always create a LoadingManager to track loading status
+  const manager = createTextureRemappingManager(options?.textureMap)
   const loader = createMMDLoader(manager)
+
+  // Track all pending resources
+  const pendingUrls = new Set<string>()
+  manager.onStart = (url) => {
+    pendingUrls.add(url)
+  }
+  manager.onLoad = () => {
+    pendingUrls.clear()
+  }
+  manager.onProgress = (url) => {
+    pendingUrls.delete(url)
+  }
+  manager.onError = (url) => {
+    pendingUrls.delete(url)
+  }
 
   console.log('[MMD:Core] Calling loader.loadAsync...')
   let mmd
@@ -51,6 +64,45 @@ export async function loadMmd(modelUrl: string, options?: {
   catch (err) {
     console.error('[MMD:Core] loader.loadAsync FAILED:', err)
     throw err
+  }
+
+  // Synchronize texture loading: wait until all pending textures have finished loading
+  if (pendingUrls.size > 0) {
+    console.log(`[MMD:Core] Waiting for ${pendingUrls.size} textures to complete loading...`)
+    await new Promise<void>((resolve) => {
+      const timeoutId = setTimeout(() => {
+        console.warn('[MMD:Core] Texture loading synchronization timed out.')
+        resolve()
+      }, 10000)
+
+      const checkPending = () => {
+        if (pendingUrls.size === 0) {
+          clearTimeout(timeoutId)
+          resolve()
+        }
+      }
+
+      const origProgress = manager.onProgress
+      manager.onProgress = (url, loaded, total) => {
+        origProgress?.(url, loaded, total)
+        checkPending()
+      }
+
+      const origError = manager.onError
+      manager.onError = (url) => {
+        origError?.(url)
+        checkPending()
+      }
+
+      const origLoad = manager.onLoad
+      manager.onLoad = () => {
+        origLoad?.()
+        checkPending()
+      }
+
+      checkPending()
+    })
+    console.log('[MMD:Core] All textures loaded!')
   }
 
   console.log('[MMD:Core] loader.loadAsync completed!')
