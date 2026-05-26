@@ -1,4 +1,7 @@
 declare module '@moeru/three-mmd' {
+  export type MMD = any
+  export const buildAnimation: any
+  export const VMDLoader: any
   export class MMDLoader {
     constructor(manager?: any)
     load(
@@ -7,6 +10,6 @@ declare module '@moeru/three-mmd' {
       onProgress?: (event: ProgressEvent) => void,
       onError?: (event: ErrorEvent) => void
     ): void
-    // Add other methods if needed, but MMDLoader is the main one used.
+    loadAsync(url: string, onProgress?: (event: ProgressEvent) => void): Promise<any>
   }
 }

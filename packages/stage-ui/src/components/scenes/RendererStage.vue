@@ -185,6 +185,10 @@ defineExpose({
       :paused="paused"
       :current-audio-source="currentAudioSource"
       :texture-map="mmdTextureMap"
+      :scale="scale !== undefined ? Number(scale) : undefined"
+      :position-x="xOffset !== undefined ? Number(xOffset) : undefined"
+      :position-y="yOffset !== undefined ? Number(yOffset) : undefined"
+      :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       @error="console.error"
     />
   </div>

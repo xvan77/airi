@@ -4,16 +4,17 @@
   * Parallel to VRMModel.vue but uses @moeru/three-mmd for loading and rendering.
   * Handles model loading, animation playback, morph-based expressions, and lip sync.
 */
-
-// @ts-expect-error - Missing types for @moeru/three-mmd
 import type { MMD } from '@moeru/three-mmd'
 import type { Group, PerspectiveCamera } from 'three'
 
 import { useLoop, useTresContext } from '@tresjs/core'
 import {
   AnimationMixer,
+  LoopOnce,
+  LoopRepeat,
 } from 'three'
 import {
+  computed,
   onMounted,
   onUnmounted,
   ref,
@@ -57,6 +58,7 @@ const props = withDefaults(defineProps<{
   camera: PerspectiveCamera
   scale?: number
   previewExpression?: string
+  idleAnimations?: string[]
 }>(), {
   paused: false,
   scale: 1,
@@ -75,7 +77,6 @@ const {
   currentAudioSource,
   lastCommittedModelSrc,
   modelSrc,
-  idleAnimation,
   paused,
   modelOffset,
   modelRotationY,
@@ -96,6 +97,179 @@ const mmdLipSync = props.audioContext
   : null
 
 const mmdStore = useMmd()
+
+const mmdCycleMotions = computed(() => {
+  if (!props.idleAnimations)
+    return []
+  return props.idleAnimations
+    .filter(key => key.startsWith('mmd:'))
+    .map(key => key.replace(/^mmd:/, ''))
+})
+
+const mmdCycleUrls = computed(() => {
+  return mmdCycleMotions.value.map(motion => `/assets/mmd/animations/${motion}`)
+})
+
+let currentAction: any = null
+const clipCache = new Map<string, any>()
+let cycleAdvancePending = false
+
+async function playBaseAnimation() {
+  console.log('[MMDModel] playBaseAnimation called, props.idleAnimation:', props.idleAnimation)
+  if (!mmdInstance.value || !mmdAnimationMixer.value) {
+    console.log('[MMDModel] playBaseAnimation bailed: no instance or mixer')
+    return
+  }
+
+  // If a cycle is active and the current base animation is the default one, prioritize playing the cycle!
+  if (mmdCycleUrls.value.length > 0 && props.idleAnimation === '/assets/mmd/animations/swaying_arms_and_hips.vmd') {
+    console.log('[MMDModel] playBaseAnimation: cycle is active and base is default, delegating to playNextMmdCycleAnimation')
+    void playNextMmdCycleAnimation()
+    return
+  }
+
+  const url = props.idleAnimation
+  if (!url || !url.endsWith('.vmd')) {
+    console.log('[MMDModel] playBaseAnimation: stopping all actions (no valid .vmd)')
+    mmdAnimationMixer.value.stopAllAction()
+    currentAction = null
+    return
+  }
+
+  try {
+    let clip = clipCache.get(url)
+    if (!clip) {
+      console.log('[MMDModel] playBaseAnimation: loading clip from URL:', url)
+      clip = await loadVMDAnimation(url, mmdInstance.value)
+      if (clip) {
+        clipCache.set(url, clip)
+      }
+    }
+
+    if (!clip || !mmdAnimationMixer.value) {
+      console.log('[MMDModel] playBaseAnimation: clip loading failed or mixer missing')
+      return
+    }
+
+    const newAction = mmdAnimationMixer.value.clipAction(clip)
+    const fadeDuration = 0.5
+
+    newAction.setLoop(LoopRepeat, Infinity)
+    newAction.clampWhenFinished = false
+    newAction.reset()
+    newAction.setEffectiveWeight(1)
+    newAction.play()
+
+    if (currentAction && currentAction !== newAction) {
+      console.log('[MMDModel] playBaseAnimation: crossfading from currentAction to newAction')
+      newAction.crossFadeFrom(currentAction, fadeDuration, true)
+    }
+    else {
+      console.log('[MMDModel] playBaseAnimation: fading in newAction')
+      newAction.fadeIn(fadeDuration)
+    }
+
+    currentAction = newAction
+    console.log('[MMDModel] playBaseAnimation: currentAction set to:', clip.name)
+  }
+  catch (err) {
+    console.error('[MMDModel] Failed to play base animation:', err)
+  }
+}
+
+async function playNextMmdCycleAnimation() {
+  console.log('[MMDModel] playNextMmdCycleAnimation called, cycle urls:', mmdCycleUrls.value)
+  if (!mmdInstance.value || !mmdAnimationMixer.value) {
+    console.log('[MMDModel] playNextMmdCycleAnimation bailed: no instance or mixer')
+    return
+  }
+
+  const cycle = mmdCycleUrls.value
+  if (cycle.length === 0) {
+    console.log('[MMDModel] playNextMmdCycleAnimation: cycle empty, falling back to base')
+    void playBaseAnimation()
+    return
+  }
+
+  let nextAnimUrl = cycle[0]
+  if (cycle.length > 1) {
+    const currentClip = currentAction?.getClip()
+    const choices = cycle.filter((url) => {
+      const clip = clipCache.get(url)
+      return !clip || clip !== currentClip
+    })
+    const targetChoices = choices.length > 0 ? choices : cycle
+    nextAnimUrl = targetChoices[Math.floor(Math.random() * targetChoices.length)]
+  }
+  console.log('[MMDModel] playNextMmdCycleAnimation: selected nextAnimUrl:', nextAnimUrl)
+
+  try {
+    let clip = clipCache.get(nextAnimUrl)
+    if (!clip) {
+      console.log('[MMDModel] playNextMmdCycleAnimation: loading clip from URL:', nextAnimUrl)
+      clip = await loadVMDAnimation(nextAnimUrl, mmdInstance.value)
+      if (clip) {
+        clipCache.set(nextAnimUrl, clip)
+      }
+    }
+
+    if (!clip || !mmdAnimationMixer.value) {
+      console.log('[MMDModel] playNextMmdCycleAnimation: clip loading failed or mixer missing')
+      return
+    }
+
+    const newAction = mmdAnimationMixer.value.clipAction(clip)
+    const fadeDuration = 0.5
+
+    if (cycle.length === 1) {
+      newAction.setLoop(LoopRepeat, Infinity)
+      newAction.clampWhenFinished = false
+    }
+    else {
+      newAction.setLoop(LoopOnce, 1)
+      newAction.clampWhenFinished = true
+    }
+
+    newAction.reset()
+    newAction.setEffectiveWeight(1)
+    newAction.play()
+
+    if (currentAction && currentAction !== newAction) {
+      console.log('[MMDModel] playNextMmdCycleAnimation: crossfading to next cycle item')
+      newAction.crossFadeFrom(currentAction, fadeDuration, true)
+    }
+    else {
+      console.log('[MMDModel] playNextMmdCycleAnimation: fading in next cycle item')
+      newAction.fadeIn(fadeDuration)
+    }
+
+    currentAction = newAction
+    console.log('[MMDModel] playNextMmdCycleAnimation: currentAction set to:', clip.name)
+  }
+  catch (err) {
+    console.error('[MMDModel] Failed to play next cycle animation:', err)
+  }
+}
+
+function onAnimationFinished(e: any) {
+  console.log('[MMDModel] onAnimationFinished triggered for action clip:', e.action?.getClip()?.name)
+  if (e.action !== currentAction) {
+    console.log('[MMDModel] onAnimationFinished: finished action is not currentAction. Ignoring.')
+    return
+  }
+
+  const cycle = mmdCycleUrls.value
+  console.log('[MMDModel] onAnimationFinished: current cycle length is:', cycle.length)
+  if (cycle.length > 1 && !cycleAdvancePending) {
+    cycleAdvancePending = true
+    setTimeout(() => {
+      cycleAdvancePending = false
+      console.log('[MMDModel] onAnimationFinished: advancing to next cycle item')
+      void playNextMmdCycleAnimation()
+    }, 0)
+  }
+}
+
 const { onBeforeRender } = useLoop()
 
 // Render loop
@@ -139,6 +313,13 @@ function cleanup() {
   if (mmdGroup.value) {
     detachMmdGroup(mmdGroup.value)
   }
+
+  if (mmdAnimationMixer.value) {
+    mmdAnimationMixer.value.removeEventListener('finished', onAnimationFinished)
+  }
+
+  clipCache.clear()
+  currentAction = null
 
   if (mmdInstance.value) {
     // Dispose geometry and materials
@@ -228,24 +409,18 @@ async function loadModel(url: string) {
 
     // Set up animation mixer
     const mixer = new AnimationMixer(result.mmd.mesh)
+    mixer.addEventListener('finished', onAnimationFinished)
     mmdAnimationMixer.value = mixer
 
     // Set up expression controller
     mmdEmote.value = useMMDEmote(result.mmd)
 
-    // Load idle animation if provided (only VMD files are supported for MMD models)
-    if (idleAnimation.value && idleAnimation.value.endsWith('.vmd')) {
-      try {
-        const clip = await loadVMDAnimation(idleAnimation.value, result.mmd)
-        // Re-check sequence after the async VMD load — a new load may have started
-        if (clip && currentSequence === loadSequence) {
-          const action = mixer.clipAction(clip)
-          action.play()
-        }
-      }
-      catch (error) {
-        console.warn('[MMDModel] Failed to load idle animation:', error)
-      }
+    // Load initial animation or cycle
+    if (mmdCycleUrls.value.length > 0) {
+      void playNextMmdCycleAnimation()
+    }
+    else {
+      void playBaseAnimation()
     }
 
     // Re-check sequence after all async work before committing to the scene
@@ -300,24 +475,37 @@ async function loadModel(url: string) {
 watch(() => props.idleAnimation, async (newAnim) => {
   console.log('[MMDModel] idleAnimation changed:', newAnim)
   if (newAnim && newAnim.endsWith('.vmd') && mmdInstance.value && mmdAnimationMixer.value) {
-    try {
-      const clip = await loadVMDAnimation(newAnim, mmdInstance.value)
-      if (clip) {
-        console.log('[MMDModel] Playing new animation:', newAnim)
-        mmdAnimationMixer.value.stopAllAction()
-        const action = mmdAnimationMixer.value.clipAction(clip)
-        action.play()
-      }
-    }
-    catch (error) {
-      console.warn('[MMDModel] Failed to load new idle animation:', error)
+    if (newAnim !== '/assets/mmd/animations/swaying_arms_and_hips.vmd' || mmdCycleUrls.value.length === 0) {
+      void playBaseAnimation()
     }
   }
-  else if (mmdAnimationMixer.value) {
+  else if (mmdAnimationMixer.value && mmdCycleUrls.value.length === 0) {
     console.log('[MMDModel] Stopping all actions (None or invalid animation)')
     mmdAnimationMixer.value.stopAllAction()
+    currentAction = null
   }
 })
+
+// Watch cycle animations playlist changes
+watch(mmdCycleUrls, (urls) => {
+  if (!mmdInstance.value || !mmdAnimationMixer.value)
+    return
+
+  if (urls.length > 0) {
+    const currentClip = currentAction?.getClip()
+    const isPlayingCycleItem = urls.some((url) => {
+      const clip = clipCache.get(url)
+      return clip && clip === currentClip
+    })
+
+    if (!isPlayingCycleItem) {
+      void playNextMmdCycleAnimation()
+    }
+  }
+  else {
+    void playBaseAnimation()
+  }
+}, { deep: true })
 
 // Watch model source changes
 watch(modelSrc, (newSrc, oldSrc) => {

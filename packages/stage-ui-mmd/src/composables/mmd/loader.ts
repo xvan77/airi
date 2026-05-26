@@ -1,6 +1,5 @@
 import type { LoadingManager } from 'three'
 
-// @ts-expect-error - Missing types for @moeru/three-mmd
 import { MMDLoader } from '@moeru/three-mmd'
 import { LoadingManager as ThreeLoadingManager } from 'three'
 

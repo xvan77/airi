@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { useMmd } from '@proj-airi/stage-ui-mmd/stores/mmd'
-import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positioning'
-import { Button, FieldRange, SelectTab } from '@proj-airi/ui'
+import { Button, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
+import ModelSceneSettings from './components/ModelSceneSettings.vue'
+
+import { useAiriCardStore } from '../../../../stores/modules'
 import { Section } from '../../../layouts'
 
 const props = withDefaults(defineProps<{
@@ -16,37 +17,41 @@ const props = withDefaults(defineProps<{
   allowExtractColors: true,
 })
 
-const { stageModelSelected } = storeToRefs(useSettings())
-const positioningStore = usePositioningStore()
 const mmdStore = useMmd()
 const { availableMorphs, morphMappings, hiddenMorphs, availableMotions, currentMotion, previewExpression } = storeToRefs(mmdStore)
 
-const scale = computed({
-  get: () => positioningStore.getPosition(props.modelId || stageModelSelected.value).scale,
-  set: (val: number) => {
-    const key = props.modelId || stageModelSelected.value
-    const current = positioningStore.getPosition(key)
-    positioningStore.setPosition(key, { ...current, scale: val })
-  },
-})
+const airiCardStore = useAiriCardStore()
+const { activeCard, activeCardId } = storeToRefs(airiCardStore)
+const { updateCard } = airiCardStore
 
-const positionX = computed({
-  get: () => positioningStore.getPosition(props.modelId || stageModelSelected.value).x,
-  set: (val) => {
-    const key = props.modelId || stageModelSelected.value
-    const current = positioningStore.getPosition(key)
-    positioningStore.setPosition(key, { ...current, x: val })
-  },
-})
+function isMotionSelected(motion: string) {
+  const key = `mmd:${motion}`
+  return activeCard.value?.extensions?.airi?.acting?.idleAnimations?.includes(key) ?? false
+}
 
-const positionY = computed({
-  get: () => positioningStore.getPosition(props.modelId || stageModelSelected.value).y,
-  set: (val) => {
-    const key = props.modelId || stageModelSelected.value
-    const current = positioningStore.getPosition(key)
-    positioningStore.setPosition(key, { ...current, y: val })
-  },
-})
+function toggleMotion(motion: string) {
+  if (!activeCardId.value || !activeCard.value)
+    return
+
+  const key = `mmd:${motion}`
+  const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
+  const next = current.includes(key)
+    ? current.filter(k => k !== key)
+    : [...current, key]
+
+  updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions.airi,
+        acting: {
+          ...activeCard.value.extensions.airi.acting,
+          idleAnimations: next,
+        },
+      },
+    },
+  })
+}
 
 // Tabs State
 const customizationTabs = computed(() => [
@@ -125,6 +130,26 @@ function handleMorphSelect(morph: string) {
 function handleMotionSelect(motion: string) {
   console.log('[MMD Settings] Selecting motion:', motion)
   currentMotion.value = motion
+
+  if (motion === '') {
+    // Clear all mmd: prefix animations from card idleAnimations cycle list
+    if (activeCardId.value && activeCard.value) {
+      const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
+      const next = current.filter(key => !key.startsWith('mmd:'))
+      updateCard(activeCardId.value, {
+        extensions: {
+          ...activeCard.value.extensions,
+          airi: {
+            ...activeCard.value.extensions.airi,
+            acting: {
+              ...activeCard.value.extensions.airi.acting,
+              idleAnimations: next,
+            },
+          },
+        },
+      })
+    }
+  }
 }
 </script>
 
@@ -252,12 +277,28 @@ function handleMotionSelect(motion: string) {
 
         <!-- Fixed Height Scrollable List -->
         <div class="max-h-[300px] overflow-y-auto border border-neutral-200 rounded-lg bg-white dark:border-neutral-700 dark:bg-neutral-900">
+          <!-- None Option -->
+          <div
+            :class="[
+              'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 transition-colors cursor-pointer',
+              !currentMotion ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+            ]"
+            @click="handleMotionSelect('')"
+          >
+            <div class="flex items-center gap-2">
+              <div v-if="!currentMotion" class="h-2 w-2 rounded-full bg-primary-500" />
+              <div class="text-sm text-neutral-900 font-medium dark:text-neutral-100">
+                None
+              </div>
+            </div>
+          </div>
+
           <div
             v-for="motion in availableMotions"
             :key="motion"
             :class="[
               'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
-              currentMotion === motion ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+              currentMotion === motion || isMotionSelected(motion) ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
             ]"
           >
             <!-- Left Side: Name -->
@@ -274,6 +315,24 @@ function handleMotionSelect(motion: string) {
                 {{ motion }}
               </div>
             </div>
+
+            <!-- Right Side: Actions -->
+            <div class="flex items-center gap-1" @click.stop>
+              <!-- Loop / Cycle Toggle -->
+              <button
+                v-if="activeCard"
+                :class="[
+                  'rounded p-1 transition-colors',
+                  isMotionSelected(motion)
+                    ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
+                    : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
+                ]"
+                :title="isMotionSelected(motion) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
+                @click="toggleMotion(motion)"
+              >
+                <div class="i-solar:infinity-bold-duotone text-sm" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -281,47 +340,10 @@ function handleMotionSelect(motion: string) {
   </Section>
 
   <!-- Block 2: Scene -->
-  <Section
-    title="Scene"
-    icon="i-solar:clapperboard-edit-bold-duotone"
-    :class="[
-      'rounded-xl',
-      'bg-white/80  dark:bg-black/75',
-      'backdrop-blur-lg',
-      'mt-4',
-    ]"
-    size="sm"
-    :expand="true"
-  >
-    <FieldRange v-model="scale" as="div" :min="0.1" :max="3" :step="0.01" label="Scale">
-      <template #label>
-        <div flex items-center>
-          <div>Scale</div>
-          <button px-2 text-xs outline-none title="Reset value to default" @click="() => scale = 1">
-            <div i-solar:forward-linear transform-scale-x--100 text="neutral-500 dark:neutral-400" />
-          </button>
-        </div>
-      </template>
-    </FieldRange>
-    <FieldRange v-model="positionX" as="div" :min="-20" :max="20" :step="0.1" label="X Position">
-      <template #label>
-        <div flex items-center>
-          <div>X Position</div>
-          <button px-2 text-xs outline-none title="Reset value to default" @click="() => positionX = 0">
-            <div i-solar:forward-linear transform-scale-x--100 text="neutral-500 dark:neutral-400" />
-          </button>
-        </div>
-      </template>
-    </FieldRange>
-    <FieldRange v-model="positionY" as="div" :min="-20" :max="20" :step="0.1" label="Y Position">
-      <template #label>
-        <div flex items-center>
-          <div>Y Position</div>
-          <button px-2 text-xs outline-none title="Reset value to default" @click="() => positionY = 0">
-            <div i-solar:forward-linear transform-scale-x--100 text="neutral-500 dark:neutral-400" />
-          </button>
-        </div>
-      </template>
-    </FieldRange>
-  </Section>
+  <ModelSceneSettings
+    :store="mmdStore"
+    :model-size="mmdStore.modelSize || { x: 1, y: 2, z: 1 }"
+    :palette="palette"
+    :show-eye-tracking="false"
+  />
 </template>
