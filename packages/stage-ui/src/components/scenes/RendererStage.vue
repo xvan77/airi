@@ -170,6 +170,9 @@ defineExpose({
       :idle-animation-enabled="spineIdleAnimationEnabled"
       :max-fps="spineMaxFps"
       :render-scale="spineRenderScale"
+      :draggable="stageViewControlsEnabled"
+      @scale-change="(val) => emits('scaleChange', val)"
+      @offset-change="(val) => emits('offsetChange', val)"
       @hit-area-hover="(val) => emits('hitAreaHover', val)"
     />
     <MMDScene
