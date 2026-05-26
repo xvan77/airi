@@ -53,6 +53,7 @@ const {
   live2dForceAutoBlinkEnabled,
   live2dShadowEnabled,
   live2dMaxFps,
+  spinePremultipliedAlpha,
 } = storeToRefs(settingsStore)
 
 const positioningStore = usePositioningStore()
@@ -256,6 +257,7 @@ function handleOffsetChange(offset: { x: number, y: number }) {
         :x-offset="computedXOffset"
         :y-offset="computedYOffset"
         :scale="computedScale"
+        :premultiplied-alpha="spinePremultipliedAlpha"
         :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       />
     </div>
