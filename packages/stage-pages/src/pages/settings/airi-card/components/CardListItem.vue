@@ -2,11 +2,8 @@
 </script>
 
 <script setup lang="ts">
-import { CursorFloating } from '@proj-airi/stage-ui/components'
-import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
-import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
+import { CharacterAvatar, CursorFloating } from '@proj-airi/stage-ui/components'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
-import { computed, ref, watch } from 'vue'
 
 const props = defineProps<Props>()
 
@@ -32,92 +29,6 @@ interface Props {
   voiceModel: string
   displayModelId?: string
 }
-
-const displayModelsStore = useDisplayModelsStore()
-const backgroundStore = useBackgroundStore()
-
-const latestSelfie = computed(() => {
-  const entries = backgroundStore.getCharacterJournalEntries(props.id)
-  const selfies = entries.filter(e => e.type === 'selfie')
-  if (selfies.length === 0)
-    return null
-
-  // Sort by createdAt descending to get the absolute latest at index 0
-  const sorted = [...selfies].sort((a, b) => b.createdAt - a.createdAt)
-  const latest = sorted[0]
-  return backgroundStore.getBackgroundUrl(latest.id)
-})
-
-const iconUrl = ref<string | null>(null)
-
-watch(() => props.displayModelId, async (id) => {
-  if (!id) {
-    iconUrl.value = null
-    return
-  }
-
-  if (iconCache.has(id)) {
-    iconUrl.value = iconCache.get(id) || null
-    return
-  }
-
-  const model = displayModelsStore.displayModels.find(m => m.id === id)
-  if (!model) {
-    iconUrl.value = null
-    return
-  }
-
-  try {
-    let zipData: Blob | File | null = null
-    if (model.type === 'file') {
-      zipData = model.file
-    }
-    else if (model.type === 'url') {
-      const res = await fetch(model.url)
-      zipData = await res.blob()
-    }
-
-    if (zipData) {
-      const JSZip = (await import('jszip')).default
-      const zip = await JSZip.loadAsync(zipData)
-      const iconFileName = Object.keys(zip.files).find((name) => {
-        const lower = name.toLowerCase()
-        return lower.endsWith('icon.png') || lower.endsWith('icon.jpg')
-      })
-      if (iconFileName) {
-        const fileData = await zip.files[iconFileName].async('blob')
-        const url = URL.createObjectURL(fileData)
-        iconCache.set(id, url)
-        iconUrl.value = url
-        return
-      }
-    }
-    iconCache.set(id, '')
-    iconUrl.value = null
-  }
-  catch (e) {
-    console.error('[CardListItem] Failed to extract icon from model:', e)
-    iconCache.set(id, '')
-    iconUrl.value = null
-  }
-}, { immediate: true })
-
-const portraitInfo = computed(() => {
-  // Priority: Latest Selfie > Model Icon > Model Preview
-  if (latestSelfie.value)
-    return { url: latestSelfie.value, source: 'selfie' }
-
-  if (iconUrl.value)
-    return { url: iconUrl.value, source: 'icon' }
-
-  if (!props.displayModelId)
-    return { url: null, source: null }
-  const model = displayModelsStore.displayModels.find(m => m.id === props.displayModelId)
-  return { url: model?.previewImage || null, source: model?.previewImage ? 'preview' : null }
-})
-
-const portrait = computed(() => portraitInfo.value.url)
-const portraitSource = computed(() => portraitInfo.value.source)
 </script>
 
 <template>
@@ -144,32 +55,15 @@ const portraitSource = computed(() => portraitInfo.value.source)
     >
       <!-- Front side (Portrait/Square) -->
       <div :class="['backface-hidden absolute inset-0 flex flex-col overflow-hidden rounded-xl bg-white dark:bg-neutral-900']">
-        <div
-          v-if="portrait"
-          :class="[
-            'relative w-full aspect-square overflow-hidden transition-colors duration-200',
-            portraitSource === 'preview'
-              ? 'bg-[#faf9f6]'
-              : 'bg-neutral-100 dark:bg-neutral-800/80',
-          ]"
-        >
-          <img
-            :src="portrait"
-            :class="['h-full w-full object-cover object-[50%_15%]']"
-            alt="Portrait"
-          >
-        </div>
-        <div
-          v-else
-          :class="[
-            'w-full aspect-square flex flex-col items-center justify-center gap-2 bg-neutral-100 text-neutral-400 dark:bg-neutral-800/80',
-          ]"
-        >
-          <div
-            i-solar:user-circle-bold-duotone
-            :class="['text-5xl opacity-40']"
-          />
-        </div>
+        <CharacterAvatar
+          :card-id="id"
+          :name="name"
+          :display-model-id="displayModelId"
+          shape="square"
+          size-class="w-full aspect-square"
+          avatar-class="h-full w-full object-cover object-[50%_15%]"
+          :use-dynamic-background="true"
+        />
 
         <!-- Name overlay positioned absolute at the bottom of the front container (above toolbar) -->
         <div

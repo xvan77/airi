@@ -7,6 +7,8 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, toRef, watch } from 'vue'
 // Ported stores & states for Popovers
 
+import CharacterAvatar from '../../misc/CharacterAvatar.vue'
+
 import { useDisplayModelsStore } from '../../../stores/display-models'
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
 import { useLiveSessionStore } from '../../../stores/modules/live-session'
@@ -1292,14 +1294,13 @@ function getShortLabel(btnId: string): string {
                 ]"
                 @click="cardStore.activateCard(id); activePopover = null"
               >
-                <img
-                  v-if="typeof card.metadata?.avatar === 'string'"
-                  :src="card.metadata.avatar"
-                  class="h-full w-full object-cover"
-                >
-                <div v-else :class="['h-full w-full flex items-center justify-center text-lg font-bold tracking-wide uppercase', cardInitialColor(card.name)]">
-                  {{ card.name.charAt(0) }}
-                </div>
+                <CharacterAvatar
+                  :card-id="id"
+                  :name="card.name"
+                  :display-model-id="cardStore.getCardDisplayModelId(id)"
+                  shape="rounded"
+                  size-class="h-full w-full"
+                />
                 <div class="absolute bottom-0 left-0 right-0 truncate bg-black/60 px-1 py-0.5 text-center text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                   {{ card.name }}
                 </div>
@@ -1340,17 +1341,13 @@ function getShortLabel(btnId: string): string {
               @click="cardStore.activateCard(id); activePopover = null"
             >
               <div class="flex items-center gap-2 truncate">
-                <!-- Left tile -->
-                <div class="h-8 w-8 flex-shrink-0 overflow-hidden border border-neutral-200/10 rounded-lg">
-                  <img
-                    v-if="typeof card.metadata?.avatar === 'string'"
-                    :src="card.metadata.avatar"
-                    class="h-full w-full object-cover"
-                  >
-                  <div v-else :class="['h-full w-full flex items-center justify-center font-bold uppercase text-xs', cardInitialColor(card.name)]">
-                    {{ card.name.charAt(0) }}
-                  </div>
-                </div>
+                <CharacterAvatar
+                  :card-id="id"
+                  :name="card.name"
+                  :display-model-id="cardStore.getCardDisplayModelId(id)"
+                  shape="rounded"
+                  size-class="h-8 w-8"
+                />
                 <span class="truncate font-semibold">{{ card.name }}</span>
                 <span v-if="id === activeCardId" class="scale-90 border border-amber-500/30 rounded bg-amber-500/20 px-1 py-0.5 text-[8px] text-amber-600 font-bold uppercase dark:text-amber-400">Active</span>
               </div>
