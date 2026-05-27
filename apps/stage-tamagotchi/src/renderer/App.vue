@@ -302,6 +302,16 @@ watch(
   { immediate: true },
 )
 
+const ROUTE_TITLES: Record<string, string> = {
+  '/': 'AIRI - Control Strip',
+  '/actor': 'AIRI - Looking at {character}',
+  '/caption': 'AIRI - Captions',
+  '/customizer': 'AIRI - Customizer',
+  '/about': 'AIRI - About',
+  '/onboarding': 'AIRI - Onboarding',
+  '/widgets': 'AIRI - Widgets',
+}
+
 watch(
   () => {
     return [route.path, activeCard.value?.name]
@@ -310,21 +320,9 @@ watch(
     if (route.path.startsWith('/settings') || route.path === '/chat')
       return
 
-    let nextTitle = 'AIRI'
     const activeCharacterLabel = activeCard.value?.name?.trim() || 'AIRI'
-
-    if (route.path === '/actor') {
-      nextTitle = `AIRI - Looking at ${activeCharacterLabel}`
-    }
-    else if (route.path === '/caption') {
-      nextTitle = 'AIRI - Captions'
-    }
-    else if (route.path === '/') {
-      nextTitle = 'AIRI - Control Strip'
-    }
-    else {
-      nextTitle = `AIRI - Looking at ${activeCharacterLabel}`
-    }
+    const titleTemplate = ROUTE_TITLES[route.path] || 'AIRI - Looking at {character}'
+    const nextTitle = titleTemplate.replace('{character}', activeCharacterLabel)
 
     if (document.title !== nextTitle) {
       console.log('[AppTitle] Updating main title', {
