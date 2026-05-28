@@ -277,10 +277,13 @@ async function runInference(request: RunInferenceRequest<any>): Promise<void> {
       throw new Error('No audio input provided.')
 
     const audioBuffer = ensureFloat32Array(audioData)
-    const options = {
+    const isEnglishOnly = currentModelId?.endsWith('.en')
+    const options: any = {
       chunk_length_s: 30,
       stride_length_s: 5,
-      language: input.language || 'en',
+    }
+    if (!isEnglishOnly) {
+      options.language = input.language || 'en'
     }
 
     const start = Date.now()

@@ -13,6 +13,7 @@ export const WHISPER_MODELS = [
   { id: 'onnx-community/whisper-tiny.en', name: 'Whisper Tiny (English)', size: '40MB' },
   { id: 'onnx-community/whisper-base.en', name: 'Whisper Base (English)', size: '80MB' },
   { id: 'onnx-community/whisper-small.en', name: 'Whisper Small (English)', size: '250MB' },
+  { id: 'onnx-community/whisper-large-v3-turbo', name: 'Whisper Large v3 Turbo (High Perf)', size: '800MB' },
 ] as const
 
 export function whisperModelsToModelInfo(models: typeof WHISPER_MODELS) {
