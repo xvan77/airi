@@ -164,11 +164,7 @@ const computedXOffset = computed(() => {
 })
 
 const computedYOffset = computed(() => {
-  const y = positioningStore.getPosition(stageModelSelected.value).y
-  if (stageModelRenderer.value === 'live2d') {
-    return -y
-  }
-  return y
+  return positioningStore.getPosition(stageModelSelected.value).y
 })
 
 function handleScaleChange(newScale: number) {
@@ -183,7 +179,7 @@ function handleOffsetChange(offset: { x: number, y: number }) {
   positioningStore.setPosition(key, {
     ...current,
     x: offset.x,
-    y: stageModelRenderer.value === 'live2d' ? -offset.y : offset.y,
+    y: offset.y,
   })
 }
 
