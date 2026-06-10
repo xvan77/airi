@@ -1,0 +1,46 @@
+diff --git a/packages/stage-ui/src/stores/llm.sanitize.test.ts b/packages/stage-ui/src/stores/llm.sanitize.test.ts
+index 42b90bac9..eef16e0d6 100644
+--- a/packages/stage-ui/src/stores/llm.sanitize.test.ts
++++ b/packages/stage-ui/src/stores/llm.sanitize.test.ts
+@@ -79,4 +79,22 @@ describe('sanitizeMessages', () => {
+     expect(sanitized[0].role).toBe('user')
+     expect(sanitized[0].content).toContain('User encountered error')
+   })
++
++  it('should ensure non-system messages alternate strictly starting with user', () => {
++    const messages = [
++      { role: 'system', content: 'You are a helpful assistant.' },
++      { role: 'assistant', content: 'Hello! How can I help you today?' },
++      { role: 'user', content: 'Hi' },
++    ]
++
++    const sanitized = sanitizeMessages(messages)
++    expect(sanitized[0].role).toBe('system')
++    expect(sanitized[1].role).toBe('user')
++    expect(sanitized[1].content).toBe('Hello') // Or whatever dummy message content we decide
++    expect(sanitized[2].role).toBe('assistant')
++    expect(sanitized[2].content).toBe('Hello! How can I help you today?')
++    expect(sanitized[3].role).toBe('user')
++    expect(sanitized[3].content).toBe('Hi')
++  })
+ })
++
+diff --git a/packages/stage-ui/src/stores/llm.ts b/packages/stage-ui/src/stores/llm.ts
+index 0b8cab53e..b31483c64 100644
+--- a/packages/stage-ui/src/stores/llm.ts
++++ b/packages/stage-ui/src/stores/llm.ts
+@@ -127,6 +127,14 @@ export function sanitizeMessages(messages: unknown[], options?: { vision?: boole
+     }
+   }
+ 
++  // Ensure strict alternating pattern (user/assistant) starting with user.
++  // If the first message in merged is an assistant message, we prepend a placeholder user message.
++  if (merged.length > 0 && merged[0].role === 'assistant') {
++    if (merged.length > 1 || merged.some(m => m.role === 'user')) {
++      merged.unshift({ role: 'user', content: 'Hello' } as Message)
++    }
++  }
++
+   const result: Message[] = []
+   if (combinedSystemContent) {
+     result.push({ role: 'system', content: combinedSystemContent } as Message)

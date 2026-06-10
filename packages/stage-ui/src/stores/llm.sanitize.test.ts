@@ -79,4 +79,21 @@ describe('sanitizeMessages', () => {
     expect(sanitized[0].role).toBe('user')
     expect(sanitized[0].content).toContain('User encountered error')
   })
+
+  it('should ensure non-system messages alternate strictly starting with user', () => {
+    const messages = [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'assistant', content: 'Hello! How can I help you today?' },
+      { role: 'user', content: 'Hi' },
+    ]
+
+    const sanitized = sanitizeMessages(messages)
+    expect(sanitized[0].role).toBe('system')
+    expect(sanitized[1].role).toBe('user')
+    expect(sanitized[1].content).toBe('Hello') // Or whatever dummy message content we decide
+    expect(sanitized[2].role).toBe('assistant')
+    expect(sanitized[2].content).toBe('Hello! How can I help you today?')
+    expect(sanitized[3].role).toBe('user')
+    expect(sanitized[3].content).toBe('Hi')
+  })
 })

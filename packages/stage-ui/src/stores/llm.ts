@@ -127,6 +127,14 @@ export function sanitizeMessages(messages: unknown[], options?: { vision?: boole
     }
   }
 
+  // Ensure strict alternating pattern (user/assistant) starting with user.
+  // If the first message in merged is an assistant message, we prepend a placeholder user message.
+  if (merged.length > 0 && merged[0].role === 'assistant') {
+    if (merged.length > 1 || merged.some(m => m.role === 'user')) {
+      merged.unshift({ role: 'user', content: 'Hello' } as Message)
+    }
+  }
+
   const result: Message[] = []
   if (combinedSystemContent) {
     result.push({ role: 'system', content: combinedSystemContent } as Message)

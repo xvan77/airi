@@ -6,6 +6,7 @@ import {
   ProviderSettingsContainer,
   ProviderSettingsLayout,
 } from '@proj-airi/stage-ui/components'
+import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -214,6 +215,10 @@ async function refreshState() {
       runnerStatus.value = status
       if (status.state === 'running') {
         providersStore.forceProviderConfigured(providerId)
+        const consciousnessStore = useConsciousnessStore()
+        if (status.activeModel && consciousnessStore.activeProvider === 'local-llm' && consciousnessStore.activeModel !== status.activeModel) {
+          consciousnessStore.activeModel = status.activeModel
+        }
       }
       if (status.downloadProgress !== undefined) {
         downloadProgress.value = status.downloadProgress
@@ -295,6 +300,14 @@ async function handleStartServer(filename: string) {
   try {
     await api.startServer({ modelId: filename })
     providersStore.forceProviderConfigured(providerId)
+
+    // Auto-select provider and model in consciousness store
+    const consciousnessStore = useConsciousnessStore()
+    consciousnessStore.activeProvider = 'local-llm'
+    if (consciousnessStore.activeModel !== filename) {
+      consciousnessStore.activeModel = filename
+    }
+
     await refreshState()
   }
   catch (err) {

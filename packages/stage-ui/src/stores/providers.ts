@@ -71,6 +71,7 @@ import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
 import { getKokoroAdapter } from '../libs/inference/adapters/kokoro'
+import { getDefinedProvider } from '../libs/providers'
 import { appLocalAudioSpeech } from '../libs/providers/providers/speech/app-local-audio-speech'
 import { appLocalAudioTranscription } from '../libs/providers/providers/transcription/app-local-audio-transcription'
 import { getDefaultKokoroModel, KOKORO_MODELS, kokoroModelsToModelInfo } from '../workers/kokoro/constants'
@@ -3340,6 +3341,15 @@ export const useProvidersStore = defineStore('providers', () => {
       return false
 
     const configObj = config as Record<string, any>
+    const def = getDefinedProvider(providerId)
+    if (def && def.validationRequiredWhen && !def.validationRequiredWhen(configObj)) {
+      return true
+    }
+
+    if (metadata.deployment === 'local') {
+      return true
+    }
+
     const hasKey = !!configObj.apiKey?.trim()
     const hasAwsKey = !!configObj.accessKeyId?.trim() && !!configObj.secretAccessKey?.trim()
     const defaultUrl = (metadata.defaultOptions?.() as any)?.baseUrl || ''
@@ -3422,6 +3432,7 @@ export const useProvidersStore = defineStore('providers', () => {
     disposeProviderInstance,
     resetProviderSettings,
     forceProviderConfigured,
+    isProviderConfigured,
     availableProvidersMetadata,
     allChatProvidersMetadata,
     allAudioSpeechProvidersMetadata,
