@@ -136,6 +136,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
   }
 
   const sending = ref(false)
+  const loadingStatus = ref<string>('')
   const pendingQueuedSends = ref<QueuedSend[]>([])
 
   const sendQueue = createQueue<QueuedSend>({
@@ -183,6 +184,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
     if (!options.triggerOnly && !sendingMessage && !options.attachments?.length)
       return
+
+    loadingStatus.value = 'stage.chat.loading_states.preparing'
 
     chatSession.ensureSession(sessionId)
 
@@ -241,13 +244,33 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     let rawFullText = ''
     try {
       sending.value = true
+      loadingStatus.value = 'stage.chat.loading_states.connecting'
+      let turnSpeechContent = ''
+      let turnRawContent = ''
+      const bridgedTurnsHistory: { content: string, rawContent?: string, tool_calls?: any[], tool_results: any[] }[] = []
       let effectiveModel = options.model || activeModel.value
       let effectiveProviderId = typeof options.chatProvider === 'string'
         ? options.chatProvider
         : activeProvider.value
-      let effectiveProvider: any = typeof options.chatProvider === 'string'
-        ? await providersStore.getProviderInstance(options.chatProvider)
-        : (options.chatProvider || await providersStore.getProviderInstance(activeProvider.value))
+
+      if (!effectiveProviderId || effectiveProviderId === 'chat-noop' || !effectiveModel || !providersStore.isProviderConfigured(effectiveProviderId)) {
+        throw new Error('NO_LLM_PROVIDER_DETECTED')
+      }
+
+      let effectiveProvider: any
+      try {
+        effectiveProvider = typeof options.chatProvider === 'string'
+          ? await providersStore.getProviderInstance(options.chatProvider)
+          : (options.chatProvider || await providersStore.getProviderInstance(activeProvider.value))
+        if (!effectiveProvider) {
+          throw new Error('NO_LLM_PROVIDER_DETECTED')
+        }
+      }
+      catch (err) {
+        console.error('[ChatDebug] Failed to resolve active provider instance:', err)
+        throw new Error('NO_LLM_PROVIDER_DETECTED')
+      }
+
       let effectiveConfig = options.providerConfig
       let effectiveTools = options.tools || toolsResolver.value
 
@@ -260,7 +283,19 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         })
         effectiveModel = visionStore.activeModel
         effectiveProviderId = visionStore.activeProvider
-        effectiveProvider = await providersStore.getProviderInstance(visionStore.activeProvider)
+        if (!effectiveProviderId || effectiveProviderId === 'chat-noop' || !effectiveModel || !providersStore.isProviderConfigured(effectiveProviderId)) {
+          throw new Error('NO_LLM_PROVIDER_DETECTED')
+        }
+        try {
+          effectiveProvider = await providersStore.getProviderInstance(visionStore.activeProvider)
+          if (!effectiveProvider) {
+            throw new Error('NO_LLM_PROVIDER_DETECTED')
+          }
+        }
+        catch (err) {
+          console.error('[ChatDebug] Failed to resolve vision provider instance:', err)
+          throw new Error('NO_LLM_PROVIDER_DETECTED')
+        }
         effectiveConfig = providersStore.getProviderConfig(visionStore.activeProvider)
         promptShimText = visionStore.promptShim || ''
         effectiveTools = undefined // Vision models often do not support tools, and we only need them for direct reply
@@ -324,6 +359,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       // Trigger now only if in user-centric mode. Assistant-centric runs after response is complete.
       const autonomousTarget = activeCard.value?.extensions?.airi?.artistry?.autonomousTarget || 'user'
       if (autonomousTarget === 'user' && !options.triggerOnly) {
+        loadingStatus.value = 'stage.chat.loading_states.artist'
         void artistryAutonomousStore.runArtistTask(sendingMessage, sessionMessagesForSend as any)
       }
       // --------------------------------
@@ -339,6 +375,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       // as a system message right before the user's latest input.
       if (activeCard.value?.extensions?.airi?.groundingEnabled) {
         chatLog('Grounding active. Syncing sensors...')
+        loadingStatus.value = 'stage.chat.loading_states.syncing'
         await proactivityStore.updateSensors()
 
         const sensorPayload = proactivityStore.sensorPayload
@@ -394,6 +431,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         onText: async (text) => {
           if (shouldAbort())
             return
+
+          loadingStatus.value = ''
 
           categorizer.consume(text)
 
@@ -480,128 +519,6 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         }
       }
 
-      async function tryBridgeMarker(input: string): Promise<{ matchedText: string, bridged: boolean }> {
-        chatLog('tryBridgeMarker evaluating input (partial):', input.trim().substring(0, 100))
-        // Supports: <|tool:args|>, [call_tool:tool, args], and hybrid <|tool:args</tool_call>
-        // Use non-greedy match and NO start-of-line anchor to allow finding markers within blocks.
-        const match = input.match(/<\|([\w-]+):([^|]*?)(?:\|>|<\/tool_call>|$)/)
-          || input.match(/\[call_tool:([\w-]+),\s*([^\]]*?)(?:\]|<\/tool_call>|$)/)
-          || input.match(/<tool_call>([\w-]+)\((.*?)\)<\/tool_call>/s)
-          || input.match(/<tool_call>(\{.*?\})<\/tool_call>/s)
-
-        if (!match)
-          return { matchedText: '', bridged: false }
-
-        const matchedMarkerText = match[0]
-        let toolName: string
-        let argsRaw: string
-
-        // check if it's the JSON flavor: <tool_call>{"name": "...", "arguments": "..."}</tool_call>
-        const potentialJson = (match[1] || '').trim()
-        if (potentialJson.startsWith('{')) {
-          try {
-            const parsed = tryParseLenientJson(potentialJson)
-            toolName = parsed.name
-            argsRaw = typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments)
-          }
-          catch (e) {
-            console.error('[ChatDebug] Failed to parse JSON tool call tag:', e)
-            return { matchedText: '', bridged: false }
-          }
-        }
-        else {
-          toolName = match[1]
-          argsRaw = match[2] || ''
-        }
-
-        const resolvedTools = typeof options.tools === 'function' ? await options.tools() : options.tools
-        const tool = resolvedTools?.find(t => (t.function?.name || (t as any).name) === toolName)
-
-        if (!tool) {
-          chatLog(`[ChatDebug] Marker found but tool not executable/found in this context: ${toolName}`)
-          return { matchedText: matchedMarkerText, bridged: false }
-        }
-
-        chatLog(`Bridging marker to tool call: ${toolName}`)
-        try {
-          const args: Record<string, any> = {}
-          // NOTICE: We allow unclosed quotes at the end of the string (?:'|$) to handle truncation gracefully.
-          // We use a non-capturing group (?:...) for the alternatives to keep the group indexes for key/valDouble/etc consistent.
-          const kvRegex = /(?:^|[, \n\t]+)\s*([\w-]+)\s*[:=]\s*(?:"([^"]*)(?:"|$)|'([^']*)(?:'|$)|(\d+(?:\.\d+)?)|(true|false)|(\{.*(?:\}|$)|\[.*(?:\]|$)))/g
-          let kvMatch
-
-          while ((kvMatch = kvRegex.exec(argsRaw)) !== null) {
-            const [, key, valDouble, valSingle, valNum, valBool, valComplex] = kvMatch
-            if (valDouble !== undefined) {
-              args[key] = valDouble
-            }
-            else if (valSingle !== undefined) {
-              args[key] = valSingle
-            }
-            else if (valNum !== undefined) {
-              args[key] = Number.parseFloat(valNum)
-            }
-            else if (valBool !== undefined) {
-              args[key] = valBool === 'true'
-            }
-            else if (valComplex !== undefined) {
-              try {
-                // Try to sanitize and parse complex JSON-like objects
-                const sanitized = valComplex
-                  .replace(/'/g, '"')
-                  .trim()
-
-                // If it looks truncated (starts with { but doesn't end with }), try to close it
-                let toParse = sanitized
-                if (toParse.startsWith('{') && !toParse.endsWith('}'))
-                  toParse += '}'
-                if (toParse.startsWith('[') && !toParse.endsWith(']'))
-                  toParse += ']'
-
-                args[key] = JSON.parse(toParse)
-              }
-              catch {
-                args[key] = valComplex
-              }
-            }
-          }
-
-          if (Object.keys(args).length === 0) {
-            try {
-              let cleaned = argsRaw.trim().replace(/^\{/, '').replace(/\}$/, '').replace(/(\w+):/g, '"$1":').replace(/'/g, '"')
-              if (argsRaw.trim().startsWith('{') && !cleaned.endsWith('}'))
-                cleaned += '"}' // Guessing it ended inside a string
-              Object.assign(args, JSON.parse(`{${cleaned}}`))
-            }
-            catch {}
-          }
-
-          if (Object.keys(args).length > 0) {
-            toolCallQueue.enqueue({
-              type: 'tool-call',
-              toolCall: {
-                id: `bridge-${nanoid()}`,
-                type: 'function',
-                function: {
-                  name: toolName,
-                  arguments: JSON.stringify(args),
-                },
-              } as any,
-              bridged: true,
-            })
-
-            // Strip the EXPLICIT matched marker text (not the whole input) from the raw accumulator
-            fullText = fullText.replace(matchedMarkerText, '')
-
-            return { matchedText: matchedMarkerText, bridged: true }
-          }
-        }
-        catch (err) {
-          console.error('[ChatDebug] Failed to bridge marker:', err)
-        }
-        return { matchedText: matchedMarkerText, bridged: false }
-      }
-
       const toolCallQueue = createQueue<ChatSlices>({
         handlers: [
           async (ctx) => {
@@ -675,9 +592,127 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         ],
       })
 
-      let turnSpeechContent = ''
-      let turnRawContent = ''
-      const bridgedTurnsHistory: { content: string, rawContent?: string, tool_calls?: any[], tool_results: any[] }[] = []
+      async function tryBridgeMarker(input: string): Promise<{ matchedText: string, bridged: boolean }> {
+        chatLog('tryBridgeMarker evaluating input (partial):', input.trim().substring(0, 100))
+        // Supports: <|tool:args|>, [call_tool:tool, args], and hybrid <|tool:args</tool_call>
+        // Use non-greedy match and NO start-of-line anchor to allow finding markers within blocks.
+        const match = input.match(/<\|([\w-]+):([^|]*?)(?:\|>|<\/tool_call>|$)/)
+          || input.match(/\[call_tool:([\w-]+),([^\]]*?)(?:\]|<\/tool_call>|$)/)
+          || input.match(/<tool_call>([\w-]+)\((.*?)\)<\/tool_call>/s)
+          || input.match(/<tool_call>(\{.*?\})<\/tool_call>/s)
+
+        if (!match)
+          return { matchedText: '', bridged: false }
+
+        const matchedMarkerText = match[0]
+        let toolName: string
+        let argsRaw: string
+
+        // check if it's the JSON flavor: <tool_call>{"name": "...", "arguments": "..."}</tool_call>
+        const potentialJson = (match[1] || '').trim()
+        if (potentialJson.startsWith('{')) {
+          try {
+            const parsed = tryParseLenientJson(potentialJson)
+            toolName = parsed.name
+            argsRaw = typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments)
+          }
+          catch (e) {
+            console.error('[ChatDebug] Failed to parse JSON tool call tag:', e)
+            return { matchedText: '', bridged: false }
+          }
+        }
+        else {
+          toolName = match[1]
+          argsRaw = (match[2] || '').trim()
+        }
+
+        const resolvedTools = typeof options.tools === 'function' ? await options.tools() : options.tools
+        const tool = resolvedTools?.find(t => (t.function?.name || (t as any).name) === toolName)
+
+        if (!tool) {
+          chatLog(`[ChatDebug] Marker found but tool not executable/found in this context: ${toolName}`)
+          return { matchedText: matchedMarkerText, bridged: false }
+        }
+
+        chatLog(`Bridging marker to tool call: ${toolName}`)
+        try {
+          const args: Record<string, any> = {}
+          // NOTICE: We allow unclosed quotes at the end of the string (?:'|$) to handle truncation gracefully.
+          // We use a non-capturing group (?:...) for the alternatives to keep the group indexes for key/valDouble/etc consistent.
+          const kvRegex = /(?:^|[,\s]+)([\w-]+)\s*[:=]\s*(?:"([^"]*)(?:"|$)|'([^']*)(?:'|$)|(\d+(?:\.\d+)?)|(true|false)|(\{.*(?:\}|$)|\[.*(?:\]|$)))/g
+          let kvMatch
+
+          while ((kvMatch = kvRegex.exec(argsRaw)) !== null) {
+            const [, key, valDouble, valSingle, valNum, valBool, valComplex] = kvMatch
+            if (valDouble !== undefined) {
+              args[key] = valDouble
+            }
+            else if (valSingle !== undefined) {
+              args[key] = valSingle
+            }
+            else if (valNum !== undefined) {
+              args[key] = Number.parseFloat(valNum)
+            }
+            else if (valBool !== undefined) {
+              args[key] = valBool === 'true'
+            }
+            else if (valComplex !== undefined) {
+              try {
+                // Try to sanitize and parse complex JSON-like objects
+                const sanitized = valComplex
+                  .replace(/'/g, '"')
+                  .trim()
+
+                // If it looks truncated (starts with { but doesn't end with }), try to close it
+                let toParse = sanitized
+                if (toParse.startsWith('{') && !toParse.endsWith('}'))
+                  toParse += '}'
+                if (toParse.startsWith('[') && !toParse.endsWith(']'))
+                  toParse += ']'
+
+                args[key] = JSON.parse(toParse)
+              }
+              catch {
+                args[key] = valComplex
+              }
+            }
+          }
+
+          if (Object.keys(args).length === 0) {
+            try {
+              let cleaned = argsRaw.trim().replace(/^\{/, '').replace(/\}$/, '').replace(/(\w+):/g, '"$1":').replace(/'/g, '"')
+              if (argsRaw.trim().startsWith('{') && !cleaned.endsWith('}'))
+                cleaned += '"}' // Guessing it ended inside a string
+              Object.assign(args, JSON.parse(`{${cleaned}}`))
+            }
+            catch {}
+          }
+
+          if (Object.keys(args).length > 0) {
+            toolCallQueue.enqueue({
+              type: 'tool-call',
+              toolCall: {
+                id: `bridge-${nanoid()}`,
+                type: 'function',
+                function: {
+                  name: toolName,
+                  arguments: JSON.stringify(args),
+                },
+              } as any,
+              bridged: true,
+            })
+
+            // Strip the EXPLICIT matched marker text (not the whole input) from the raw accumulator
+            fullText = fullText.replace(matchedMarkerText, '')
+
+            return { matchedText: matchedMarkerText, bridged: true }
+          }
+        }
+        catch (err) {
+          console.error('[ChatDebug] Failed to bridge marker:', err)
+        }
+        return { matchedText: matchedMarkerText, bridged: false }
+      }
 
       while (bridgedSteps < 5) {
         bridgedSteps++
@@ -914,6 +949,9 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
               }
               case 'reasoning-delta': {
                 const healedText = healMozibake(event.text)
+                if (loadingStatus.value !== 'stage.chat.loading_states.thinking') {
+                  loadingStatus.value = 'stage.chat.loading_states.thinking'
+                }
                 if (!(buildingMessage as any).categorization) {
                   ;(buildingMessage as any).categorization = { speech: '', reasoning: '' }
                 }
@@ -929,11 +967,12 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
                   sessionId,
                 })
                 break
-              case 'usage':
+              case 'usage': {
                 chatLog('usage report:', event.usage)
                 const liveSession = useLiveSessionStore()
                 liveSession.recordInferenceUsage(event.usage.total_tokens || event.usage.totalTokenCount || event.usage.totalUsage || 0)
                 break
+              }
               case 'error':
                 throw event.error ?? new Error('Stream error')
             }
@@ -1104,6 +1143,48 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         errorMessage = String(error)
       }
 
+      const isNetworkError = errorMessage.toLowerCase().includes('failed to fetch')
+        || errorMessage.toLowerCase().includes('fetch failed')
+        || errorMessage.toLowerCase().includes('connection refused')
+        || errorMessage.toLowerCase().includes('err_connection_refused')
+
+      if (error?.message === 'NO_LLM_PROVIDER_DETECTED' || isNetworkError) {
+        const title = error?.message === 'NO_LLM_PROVIDER_DETECTED'
+          ? 'No LLM provider detected'
+          : 'Failed to reach LLM provider'
+        const description = error?.message === 'NO_LLM_PROVIDER_DETECTED'
+          ? 'Would you like to set one?'
+          : 'No active LLM provider could be reached (Failed to fetch). Please make sure your local LLM server is running or that your provider settings are correct.'
+
+        const fullErrorDisplay = `⚠️ **${title}**\n\n${description}\n\n[Go to Consciousness Settings](#/settings/modules/consciousness)`
+
+        buildingMessage.content += `${buildingMessage.content ? '\n\n' : ''}${fullErrorDisplay}`
+        buildingMessage.slices.push({
+          type: 'text',
+          text: fullErrorDisplay,
+        })
+
+        updateUI()
+
+        if (!isStaleGeneration()) {
+          const currentMessages = chatSession.getSessionMessages(sessionId)
+          chatSession.setSessionMessages(sessionId, [...currentMessages, { ...toRaw(buildingMessage) }])
+        }
+
+        try {
+          await hooks.emitChatTurnCompleteHooks({
+            output: { ...buildingMessage, error: { message: error?.message || 'FETCH_ERROR', detail: technicalDetail } } as any,
+            outputText: String(buildingMessage.content || ''),
+            toolCalls: [],
+          } as any, streamingMessageContext)
+        }
+        catch (hookErr) {
+          console.error('Error in turn-complete hooks (error path):', hookErr)
+        }
+
+        throw error
+      }
+
       const fullErrorDisplay = `⚠️ **Chat Error**\n\n${errorMessage}${technicalDetail ? `\n\n**Technical Details**:\n\`\`\`json\n${technicalDetail}\n\`\`\`` : ''}`
 
       // Display in UI: Update content for history AND slices for immediate rendering
@@ -1140,6 +1221,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       if (streamIdleTimeout)
         clearTimeout(streamIdleTimeout)
       sending.value = false
+      loadingStatus.value = ''
     }
   }
 
@@ -1282,6 +1364,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
   return {
     sending,
+    loadingStatus,
     streamingMessage,
 
     isMainWindow,

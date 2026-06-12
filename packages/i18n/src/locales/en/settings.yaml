@@ -17,6 +17,9 @@ dialogs:
       easy:
         title: 'Easy Setup'
         description: 'Get started instantly with our recommended cloud providers.'
+      local:
+        title: 'Local Setup'
+        description: 'Use models downloaded to your machine. No need for signing up or downloading external programs.'
       custom:
         title: 'Advanced Setup'
         description: 'I want to configure my own local or custom providers.'

@@ -7,7 +7,7 @@ import {
   ProviderSettingsLayout,
 } from '@proj-airi/stage-ui/components'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 // Inlined Eventa contracts from eventa.ts
@@ -24,8 +24,15 @@ const providerId = 'local-llm'
 const router = useRouter()
 const providersStore = useProvidersStore()
 
-// Recommended catalog
 const baseCatalog = [
+  {
+    id: 'gemma-3-270m',
+    name: 'Gemma 3 270M IT',
+    description: 'Extremely lightweight and fast Google Gemma 3 model. Perfect for quick testing.',
+    repo: 'unsloth/gemma-3-270m-it-GGUF',
+    filename: 'gemma-3-270m-it-Q5_K_M.gguf',
+    size: '0.24 GB',
+  },
   {
     id: 'qwen-1.5b',
     name: 'Qwen 2.5 1.5B (Recommended)',
@@ -183,6 +190,7 @@ const runnerStatus = ref<any>({
 const downloadedModels = ref<string[]>([])
 const downloadProgress = ref<any>(null)
 const isCancelling = ref(false)
+const isStartingServer = ref(false)
 let statusPollInterval: any = null
 
 // Setup IPC context
@@ -290,15 +298,19 @@ async function handleDelete(filename: string) {
 // Start server handler
 async function handleStartServer(filename: string) {
   const api = getInvokers()
-  if (!api)
+  if (!api || isStartingServer.value)
     return
   try {
+    isStartingServer.value = true
     await api.startServer({ modelId: filename })
     providersStore.forceProviderConfigured(providerId)
     await refreshState()
   }
   catch (err) {
     console.error('[Local LLM Settings] Start server error:', err)
+  }
+  finally {
+    isStartingServer.value = false
   }
 }
 
@@ -308,6 +320,13 @@ async function handleStopServer() {
   if (!api)
     return
   try {
+    // Immediately clear local models and mark unconfigured in store
+    const runtimeState = providersStore.providerRuntimeState[providerId]
+    if (runtimeState) {
+      runtimeState.models = []
+      runtimeState.isConfigured = false
+    }
+
     await api.stopServer()
     await refreshState()
   }
@@ -330,6 +349,13 @@ function onProgress(event: any) {
     }, delay)
   }
 }
+
+watch(() => runnerStatus.value?.state, async (newState, oldState) => {
+  if (newState === 'running' && oldState !== 'running') {
+    await providersStore.fetchModelsForProvider(providerId)
+    await providersStore.validateProvider(providerId, { force: true })
+  }
+})
 
 onMounted(() => {
   providersStore.initializeProvider(providerId)
@@ -462,7 +488,8 @@ onUnmounted(() => {
                 <div v-else :class="['flex gap-2']">
                   <button
                     v-if="runnerStatus.activeModel !== model.filename"
-                    :class="['px-3.5 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-semibold transition']"
+                    :class="['px-3.5 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-semibold transition', (isStartingServer || runnerStatus.state === 'starting') && 'opacity-50 cursor-not-allowed']"
+                    :disabled="isStartingServer || runnerStatus.state === 'starting'"
                     @click="handleStartServer(model.filename)"
                   >
                     Load & Run

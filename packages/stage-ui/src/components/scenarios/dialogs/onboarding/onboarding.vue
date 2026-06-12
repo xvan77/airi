@@ -8,11 +8,16 @@ import type {
   ProviderConfigData,
 } from './types'
 
+import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
+import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import StepCharacterSelection from './step-character-selection.vue'
 import StepEasySetup from './step-easy-setup.vue'
+import StepLocalLlmSetup from './step-local-llm-setup.vue'
 import StepModeSelection from './step-mode-selection.vue'
 import StepModelSelection from './step-model-selection.vue'
 import StepProviderConfiguration from './step-provider-configuration.vue'
@@ -37,7 +42,10 @@ const emit = defineEmits<Emits>()
 const step = ref(0)
 const direction = ref<'next' | 'previous'>('next')
 const pendingProviderConfig = ref<ProviderConfigData | null>(null)
-const onboardingMode = ref<'easy' | 'custom'>('easy')
+const onboardingMode = ref<'easy' | 'custom' | 'local'>('easy')
+const router = useRouter()
+
+const electronOpenSettings = defineInvokeEventa<void, { route?: string }>('eventa:invoke:electron:windows:settings:open')
 
 const providersStore = useProvidersStore()
 const { providers, allChatProvidersMetadata, addedProviders } = storeToRefs(providersStore)
@@ -213,7 +221,7 @@ const allSteps = computed<OnboardingStep[]>(() => {
       id: 'mode-selection',
       component: StepModeSelection,
       props: () => ({
-        onSelectMode: (mode: 'easy' | 'custom') => {
+        onSelectMode: (mode: 'easy' | 'custom' | 'local') => {
           onboardingMode.value = mode
         },
       }),
@@ -228,6 +236,12 @@ const allSteps = computed<OnboardingStep[]>(() => {
         await configureEasyMode(data)
         return true
       },
+    })
+  }
+  else if (onboardingMode.value === 'local') {
+    steps.push({
+      id: 'local-llm-setup',
+      component: StepLocalLlmSetup,
     })
   }
   else if (onboardingMode.value === 'custom') {
@@ -280,6 +294,27 @@ const allSteps = computed<OnboardingStep[]>(() => {
       },
     }),
     beforeNext: async () => {
+      if (onboardingMode.value === 'local') {
+        providersStore.forceProviderConfigured('local-llm')
+        consciousnessStore.activeProvider = 'local-llm'
+
+        if (isStageTamagotchi()) {
+          const context = getElectronEventaContext()
+          if (context) {
+            try {
+              const openSettings = defineInvoke(context, electronOpenSettings)
+              void openSettings({ route: '/settings/providers/chat/local-llm' })
+            }
+            catch (err) {
+              console.error('[Onboarding] Failed to open local LLM settings window:', err)
+            }
+          }
+        }
+        else {
+          router.push('/settings/providers/chat/local-llm')
+        }
+      }
+
       await airiCardStore.seedDefaults(selectedCharacterId.value)
       await airiCardStore.activateCard(selectedCharacterId.value)
       return true

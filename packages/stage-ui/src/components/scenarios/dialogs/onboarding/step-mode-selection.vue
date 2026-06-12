@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OnboardingStepNextHandler, OnboardingStepPrevHandler } from './types'
 
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { Button } from '@proj-airi/ui'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -11,12 +12,12 @@ interface Props {
   onNext: OnboardingStepNextHandler
   onPrevious: OnboardingStepPrevHandler
   // We'll pass back the selection to the parent
-  onSelectMode?: (mode: 'easy' | 'custom') => void
+  onSelectMode?: (mode: 'easy' | 'custom' | 'local') => void
 }
 
 const props = defineProps<Props>()
 const { t } = useI18n()
-const selectedMode = ref<'easy' | 'custom'>('easy')
+const selectedMode = ref<'easy' | 'custom' | 'local'>('easy')
 
 function handleNext() {
   if (props.onSelectMode) {
@@ -54,7 +55,10 @@ function handleNext() {
         :enter="{ opacity: 1, y: 0 }"
         :duration="500"
         :delay="100"
-        class="grid grid-cols-1 gap-4 sm:grid-cols-2"
+        :class="[
+          'grid grid-cols-1 gap-4',
+          isStageTamagotchi() ? 'sm:grid-cols-3' : 'sm:grid-cols-2',
+        ]"
       >
         <div relative @click="selectedMode = 'easy'">
           <div pointer-events-none absolute right-4 top-4 z-10>
@@ -68,6 +72,20 @@ function handleNext() {
             :title="t('settings.dialogs.onboarding.modeSelection.easy.title')"
             :description="t('settings.dialogs.onboarding.modeSelection.easy.description')"
             beginner-recommended
+          />
+        </div>
+
+        <div v-if="isStageTamagotchi()" relative @click="selectedMode = 'local'">
+          <div pointer-events-none absolute right-4 top-4 z-10>
+            <div class="i-solar:cpu-bold-duotone h-6 w-6 text-amber-500 opacity-50" />
+          </div>
+          <RadioCardDetail
+            id="local"
+            v-model="selectedMode"
+            name="onboarding-mode"
+            value="local"
+            :title="t('settings.dialogs.onboarding.modeSelection.local.title')"
+            :description="t('settings.dialogs.onboarding.modeSelection.local.description')"
           />
         </div>
 

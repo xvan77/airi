@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { Buffer } from 'node:buffer'
-import { execFile, spawn } from 'node:child_process'
+import { exec, execFile, spawn } from 'node:child_process'
 import { createWriteStream, existsSync, promises as fs } from 'node:fs'
 import { promisify } from 'node:util'
 
@@ -66,6 +66,7 @@ function getBinaryPath(): string {
 
 // Global state
 let serverProcess: any = null
+let isStartingServer = false
 let currentStatusState: LocalLlmServerStatus['state'] = 'idle'
 let currentActiveModel: string | null = null
 let currentDownloadAbortController: AbortController | null = null
@@ -73,6 +74,15 @@ let lastError: string | undefined
 let currentDownloadProgress: LocalLlmDownloadProgress | null = null
 
 const execFileAsync = promisify(execFile)
+
+function killAllZombies(): Promise<void> {
+  return new Promise((resolve) => {
+    const cmd = isWindows ? 'taskkill /f /im llama-server.exe' : 'killall llama-server'
+    exec(cmd, () => {
+      resolve()
+    })
+  })
+}
 
 async function getBestDeviceIndex(): Promise<string | null> {
   const binaryPath = getBinaryPath()
@@ -322,7 +332,7 @@ export function createLocalLlmService(params: { context: ReturnType<typeof creat
 
       // 2. Download the actual model file
       currentStatusState = 'downloading_binary' // Reuse state or keep reporting downloading
-      const downloadUrl = `https://huggingface.co/${payload.repo}/resolve/main/${payload.filename}`
+      const downloadUrl = `https://hf-mirror.com/${payload.repo}/resolve/main/${payload.filename}`
 
       const res = await fetch(downloadUrl, { signal })
       if (!res.ok || !res.body) {
@@ -441,129 +451,141 @@ export function createLocalLlmService(params: { context: ReturnType<typeof creat
       throw new Error('Model ID is required')
     }
 
-    if (serverProcess) {
-      // Stop old server first
-      serverProcess.kill()
-      serverProcess = null
+    if (isStartingServer) {
+      console.warn('[Local LLM Service] Start server already in progress. Ignoring request.')
+      return
     }
 
-    currentStatusState = 'starting'
-    currentActiveModel = payload.modelId
-    const modelPath = path.join(MODELS_DIR, payload.modelId)
+    isStartingServer = true
+    try {
+      if (serverProcess) {
+        // Stop old server first
+        serverProcess.kill()
+        serverProcess = null
+      }
+      await killAllZombies()
 
-    if (!existsSync(modelPath)) {
-      currentStatusState = 'error'
-      lastError = `Model file not found: ${payload.modelId}`
-      throw new Error(lastError)
-    }
+      currentStatusState = 'starting'
+      currentActiveModel = payload.modelId
+      const modelPath = path.join(MODELS_DIR, payload.modelId)
 
-    const binaryPath = getBinaryPath()
-    if (!existsSync(binaryPath)) {
-      // If binary is missing, auto-download it!
-      currentStatusState = 'downloading_binary'
-      emitProgress({
-        modelId: payload.modelId,
-        status: 'downloading',
-        bytesDownloaded: 0,
-        totalBytes: 100,
-        progress: 10,
-        speedMb: 0,
-      })
+      if (!existsSync(modelPath)) {
+        currentStatusState = 'error'
+        lastError = `Model file not found: ${payload.modelId}`
+        throw new Error(lastError)
+      }
 
-      try {
-        await ensureBinary(undefined, (downloaded, total) => {
-          emitProgress({
-            modelId: payload.modelId,
-            status: 'downloading',
-            bytesDownloaded: downloaded,
-            totalBytes: total || downloaded,
-            progress: total ? Math.round((downloaded / total) * 90) : 50,
-            speedMb: 0,
-          })
-        })
+      const binaryPath = getBinaryPath()
+      if (!existsSync(binaryPath)) {
+        // If binary is missing, auto-download it!
+        currentStatusState = 'downloading_binary'
         emitProgress({
           modelId: payload.modelId,
-          status: 'completed',
-          bytesDownloaded: 100,
+          status: 'downloading',
+          bytesDownloaded: 0,
           totalBytes: 100,
-          progress: 100,
+          progress: 10,
           speedMb: 0,
         })
-        currentStatusState = 'idle'
+
+        try {
+          await ensureBinary(undefined, (downloaded, total) => {
+            emitProgress({
+              modelId: payload.modelId,
+              status: 'downloading',
+              bytesDownloaded: downloaded,
+              totalBytes: total || downloaded,
+              progress: total ? Math.round((downloaded / total) * 90) : 50,
+              speedMb: 0,
+            })
+          })
+          emitProgress({
+            modelId: payload.modelId,
+            status: 'completed',
+            bytesDownloaded: 100,
+            totalBytes: 100,
+            progress: 100,
+            speedMb: 0,
+          })
+          currentStatusState = 'idle'
+        }
+        catch (err: any) {
+          currentStatusState = 'error'
+          lastError = `Failed to download engine binary: ${err.message}`
+          throw err
+        }
       }
-      catch (err: any) {
+
+      // Double check ggml.dll on Windows
+      const ggmlPath = path.join(BIN_DIR, 'ggml.dll')
+      if (isWindows && !existsSync(ggmlPath) && existsSync(binaryPath)) {
+        await fs.unlink(binaryPath).catch(() => {})
         currentStatusState = 'error'
-        lastError = `Failed to download engine binary: ${err.message}`
-        throw err
+        lastError = 'Missing companion engine files. Please run the model again to repair the server installation.'
+        throw new Error(lastError)
       }
-    }
 
-    // Double check ggml.dll on Windows
-    const ggmlPath = path.join(BIN_DIR, 'ggml.dll')
-    if (isWindows && !existsSync(ggmlPath) && existsSync(binaryPath)) {
-      await fs.unlink(binaryPath).catch(() => {})
-      currentStatusState = 'error'
-      lastError = 'Missing companion engine files. Please run the model again to repair the server installation.'
-      throw new Error(lastError)
-    }
-
-    const bestDevice = await getBestDeviceIndex()
-    const args = [
-      '--model',
-      modelPath,
-      '--port',
-      String(PORT),
-      '--ctx-size',
-      '2048',
-      '--n-gpu-layers',
-      '99',
-    ]
-    if (bestDevice !== null) {
-      args.push('--device', String(bestDevice))
-    }
-
-    console.log(`[Local LLM Service] Spawning ${binaryPath} with args:`, args)
-    serverProcess = spawn(binaryPath, args, {
-      cwd: BIN_DIR,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    serverProcess.stdout.on('data', (data: Buffer) => {
-      const line = data.toString()
-      console.log(`[Local LLM stdout] ${line.trim()}`)
-      if (line.includes('HTTP server listening')) {
-        currentStatusState = 'running'
-        currentActiveModel = payload.modelId
-        lastError = undefined
+      const bestDevice = await getBestDeviceIndex()
+      const args = [
+        '--model',
+        modelPath,
+        '--port',
+        String(PORT),
+        '--ctx-size',
+        '2048',
+        '--n-gpu-layers',
+        '99',
+      ]
+      if (bestDevice !== null) {
+        args.push('--device', String(bestDevice))
       }
-    })
 
-    serverProcess.stderr.on('data', (data: Buffer) => {
-      const line = data.toString()
-      console.warn(`[Local LLM stderr] ${line.trim()}`)
-    })
+      console.log(`[Local LLM Service] Spawning ${binaryPath} with args:`, args)
+      serverProcess = spawn(binaryPath, args, {
+        cwd: BIN_DIR,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
 
-    serverProcess.on('error', (err: Error) => {
-      console.error('[Local LLM process error]', err)
-      currentStatusState = 'error'
-      lastError = err.message
-      currentActiveModel = null
-    })
+      serverProcess.stdout.on('data', (data: Buffer) => {
+        const line = data.toString()
+        console.log(`[Local LLM stdout] ${line.trim()}`)
+        if (line.includes('HTTP server listening')) {
+          currentStatusState = 'running'
+          currentActiveModel = payload.modelId
+          lastError = undefined
+        }
+      })
 
-    serverProcess.on('exit', (code: number | null) => {
-      console.log(`[Local LLM exit] Process exited with code ${code}`)
-      serverProcess = null
-      currentStatusState = 'stopped'
-      currentActiveModel = null
-    })
+      serverProcess.stderr.on('data', (data: Buffer) => {
+        const line = data.toString()
+        console.warn(`[Local LLM stderr] ${line.trim()}`)
+      })
 
-    // Timeout check: if not running after 10 seconds, set status as error
-    setTimeout(() => {
-      if (currentStatusState === 'starting') {
-        currentStatusState = 'running' // Sometimes llama.cpp outputs to stderr only, assume running if alive
-        currentActiveModel = payload.modelId
-      }
-    }, 8000)
+      serverProcess.on('error', (err: Error) => {
+        console.error('[Local LLM process error]', err)
+        currentStatusState = 'error'
+        lastError = err.message
+        currentActiveModel = null
+      })
+
+      serverProcess.on('exit', (code: number | null) => {
+        console.log(`[Local LLM exit] Process exited with code ${code}`)
+        serverProcess = null
+        currentStatusState = 'stopped'
+        currentActiveModel = null
+      })
+
+      // Timeout check: if not running after 10 seconds, set status as error
+      setTimeout(() => {
+        if (currentStatusState === 'starting') {
+          currentStatusState = 'running' // Sometimes llama.cpp outputs to stderr only, assume running if alive
+          currentActiveModel = payload.modelId
+        }
+      }, 8000)
+    }
+    finally {
+      isStartingServer = false
+    }
   })
 
   // Stop the server
@@ -572,6 +594,7 @@ export function createLocalLlmService(params: { context: ReturnType<typeof creat
       serverProcess.kill()
       serverProcess = null
     }
+    await killAllZombies()
     currentStatusState = 'stopped'
     currentActiveModel = null
   })
@@ -583,5 +606,6 @@ export function createLocalLlmService(params: { context: ReturnType<typeof creat
       serverProcess.kill()
       serverProcess = null
     }
+    await killAllZombies()
   })
 }
