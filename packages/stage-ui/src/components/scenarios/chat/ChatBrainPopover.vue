@@ -109,10 +109,12 @@ const isStartingServer = ref(false)
 let localLlmPollInterval: any = null
 
 const isLlmActive = computed(() => {
+  if (!activeProvider.value || !activeModel.value)
+    return false
   if (activeProvider.value === 'local-llm') {
     return localLlmStatus.value?.state === 'running'
   }
-  return !!activeProvider.value && !!activeModel.value
+  return true
 })
 
 async function updateLocalLlmStatus() {
@@ -308,20 +310,27 @@ function handleGoToSettings() {
     <PopoverTrigger as-child>
       <button
         v-if="variant === 'mobile'"
-        class="w-fit flex items-center justify-center border-2 border-neutral-100/60 rounded-xl border-solid bg-neutral-50/70 p-2 backdrop-blur-md transition-all active:scale-95 dark:border-neutral-800/30 dark:bg-neutral-800/70"
-        :title="title"
+        class="w-fit flex items-center justify-center border-2 rounded-xl border-solid bg-neutral-50/70 p-2 backdrop-blur-md transition-all active:scale-95 dark:bg-neutral-800/70"
+        :class="[
+          !isLlmActive
+            ? 'border-red-500 text-red-500 dark:border-red-500/50 dark:text-red-400'
+            : 'border-neutral-100/60 dark:border-neutral-800/30 text-neutral-500 dark:text-neutral-400',
+        ]"
+        :title="!isLlmActive ? 'Select a Model & Provider (Required / Not connected)' : title"
       >
-        <div class="i-ph:brain-duotone size-5 text-neutral-500 dark:text-neutral-400" />
+        <div class="i-ph:brain-duotone size-5" />
       </button>
       <button
         v-else
         class="max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md p-2 outline-none transition-colors transition-transform active:scale-95"
-        bg="neutral-100 dark:neutral-800"
-        text="lg neutral-500 dark:neutral-400"
-        hover:text="primary-500 dark:primary-400"
-        :title="title"
+        :class="[
+          !isLlmActive
+            ? 'bg-red-500/10 text-red-500 hover:text-red-600 dark:bg-red-950/20 dark:text-red-400 dark:hover:text-red-300 ring-1 ring-red-500/30'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-primary-500 dark:hover:text-primary-400',
+        ]"
+        :title="!isLlmActive ? 'Select a Model & Provider (Required / Not connected)' : title"
       >
-        <div class="i-ph:brain-duotone" />
+        <div class="i-ph:brain-duotone text-lg" />
       </button>
     </PopoverTrigger>
 
