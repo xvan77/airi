@@ -410,7 +410,7 @@ export function useVRMClothInteraction() {
     updateTether(vrm)
   }
 
-  function updateTether(vrm: VRM) {
+  function updateTether(_vrm: VRM) {
     if (tetherLine.value) {
       tetherLine.value.visible = false
     }
