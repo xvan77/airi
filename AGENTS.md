@@ -2,6 +2,24 @@
 
 Concise but detailed reference for contributors working across the `moeru-ai/airi` monorepo. Improve code when you touch it; avoid one-off patterns.
 
+## Agent Orchestration Map
+
+### Agent: Minor-Worker
+- **Model**: Gemini 3.5 Flash
+- **Thinking Level**: Low
+- **Scope**: Minor tasks, file creation, CSS/UI tweaks, writing boilerplate, and running simple shell commands.
+
+### Agent: Deep-Thinker
+- **Model**: Gemini 3.5 Flash
+- **Thinking Level**: High
+- **Scope**: Important tasks, architectural decisions, complex multi-file debugging, algorithm design, and core logic migrations.
+
+### Low-High Collaboration Protocol
+To optimize speed, quality, and resource usage, follow this workflow:
+1. **Drafting (Minor-Worker)**: Start by asking the Minor-Worker (Low thinking level) to write draft proposals, mockups, or quick code adjustments.
+2. **Review (Deep-Thinker)**: Switch the model to Deep-Thinker (High thinking level) to review the proposed code/plan, verify architectural impact, identify bugs, and correct logic.
+3. **Execution (Minor-Worker)**: Switch back to Minor-Worker (Low thinking level) to actually apply the corrected changes, write boilerplate, and run simple commands.
+
 ## Tech Stack (by surface)
 
 - **Desktop (stage-tamagotchi)**: Electron, Vue, Vite, TypeScript, Pinia, VueUse, Eventa (IPC/RPC), UnoCSS, Vitest, ESLint.

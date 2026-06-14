@@ -9,6 +9,7 @@ import {
   ChatImagesPopover,
   ChatMemoryPopover,
   ChatSessionModal,
+  ChatSpeechPopover,
   JournalPreviewModal,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
@@ -710,6 +711,9 @@ watch(messageInput, (newVal) => {
 
       <!-- Model & Provider Selection -->
       <ChatBrainPopover />
+
+      <!-- Speech & Voice Selection -->
+      <ChatSpeechPopover />
 
       <!-- Memory & Context -->
       <ChatMemoryPopover
