@@ -389,15 +389,26 @@ if (typeof window !== 'undefined') {
 }
 
 async function playFunction(item: Parameters<Parameters<typeof createPlaybackManager<AudioBuffer>>[0]['play']>[0], signal: AbortSignal): Promise<void> {
-  if (!audioContext || !item.audio)
+  console.info('[Stage:TTS:Playback] playFunction started for item:', item.text?.slice(0, 60))
+  if (!audioContext) {
+    console.warn('[Stage:TTS:Playback] No audioContext available, skipping playback')
     return
+  }
+  if (!item.audio) {
+    console.warn('[Stage:TTS:Playback] No audio buffer found for item, skipping playback')
+    return
+  }
 
   // Ensure audio context is resumed (browsers suspend it by default until user interaction)
+  console.info('[Stage:TTS:Playback] Current AudioContext state:', audioContext.state)
   if (audioContext.state === 'suspended') {
     try {
+      console.info('[Stage:TTS:Playback] Attempting to resume AudioContext...')
       await audioContext.resume()
+      console.info('[Stage:TTS:Playback] AudioContext state after resume:', audioContext.state)
     }
-    catch {
+    catch (error) {
+      console.error('[Stage:TTS:Playback] Failed to resume AudioContext:', error)
       return
     }
   }
@@ -447,6 +458,7 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
     }
 
     const stopPlayback = () => {
+      console.info('[Stage:TTS:Playback] stopPlayback triggered (playback ended, stopped, or aborted)')
       try {
         source.stop()
         source.disconnect()
@@ -461,20 +473,24 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
     }
 
     if (signal.aborted) {
+      console.warn('[Stage:TTS:Playback] Playback aborted early via signal')
       stopPlayback()
       return
     }
 
     signal.addEventListener('abort', stopPlayback, { once: true })
     source.onended = () => {
+      console.info('[Stage:TTS:Playback] Audio source onended event received')
       signal.removeEventListener('abort', stopPlayback)
       stopPlayback()
     }
 
     try {
+      console.info('[Stage:TTS:Playback] Calling source.start(0)...')
       source.start(0)
     }
-    catch {
+    catch (error) {
+      console.error('[Stage:TTS:Playback] Exception during source.start(0):', error)
       stopPlayback()
     }
   })
@@ -605,23 +621,60 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
       : transformedText
 
     try {
+      if (import.meta.env.DEV)
+        console.info('[Stage:TTS] Calling generateSpeech with input:', input.slice(0, 50))
       const res = await generateSpeech({
         ...provider.speech(model, targetProviderConfig),
         input,
         voice: voice.id,
       })
+      if (import.meta.env.DEV)
+        console.info('[Stage:TTS] generateSpeech returned buffer, size:', res?.byteLength)
 
-      if (signal.aborted || !res || res.byteLength === 0)
+      if (signal.aborted) {
+        if (import.meta.env.DEV)
+          console.warn('[Stage:TTS] tts request aborted after generateSpeech')
         return null
+      }
+
+      if (!res || res.byteLength === 0) {
+        if (import.meta.env.DEV)
+          console.warn('[Stage:TTS] generateSpeech returned empty/null buffer')
+        return null
+      }
 
       // Tap into the audio stream for Discord Voice Notes
       // We slice() because decodeAudioData(res) will detach the original buffer.
       discordStore.addAudioToTurn(res.slice(0))
 
+      if (import.meta.env.DEV)
+        console.info('[Stage:TTS] Calling audioContext.decodeAudioData. Context state:', audioContext?.state)
+      if (!audioContext) {
+        if (import.meta.env.DEV)
+          console.warn('[Stage:TTS] No audioContext available for decoding')
+        return null
+      }
+
+      if (audioContext.state === 'suspended') {
+        try {
+          if (import.meta.env.DEV)
+            console.info('[Stage:TTS] AudioContext is suspended. Resuming before decodeAudioData...')
+          await audioContext.resume()
+          if (import.meta.env.DEV)
+            console.info('[Stage:TTS] AudioContext state after resume:', audioContext.state)
+        }
+        catch (err) {
+          console.warn('[Stage:TTS] Failed to resume AudioContext during decoding:', err)
+        }
+      }
+
       const audioBuffer = await audioContext.decodeAudioData(res)
+      if (import.meta.env.DEV)
+        console.info('[Stage:TTS] audioContext.decodeAudioData succeeded, sampleRate:', audioBuffer?.sampleRate, 'duration:', audioBuffer?.duration)
       return audioBuffer
     }
-    catch {
+    catch (error) {
+      console.error('[Stage:TTS] generateSpeech or decodeAudioData failed:', error)
       return null
     }
   },
@@ -647,6 +700,7 @@ speechPipeline.on('onSpecial', (segment) => {
 })
 
 playbackManager.onEnd(({ item }) => {
+  console.info('[Stage:TTS:Playback] playbackManager.onEnd for item:', item.text?.slice(0, 60))
   try {
     if (item.special) {
       const actorId = parseActor(item.special)
@@ -678,6 +732,7 @@ playbackManager.onEnd(({ item }) => {
 })
 
 playbackManager.onStart(({ item }) => {
+  console.info('[Stage:TTS:Playback] playbackManager.onStart for item:', item.text?.slice(0, 60))
   nowSpeaking.value = true
 
   try {

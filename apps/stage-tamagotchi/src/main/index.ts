@@ -145,6 +145,9 @@ setupDebugger()
 const log = useLogg('main').useGlobalConfig()
 const forceHighPerformanceGpu = env.AIRI_FORCE_HIGH_PERFORMANCE_GPU === '1'
 
+// Bypass Web Audio autoplay restriction globally across all windows
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
 if (isLinux) {
   app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
   app.commandLine.appendSwitch('enable-unsafe-webgpu')

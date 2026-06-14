@@ -105,8 +105,9 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         context.emit(speechPipelineEventMap.onSegment, value)
 
         if (value.text === '' && value.special) {
+          const lastPromise = prevTtsPromise
           const currentTtsPromise = (async () => {
-            await prevTtsPromise
+            await lastPromise
             if (intent.canceled || intent.controller.signal.aborted)
               return
 
@@ -154,24 +155,31 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         // Start TTS generation immediately (without awaiting in the loop)
         const ttsGenPromise = options.tts(request, intent.controller.signal)
 
+        const lastPromise = prevTtsPromise
         const currentTtsPromise = (async (myTtsPromise) => {
           // Wait for the TTS generation itself
           let audio: TAudio | null = null
           try {
             audio = await myTtsPromise
+            console.info('[SpeechPipeline:Debug] TTS generation promise resolved for:', request.text?.slice(0, 30), 'audio exists:', !!audio)
           }
           catch (err) {
             logger.warn('TTS generation failed:', err)
           }
 
           // Await previous segment scheduling to ensure strict order
-          await prevTtsPromise
+          await lastPromise
+          console.info('[SpeechPipeline:Debug] Previous segment completed, scheduling current segment:', request.text?.slice(0, 30))
 
-          if (intent.canceled || intent.controller.signal.aborted)
+          if (intent.canceled || intent.controller.signal.aborted) {
+            console.warn('[SpeechPipeline:Debug] Intent canceled or aborted, skipping playback scheduling.', { canceled: intent.canceled, aborted: intent.controller.signal.aborted })
             return
+          }
 
-          if (!audio)
+          if (!audio) {
+            console.warn('[SpeechPipeline:Debug] Audio buffer is empty, skipping playback scheduling.')
             return
+          }
 
           const ttsResult: TtsResult<TAudio> = {
             streamId: request.streamId,
@@ -183,6 +191,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
             createdAt: Date.now(),
           }
 
+          console.info('[SpeechPipeline:Debug] Emitting onTtsResult and scheduling playback for:', ttsResult.text?.slice(0, 30))
           context.emit(speechPipelineEventMap.onTtsResult, ttsResult)
 
           options.playback.schedule({

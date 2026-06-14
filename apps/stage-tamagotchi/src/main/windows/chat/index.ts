@@ -59,6 +59,7 @@ export function setupChatWindowReusableFunc(params: {
       webPreferences: {
         preload: join(getElectronMainDirname(), '../preload/index.cjs'),
         sandbox: true,
+        autoplayPolicy: 'no-user-gesture-required',
       },
     })
 

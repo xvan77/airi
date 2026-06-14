@@ -73,6 +73,7 @@ export async function setupMainWindow(params: {
     webPreferences: {
       preload: resolve(dirname(fileURLToPath(import.meta.url)), '../preload/index.cjs'),
       sandbox: true,
+      autoplayPolicy: 'no-user-gesture-required',
     },
     type: 'panel',
     alwaysOnTop: true,

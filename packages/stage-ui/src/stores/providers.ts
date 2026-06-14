@@ -3224,15 +3224,14 @@ export const useProvidersStore = defineStore('providers', () => {
       return null as any
     }
 
-    // Web Speech API doesn't require credentials - use empty config
+    // Fall back to default config if credentials are not found
     let config = providerCredentials.value[providerId]
-    if (!config && providerId === 'browser-web-speech-api') {
+    if (!config) {
       config = getDefaultProviderConfig(providerId)
-      providerCredentials.value[providerId] = config
+      if (config) {
+        providerCredentials.value[providerId] = config
+      }
     }
-
-    if (!config && providerId !== 'browser-web-speech-api')
-      throw new Error(`Provider credentials for ${providerId} not found`)
 
     try {
       const instance = await metadata.createProvider(config || {}) as R
