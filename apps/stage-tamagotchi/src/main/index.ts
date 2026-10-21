@@ -48,6 +48,7 @@ import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
+import { setupLocalLlmService } from './services/electron/local-llm'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
 import { setupSherpawModelAssets } from './services/electron/sherpaw-model-assets'
 import { setupTray } from './tray'
@@ -245,6 +246,7 @@ app.whenReady().then(async () => {
 
   setupSherpawModelAssetsProtocol(resolve(getElectronMainDirname(), '..', 'renderer'))
   setupSherpawModelAssets(createContext(ipcMain).context)
+  setupLocalLlmService(createContext(ipcMain).context)
   setupPermissionHandlers(session.defaultSession, hasSelectedScreenCaptureSource)
 
   // Initialize file logger and register the hook

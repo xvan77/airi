@@ -323,11 +323,11 @@ export interface ElectronUpdaterPreferences {
 export const electronGetUpdaterPreferences = defineInvokeEventa<ElectronUpdaterPreferences>('eventa:invoke:electron:auto-updater:get-preferences')
 export const electronSetUpdaterPreferences = defineInvokeEventa<ElectronUpdaterPreferences, ElectronUpdaterPreferences>('eventa:invoke:electron:auto-updater:set-preferences')
 
+export * from './local-llm'
 export * from './plugin/assets'
 export * from './plugin/capabilities'
 export * from './plugin/host'
 export * from './plugin/tools'
-export * from './window-backdrop'
 
 export interface DesktopOverlayReadiness {
   state: 'booting' | 'ready' | 'degraded'
@@ -761,6 +761,8 @@ export const electronAuthLogout = defineInvokeEventa<void>('eventa:invoke:electr
 
 export const i18nSetLocale = defineInvokeEventa<void, Locale>('eventa:invoke:electron:i18n:set-locale')
 export const i18nGetLocale = defineInvokeEventa<string | undefined>('eventa:invoke:electron:i18n:get-locale')
+
+export * from './window-backdrop'
 
 export { electron } from '@proj-airi/electron-eventa'
 export * from '@proj-airi/electron-eventa/electron-updater'

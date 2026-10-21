@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { LocalLlmCatalogEntry } from '../../../lib/local-llm-catalog'
+
 import { Alert, ErrorContainer, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -8,9 +10,14 @@ import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/con
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { FieldCheckbox, FieldRange, SettingsCard } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
+
+import ConsciousnessLocalLlmActions from './consciousness-local-llm-actions.vue'
+
+import { useLocalLlmElectron } from '../../../composables/use-local-llm-electron'
+import { LOCAL_LLM_BASE_CATALOG } from '../../../lib/local-llm-catalog'
 
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
@@ -37,12 +44,154 @@ const {
 
 const { t } = useI18n()
 const { trackModelSwitched, trackProviderClick } = useAnalytics()
+
+const localLlm = useLocalLlmElectron()
+const {
+  status: localLlmStatus,
+  downloadedModels: localLlmDownloadedModels,
+  isStartingServer: localLlmIsStartingServer,
+  isDownloading: localLlmIsDownloading,
+  downloadProgress: localLlmDownloadProgress,
+  startPolling: startLocalLlmPolling,
+  stopPolling: stopLocalLlmPolling,
+  downloadModel: downloadLocalLlmModel,
+  startServer: startLocalLlmServer,
+  stopServer: stopLocalLlmServer,
+  resolveModelToRun: resolveLocalLlmModelToRun,
+} = localLlm
+
+const localLlmServerState = computed(() => localLlmStatus.value?.state ?? 'idle')
+const localLlmDownloadProgressPercent = computed(() => {
+  if (localLlmDownloadProgress.value?.status === 'downloading')
+    return localLlmDownloadProgress.value.progress
+  return null
+})
+
+const localLlmActiveModelOnDisk = computed(() => {
+  if (!activeModel.value)
+    return false
+  return localLlmDownloadedModels.value.includes(activeModel.value)
+})
+
+const localLlmModelToStart = computed(() => resolveLocalLlmModelToRun(activeModel.value))
+
+const localLlmModelLabelKey = computed(() => {
+  if (activeProvider.value === 'local-llm' && activeModel.value && !localLlmActiveModelOnDisk.value)
+    return 'settings.pages.modules.consciousness.sections.section.provider-model-selection.latest_model_label'
+  return 'settings.pages.modules.consciousness.sections.section.provider-model-selection.current_model_label'
+})
+
+const localLlmDownloadInProgress = computed(() => {
+  if (localLlmIsDownloading.value)
+    return true
+  if (localLlmServerState.value === 'downloading_binary')
+    return true
+  if (localLlmDownloadProgress.value?.status === 'downloading')
+    return true
+  return localLlmDownloadProgressPercent.value !== null
+})
+
+const localLlmCanStartServer = computed(() =>
+  Boolean(localLlmModelToStart.value) && !localLlmDownloadInProgress.value,
+)
+
+function localLlmDisplayName(filename: string) {
+  const catalogEntry = LOCAL_LLM_BASE_CATALOG.find(entry => entry.filename === filename)
+  if (catalogEntry)
+    return catalogEntry.name
+  return filename.replace(/\.gguf$/i, '').replace(/[-_]/g, ' ')
+}
+
+const localLlmDownloadedModelItems = computed(() =>
+  localLlmDownloadedModels.value.map(filename => ({
+    id: filename,
+    name: localLlmDisplayName(filename),
+    description: filename,
+  })),
+)
+
+/** Local LLM: always list every GGUF on disk; merge API metadata when the server is up. */
+const consciousnessDisplayModels = computed(() => {
+  if (activeProvider.value !== 'local-llm')
+    return providerModels.value
+
+  if (localLlmDownloadedModelItems.value.length === 0)
+    return providerModels.value
+
+  const merged = new Map(
+    localLlmDownloadedModelItems.value.map(item => [item.id, item]),
+  )
+  for (const model of providerModels.value) {
+    const fromDisk = merged.get(model.id)
+    merged.set(model.id, {
+      ...fromDisk,
+      ...model,
+      id: model.id,
+      name: model.name ?? fromDisk?.name ?? model.id,
+      description: model.description ?? fromDisk?.description ?? model.id,
+    })
+  }
+
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const showLocalLlmOfflineActions = computed(() =>
+  activeProvider.value === 'local-llm'
+  && localLlmServerState.value !== 'running'
+  && localLlmServerState.value !== 'starting',
+)
+
+async function refreshLocalLlmModels() {
+  await providersStore.fetchModelsForProvider('local-llm')
+  await providersStore.validateProvider('local-llm', { force: true })
+  await consciousnessStore.loadModelsForProvider('local-llm')
+}
+
+async function handleLocalLlmStartServer() {
+  const model = resolveLocalLlmModelToRun(activeModel.value)
+  if (!model)
+    return
+  await startLocalLlmServer(model)
+  providersStore.forceProviderConfigured('local-llm')
+  await refreshLocalLlmModels()
+}
+
+async function handleLocalLlmStopServer() {
+  await stopLocalLlmServer()
+  await refreshLocalLlmModels()
+}
+
+async function handleLocalLlmQuickDownload(entry: LocalLlmCatalogEntry) {
+  await downloadLocalLlmModel({
+    modelId: entry.id,
+    repo: entry.repo,
+    filename: entry.filename,
+  })
+  activeModel.value = entry.filename
+  await persistSelection()
+}
+
 watch(activeProvider, async (provider) => {
   if (!provider)
     return
 
+  if (provider === 'local-llm')
+    startLocalLlmPolling()
+  else
+    stopLocalLlmPolling()
+
   await consciousnessStore.loadModelsForProvider(provider)
+
+  if (provider === 'local-llm' && localLlmServerState.value === 'running')
+    await refreshLocalLlmModels()
 }, { immediate: true })
+
+watch(localLlmServerState, async (state, previous) => {
+  if (activeProvider.value !== 'local-llm')
+    return
+  if (state === 'running' && previous !== 'running')
+    await refreshLocalLlmModels()
+})
 
 async function persistSelection() {
   await airiCardStore.updateActiveCardConsciousness({ provider: activeProvider.value, model: activeModel.value })
@@ -54,11 +203,22 @@ function updateCustomModelName(value: string) {
 
 async function selectModel(modelId: string) {
   const previousModelId = activeModel.value
+  const loadedOnServer = localLlmStatus.value?.activeModel
   activeModel.value = modelId
   await persistSelection()
 
   if (previousModelId !== modelId)
     trackModelSwitched(previousModelId || 'none', modelId)
+
+  if (
+    activeProvider.value === 'local-llm'
+    && localLlmServerState.value === 'running'
+    && loadedOnServer
+    && modelId !== loadedOnServer
+    && localLlmDownloadedModels.value.includes(modelId)
+  ) {
+    await handleLocalLlmStartServer()
+  }
 }
 
 async function handleDeleteProvider(providerId: string) {
@@ -176,26 +336,143 @@ async function updateTopPEnabled(value: boolean) {
           </h2>
           <div class="flex flex-col items-start gap-1 text-neutral-400 md:flex-row md:items-center md:justify-between dark:text-neutral-400">
             <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.subtitle') }}</span>
-            <span v-if="activeModel" class="text-sm text-neutral-400 font-medium dark:text-neutral-400">{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.current_model_label') }} {{ activeModel }}</span>
+            <div v-if="activeModel" class="flex flex-wrap items-center gap-2 text-sm text-neutral-400 font-medium dark:text-neutral-400">
+              <span>{{ t(localLlmModelLabelKey) }} {{ activeModel }}</span>
+              <span
+                v-if="activeProvider === 'local-llm' && !localLlmActiveModelOnDisk"
+                class="border border-amber-500/30 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold dark:text-amber-400"
+              >
+                {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.not_downloaded') }}
+              </span>
+              <span
+                v-if="activeProvider === 'local-llm' && localLlmStatus"
+                class="border rounded px-2 py-0.5 text-[10px] font-bold"
+                :class="localLlmServerState === 'running'
+                  ? 'border-green-500/20 bg-green-500/10 text-green-500'
+                  : localLlmServerState === 'starting'
+                    ? 'animate-pulse border-amber-500/20 bg-amber-500/10 text-amber-500'
+                    : 'border-red-500/20 bg-red-500/10 text-red-500'"
+              >
+                {{ localLlmServerState === 'running'
+                  ? t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_running')
+                  : localLlmServerState === 'starting'
+                    ? t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_starting')
+                    : t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_offline') }}
+              </span>
+              <button
+                v-if="activeProvider === 'local-llm' && (localLlmServerState === 'running' || localLlmServerState === 'starting')"
+                type="button"
+                class="flex items-center gap-1 border border-red-500/20 rounded bg-red-500/10 px-2 py-0.5 text-[10px] text-red-500 font-bold"
+                @click="handleLocalLlmStopServer"
+              >
+                <div class="i-solar:stop-circle-line-duotone" />
+                {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.stop_server') }}
+              </button>
+              <button
+                v-else-if="activeProvider === 'local-llm' && localLlmDownloadInProgress"
+                type="button"
+                disabled
+                class="flex cursor-not-allowed items-center gap-1 border border-amber-500/20 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold opacity-80 dark:text-amber-400"
+              >
+                <div class="i-solar:refresh-line-duotone animate-spin text-sm" />
+                {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.downloading_button') }}
+              </button>
+              <button
+                v-else-if="activeProvider === 'local-llm' && localLlmCanStartServer"
+                type="button"
+                class="flex items-center gap-1 border border-green-500/20 rounded bg-green-500/10 px-2 py-0.5 text-[10px] text-green-600 font-bold dark:text-green-500 disabled:opacity-50"
+                :disabled="localLlmIsStartingServer"
+                :title="localLlmModelToStart !== activeModel ? localLlmModelToStart : undefined"
+                @click="handleLocalLlmStartServer"
+              >
+                <div class="i-solar:play-circle-line-duotone" />
+                {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.start_server') }}
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- Loading state -->
-        <div v-if="isLoadingActiveProviderModels" class="flex items-center justify-center py-4">
+        <div
+          v-if="isLoadingActiveProviderModels || (activeProvider === 'local-llm' && localLlmServerState === 'starting')"
+          class="flex items-center justify-center py-4"
+        >
           <div class="mr-2 animate-spin">
             <div i-solar:spinner-line-duotone text-xl />
           </div>
           <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.loading') }}</span>
         </div>
 
-        <!-- Error state -->
+        <template v-else-if="consciousnessDisplayModels.length > 0">
+          <ConsciousnessLocalLlmActions
+            v-if="showLocalLlmOfflineActions"
+            :active-model="activeModel"
+            :server-state="localLlmServerState"
+            :downloaded-models="localLlmDownloadedModels"
+            :is-starting-server="localLlmIsStartingServer"
+            :is-downloading="localLlmIsDownloading"
+            :download-progress-percent="localLlmDownloadProgressPercent"
+            :can-start-server="localLlmCanStartServer"
+            :download-in-progress="localLlmDownloadInProgress"
+            show-quick-download
+            @start-server="handleLocalLlmStartServer"
+            @stop-server="handleLocalLlmStopServer"
+            @quick-download="handleLocalLlmQuickDownload"
+          />
+          <p
+            v-if="activeProvider === 'local-llm' && localLlmServerState !== 'running' && localLlmDownloadedModels.length > 0"
+            class="text-xs text-neutral-500 dark:text-neutral-400"
+          >
+            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.downloaded_models_hint') }}
+          </p>
+          <p
+            v-else-if="activeProvider === 'local-llm' && localLlmServerState === 'running'"
+            class="text-xs text-neutral-500 dark:text-neutral-400"
+          >
+            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.switch_model_reloads') }}
+          </p>
+          <RadioCardManySelect
+            v-model:search-query="modelSearchQuery"
+            :model-value="activeModel"
+            :items="consciousnessDisplayModels"
+            :searchable="true"
+            :allow-custom="activeProvider !== 'local-llm'"
+            :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
+            :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
+            :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: modelSearchQuery })"
+            :search-results-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_results', { count: '{count}', total: '{total}' })"
+            :custom-input-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.custom_model_placeholder')"
+            :expand-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.expand')"
+            :collapse-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.collapse')"
+            expanded-class="mb-12"
+            @update:model-value="selectModel"
+            @update:custom-value="updateCustomModelName"
+          />
+        </template>
+
+        <!-- Error state (no downloadable local models to show) -->
         <template v-else-if="activeProviderModelError">
+          <ConsciousnessLocalLlmActions
+            v-if="activeProvider === 'local-llm'"
+            :active-model="activeModel"
+            :server-state="localLlmServerState"
+            :downloaded-models="localLlmDownloadedModels"
+            :is-starting-server="localLlmIsStartingServer"
+            :is-downloading="localLlmIsDownloading"
+            :download-progress-percent="localLlmDownloadProgressPercent"
+            :can-start-server="localLlmCanStartServer"
+            :download-in-progress="localLlmDownloadInProgress"
+            show-quick-download
+            @start-server="handleLocalLlmStartServer"
+            @stop-server="handleLocalLlmStopServer"
+            @quick-download="handleLocalLlmQuickDownload"
+          />
           <ErrorContainer
+            v-else
             :title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.error')"
             :error="activeProviderModelError"
           />
-          <!-- Manual model input fallback when model list fails to load -->
-          <div class="mt-2">
+          <div v-if="activeProvider !== 'local-llm'" class="mt-2">
             <label class="mb-1 block text-sm font-medium">
               {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.manual_model_name') }}
             </label>
@@ -208,10 +485,23 @@ async function updateTopPEnabled(value: boolean) {
           </div>
         </template>
 
-        <!-- No models available - Allow custom model input via search -->
-        <!-- Only show when there are truly no models (not when fetch error occurred) to avoid competing UIs -->
-        <template v-else-if="providerModels.length === 0 && !isLoadingActiveProviderModels && !activeProviderModelError">
-          <Alert type="warning">
+        <template v-else-if="!(activeProvider === 'local-llm' && localLlmServerState === 'starting')">
+          <ConsciousnessLocalLlmActions
+            v-if="activeProvider === 'local-llm'"
+            :active-model="activeModel"
+            :server-state="localLlmServerState"
+            :downloaded-models="localLlmDownloadedModels"
+            :is-starting-server="localLlmIsStartingServer"
+            :is-downloading="localLlmIsDownloading"
+            :download-progress-percent="localLlmDownloadProgressPercent"
+            :can-start-server="localLlmCanStartServer"
+            :download-in-progress="localLlmDownloadInProgress"
+            show-quick-download
+            @start-server="handleLocalLlmStartServer"
+            @stop-server="handleLocalLlmStopServer"
+            @quick-download="handleLocalLlmQuickDownload"
+          />
+          <Alert v-else type="warning">
             <template #title>
               {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models') }}
             </template>
@@ -220,8 +510,8 @@ async function updateTopPEnabled(value: boolean) {
             </template>
           </Alert>
 
-          <!-- Using the new RadioCardManySelect component - works with empty list for custom input -->
           <RadioCardManySelect
+            v-if="activeProvider !== 'local-llm'"
             v-model:search-query="modelSearchQuery"
             :model-value="activeModel"
             :items="[]"
@@ -239,26 +529,23 @@ async function updateTopPEnabled(value: boolean) {
           />
         </template>
 
-        <!-- Using the new RadioCardManySelect component -->
-        <template v-else-if="providerModels.length > 0">
-          <RadioCardManySelect
-            v-model:search-query="modelSearchQuery"
-            :model-value="activeModel"
-            :items="providerModels"
-            :searchable="true"
-            :allow-custom="true"
-            :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
-            :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
-            :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: modelSearchQuery })"
-            :search-results-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_results', { count: '{count}', total: '{total}' })"
-            :custom-input-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.custom_model_placeholder')"
-            :expand-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.expand')"
-            :collapse-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.collapse')"
-            expanded-class="mb-12"
-            @update:model-value="selectModel"
-            @update:custom-value="updateCustomModelName"
-          />
-        </template>
+        <div
+          v-if="activeProvider === 'local-llm'"
+          class="flex justify-end"
+        >
+          <RouterLink
+            to="/settings/providers/chat/local-llm"
+            :class="[
+              'inline-flex items-center gap-2',
+              'rounded-lg px-4 py-2.5',
+              'text-sm font-semibold text-white',
+              'bg-amber-500 transition hover:bg-amber-600',
+            ]"
+          >
+            <div class="i-solar:settings-line-duotone text-lg" />
+            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.open_settings') }}
+          </RouterLink>
+        </div>
       </div>
     </div>
 

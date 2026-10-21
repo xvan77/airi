@@ -13,6 +13,7 @@ import type {
   providerBrowserLocalAudioSpeech,
   providerBrowserLocalAudioTranscription,
 } from './local-audio'
+import type { providerLocalLlm } from './local-llm'
 import type { providerNvidia } from './nvidia'
 import type {
   providerOfficialChat,
@@ -36,6 +37,7 @@ type StageOnlyProviderId
     | typeof providerBrowserLocalAudioSpeech.id
     | typeof providerBrowserLocalAudioTranscription.id
     | typeof providerKokoroLocal.id
+    | typeof providerLocalLlm.id
     | typeof providerNvidia.id
     | typeof providerOfficialChat.id
     | typeof providerOfficialSpeech.id
