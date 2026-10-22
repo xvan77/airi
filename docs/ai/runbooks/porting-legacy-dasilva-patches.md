@@ -129,6 +129,7 @@ User archive (optional):
 
 - Repo root: `moeru-airi-chat-composer-popovers.patch`
 - Desktop: `moeru-airi-chat-composer-popovers.patch`
+- Reference commit: `afd6a847c` — `feat(stage-tamagotchi): add chat brain and speech composer popovers`
 - Regenerate (stage only these paths, then unstage):
 
   ```bash
