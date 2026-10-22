@@ -1,3 +1,5 @@
+export { default as ChatBrainPopover } from './chat-brain-popover.vue'
+export { default as ChatSpeechPopover } from './chat-speech-popover.vue'
 export { ChatActionMenu } from './components/action-menu'
 export { default as ChatAssistantItem } from './components/assistant-item.vue'
 export { default as ChatBackgroundTasks } from './components/background-tasks.vue'
