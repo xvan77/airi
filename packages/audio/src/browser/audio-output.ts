@@ -92,12 +92,12 @@ export class AudioOutput implements PlayingAudio {
       if (!this.nodes.size && (this.ended || this.stopped))
         this.finish()
     }
-    source.start(start)
-    this.options?.onSource?.(source)
     if (!this.started) {
       this.started = true
       this.options?.onStart?.()
     }
+    source.start(start)
+    this.options?.onSource?.(source)
   }
 
   stop(options: { fadeMs: number }): Promise<PlayedAudio> {

@@ -87,19 +87,7 @@ async function isBrowserAndMemoryEnough() {
   return false
 }
 
-export const providerAppLocalAudioSpeech = defineProvider<LocalAudioConfig, 'app-local-audio-speech'>({
-  id: 'app-local-audio-speech',
-  name: 'App (Local)',
-  nameLocalize: ({ t }) => t('settings.pages.providers.provider.app-local-audio-speech.title'),
-  description: 'https://github.com/huggingface/candle',
-  descriptionLocalize: ({ t }) => t('settings.pages.providers.provider.app-local-audio-speech.description'),
-  tasks: ['text-to-speech', 'tts'],
-  icon: 'i-lobe-icons:huggingface',
-  isAvailableBy: isStageTamagotchi,
-  createProviderConfig: ({ t }) => createLocalAudioConfigSchema(t),
-  createProvider: createLocalAudioProvider,
-  validators: createLocalAudioValidators(),
-})
+export { providerAppLocalAudioSpeech } from './app-local-audio-speech'
 
 export const providerAppLocalAudioTranscription = defineProvider<LocalAudioConfig, 'app-local-audio-transcription'>({
   id: 'app-local-audio-transcription',

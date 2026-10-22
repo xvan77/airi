@@ -102,6 +102,7 @@ const providerAttributesById = {
   'speech-noop': false,
   'together-ai': paidCloud,
   'voicevox': freeLocal,
+  'virtual-audio-studio': freeLocal,
   'volcengine': paidCloud,
   'volcengine-coding-plan': paidCloud,
   'xai': paidCloud,

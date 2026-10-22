@@ -55,6 +55,7 @@ describe('migrated provider definitions', () => {
   it('registers every provider that moved out of the legacy store', () => {
     const providerIds = [
       'speech-noop',
+      'virtual-audio-studio',
       'app-local-audio-speech',
       'app-local-audio-transcription',
       'browser-local-audio-speech',
@@ -132,15 +133,15 @@ describe('migrated provider definitions', () => {
     })).toBe(true)
   })
 
-  it('keeps the local audio base URL validation in the definition', async () => {
+  it('treats app local speech as configured without credentials', async () => {
     const validator = await providerAppLocalAudioSpeech.validators?.validateConfig?.[0]({ t: translate })
 
-    const missing = await validator?.validator({}, { t: translate })
-    const configured = await validator?.validator({ baseUrl: 'http://localhost:1234/v1/' }, { t: translate })
+    const empty = await validator?.validator({}, { t: translate })
+    const withVoice = await validator?.validator({ voiceId: 'Microsoft Zira Desktop' }, { t: translate })
 
-    expect(missing?.valid).toBe(false)
-    expect(missing?.reason).toContain('Base URL is required.')
-    expect(configured?.valid).toBe(true)
+    expect(empty?.valid).toBe(true)
+    expect(withVoice?.valid).toBe(true)
+    expect(providerAppLocalAudioSpeech.requiresCredentials).toBe(false)
   })
 
   it('accepts each Sherpaw model and rejects unsupported model IDs', async () => {

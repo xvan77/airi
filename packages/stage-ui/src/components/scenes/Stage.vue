@@ -31,6 +31,7 @@ import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
 
+import { applyVoiceProfileEffects } from '../../composables/audio/audio-effects'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
@@ -406,6 +407,7 @@ async function playSpecialToken(
 const lipSyncNode = ref<AudioNode>()
 
 const voice = useVoiceStore()
+let playbackEffectsCleanup: (() => void) | undefined
 // Analysis taps (Live2D lip sync, spectrum analyser) read from speechAnalysis,
 // before the user volume. A low playback volume must not change mouth or
 // analyser behavior; VRM and MMD already read the source node directly.
@@ -419,7 +421,18 @@ watch(speechVolume, (volume) => {
 }, { immediate: true })
 const playback = new Playback(new BrowserPlayback(audioContext, {
   destination: speechAnalysis,
-  onSource: (source) => { currentAudioSource.value = source },
+  onSource: (source) => {
+    currentAudioSource.value = source
+    playbackEffectsCleanup?.()
+    playbackEffectsCleanup = undefined
+    try {
+      source.disconnect()
+    }
+    catch {}
+    const effectsResult = applyVoiceProfileEffects(audioContext, source, speechStore.audioConsole.effects)
+    effectsResult.lastNode.connect(speechAnalysis)
+    playbackEffectsCleanup = effectsResult.cleanup
+  },
 }))
 let playingCount = 0
 
@@ -454,6 +467,8 @@ const disconnectVoiceOutput = voice.connectOutput((turn) => {
       }
     },
     onPlaybackEnd: () => {
+      playbackEffectsCleanup?.()
+      playbackEffectsCleanup = undefined
       playingCount -= 1
       if (playingCount === 0)
         resetSpeakingState()

@@ -22,6 +22,7 @@ import type {
   providerOfficialTranscription,
 } from './official'
 import type { providerSherpawTranscription } from './sherpaw'
+import type { providerVirtualAudioStudio } from './virtual-audio-studio'
 
 import { orderBy } from 'es-toolkit'
 
@@ -38,6 +39,7 @@ type StageOnlyProviderId
     | typeof providerBrowserLocalAudioTranscription.id
     | typeof providerKokoroLocal.id
     | typeof providerLocalLlm.id
+    | typeof providerVirtualAudioStudio.id
     | typeof providerNvidia.id
     | typeof providerOfficialChat.id
     | typeof providerOfficialSpeech.id

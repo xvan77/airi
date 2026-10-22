@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import { Range } from '../range'
 
 const props = withDefaults(defineProps<{
@@ -20,6 +22,11 @@ const props = withDefaults(defineProps<{
 })
 
 const modelValue = defineModel<number>({ required: true })
+
+const formattedValue = computed(() => {
+  const value = modelValue.value
+  return props.formatValue?.(value) ?? String(value)
+})
 
 function resetToDefault() {
   if (props.defaultValue !== undefined)
@@ -51,7 +58,7 @@ function resetToDefault() {
           </slot>
         </div>
       </div>
-      <span :class="['font-mono']">{{ props.formatValue?.(modelValue) || modelValue }}</span>
+      <span :class="['font-mono']">{{ formattedValue }}</span>
     </div>
     <div :class="['flex', 'flex-row', 'items-center', 'gap-2']">
       <Range

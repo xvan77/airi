@@ -8,12 +8,16 @@ import {
   ErrorContainer,
   RadioCardManySelect,
   RadioCardSimple,
+  SpeechAudioConsole,
   TestDummyMarker,
   VoiceCardManySelect,
 } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { applyVoiceProfileEffects } from '@proj-airi/stage-ui/composables/audio/audio-effects'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } from '@proj-airi/stage-ui/libs/providers/providers/official'
+import { VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '@proj-airi/stage-ui/libs/speech/voice-profile'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores'
+import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
@@ -35,6 +39,9 @@ const { t } = useI18n()
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
 const speechStore = useSpeechStore()
+const audioContextStore = useAudioContext()
+let consolePreviewSource: AudioBufferSourceNode | null = null
+let consolePreviewCleanup: (() => void) | undefined
 const airiCardStore = useAiriCardStore()
 const { allAudioSpeechProvidersMetadata, moduleSpeechProvidersMetadata } = storeToRefs(providersStore)
 const {
@@ -80,7 +87,8 @@ const selectableSpeechSources = computed(() => {
   const configuredSources = moduleSpeechProvidersMetadata.value
     .filter(metadata =>
       metadata.id !== 'speech-noop'
-      && metadata.id !== OFFICIAL_SPEECH_STREAMING_PROVIDER_ID,
+      && metadata.id !== OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
+      && metadata.id !== VIRTUAL_AUDIO_STUDIO_PROVIDER_ID,
     )
     .map(metadata => ({
       id: metadata.id,
@@ -349,6 +357,8 @@ async function syncOpenAICompatibleSettings() {
 
 onMounted(async () => {
   try {
+    if (activeSpeechProvider.value === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
+      await speechStore.selectProviderModel('speech-noop', '')
     await providersStore.loadModelsForConfiguredProviders()
     await speechStore.loadVoicesForProvider(activeSpeechProvider.value, activeSpeechModel.value || undefined)
     await syncOpenAICompatibleSettings()
@@ -459,13 +469,15 @@ async function generateTestSpeech() {
       stopTestAudio()
     }
 
+    speechStore.beginPlaybackAudioConsole()
+
     const speechRequest = useSSML.value
       ? {
           input: ssmlText.value,
           providerConfig,
         }
       : speechStore.resolveSpeechInput({
-          text: testText.value,
+          text: speechStore.transformTextForSpeech(testText.value),
           voice,
           providerConfig: {
             ...providerConfig,
@@ -493,8 +505,19 @@ async function generateTestSpeech() {
       voice: voice.id,
     })
 
-    // Convert the response to a blob and create an object URL
     audioUrl.value = URL.createObjectURL(new Blob([response]))
+    const context = audioContextStore.audioContext
+    if (context.state === 'suspended')
+      await context.resume()
+    const decoded = await context.decodeAudioData(response.slice(0))
+    const source = context.createBufferSource()
+    source.buffer = decoded
+    consolePreviewSource = source
+    const effectsResult = applyVoiceProfileEffects(context, source, speechStore.audioConsole.effects)
+    consolePreviewCleanup = effectsResult.cleanup
+    effectsResult.lastNode.connect(context.destination)
+    source.onended = () => stopTestAudio(false)
+    source.start(0)
     if (isOfficialTtsProvider(previewProvider)) {
       trackOfficialTtsPreviewSucceeded({
         tts_provider_id: previewProvider,
@@ -505,21 +528,12 @@ async function generateTestSpeech() {
       })
     }
 
-    // Play the audio
-    setTimeout(() => {
-      if (audioPlayer.value) {
-        void audioPlayer.value.play()
-          .then(() => {
-            trackVoicePreviewPlayed({
-              tts_provider_id: previewProvider,
-              tts_model_id: previewModel,
-              ...previewAnalytics,
-              source: 'manual_preview',
-            })
-          })
-          .catch(() => {})
-      }
-    }, 100)
+    trackVoicePreviewPlayed({
+      tts_provider_id: previewProvider,
+      tts_model_id: previewModel,
+      ...previewAnalytics,
+      source: 'manual_preview',
+    })
   }
   catch (error) {
     console.error('Error generating speech:', error)
@@ -531,14 +545,23 @@ async function generateTestSpeech() {
 }
 
 // Function to stop audio playback
-function stopTestAudio() {
+function stopTestAudio(clearUrl = true) {
+  if (consolePreviewSource) {
+    try {
+      consolePreviewSource.stop()
+    }
+    catch {}
+    consolePreviewSource = null
+  }
+  if (consolePreviewCleanup) {
+    consolePreviewCleanup()
+    consolePreviewCleanup = undefined
+  }
   if (audioPlayer.value) {
     audioPlayer.value.pause()
     audioPlayer.value.currentTime = 0
   }
-
-  // Clean up the object URL to prevent memory leaks
-  if (audioUrl.value) {
+  if (clearUrl && audioUrl.value) {
     URL.revokeObjectURL(audioUrl.value)
     audioUrl.value = ''
   }
@@ -962,7 +985,7 @@ async function handleDeleteProvider(providerId: string) {
             </button>
             <button
               v-if="audioUrl" border="primary-300 dark:primary-800 solid 2"
-              transition="border duration-250 ease-in-out" rounded-lg px-4 py-2 text-sm @click="stopTestAudio"
+              transition="border duration-250 ease-in-out" rounded-lg px-4 py-2 text-sm @click="() => stopTestAudio()"
             >
               <div flex="~ row" items-center gap-2>
                 <div i-solar:stop-circle-bold-duotone />
@@ -971,6 +994,8 @@ async function handleDeleteProvider(providerId: string) {
             </button>
           </div>
           <audio v-if="audioUrl" ref="audioPlayer" :src="audioUrl" controls class="mt-2 w-full" />
+
+          <SpeechAudioConsole v-if="activeSpeechProvider && activeSpeechProvider !== 'speech-noop'" />
         </div>
       </div>
     </div>

@@ -324,6 +324,7 @@ export const electronGetUpdaterPreferences = defineInvokeEventa<ElectronUpdaterP
 export const electronSetUpdaterPreferences = defineInvokeEventa<ElectronUpdaterPreferences, ElectronUpdaterPreferences>('eventa:invoke:electron:auto-updater:set-preferences')
 
 export * from './local-llm'
+export * from './native-tts'
 export * from './plugin/assets'
 export * from './plugin/capabilities'
 export * from './plugin/host'

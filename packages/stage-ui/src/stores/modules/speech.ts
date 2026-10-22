@@ -2,6 +2,7 @@ import type { SpeechOutput, TurnRef } from '@proj-airi/core-agent'
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 import type {} from 'pinia-plugin-synced'
 
+import type { AudioConsoleSettings, AudioConsoleUstSettings } from '../../libs/speech/voice-profile'
 import type { AiriExtension } from '../../types/airiCard'
 import type { VoiceCatalogConfiguration, VoiceCatalogIdentity, VoiceInfo } from '../providers/provider'
 
@@ -20,8 +21,25 @@ import { injectKeyPiniaSynced } from '../../libs/pinia/synced-context'
 import { getDefinedProvider } from '../../libs/providers/providers'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, pickOfficialSpeechVoice } from '../../libs/providers/providers/official'
 import { streamSpeech } from '../../libs/speech/streaming-pipeline'
+import { createDefaultAudioConsoleSettings, VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '../../libs/speech/voice-profile'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
+
+function readLegacyAudioConsoleSettings(): Partial<AudioConsoleSettings> {
+  if (typeof localStorage === 'undefined')
+    return {}
+
+  const raw = localStorage.getItem('settings/speech/audio-console')
+  if (!raw)
+    return {}
+
+  try {
+    return JSON.parse(raw) as AudioConsoleSettings
+  }
+  catch {
+    return {}
+  }
+}
 
 export function toSignedPercent(value: number): string {
   if (value > 0)
@@ -91,6 +109,43 @@ export const useSpeechStore = defineStore('speech', () => {
   const pitch = useLocalStorageManualReset<number>('settings/speech/pitch', 0, persistenceOptions)
   const rate = useLocalStorageManualReset<number>('settings/speech/rate', 1, persistenceOptions)
   const ssmlEnabled = useLocalStorageManualReset<boolean>('settings/speech/ssml-enabled', false, persistenceOptions)
+
+  const legacyAudioConsole = readLegacyAudioConsoleSettings()
+  const defaultAudioConsole = createDefaultAudioConsoleSettings()
+  const audioConsoleEffectPitch = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/pitch', legacyAudioConsole.effects?.pitch ?? defaultAudioConsole.effects.pitch, persistenceOptions)
+  const audioConsoleEffectRate = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/rate', legacyAudioConsole.effects?.rate ?? defaultAudioConsole.effects.rate, persistenceOptions)
+  const audioConsoleEffectVolume = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/volume', legacyAudioConsole.effects?.volume ?? defaultAudioConsole.effects.volume, persistenceOptions)
+  const audioConsoleEffectAsmr = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/asmr', legacyAudioConsole.effects?.asmr ?? defaultAudioConsole.effects.asmr, persistenceOptions)
+  const audioConsoleEffectRadio = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/radio', legacyAudioConsole.effects?.radio ?? defaultAudioConsole.effects.radio, persistenceOptions)
+  const audioConsoleEffectRobot = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/robot', legacyAudioConsole.effects?.robot ?? defaultAudioConsole.effects.robot, persistenceOptions)
+  const audioConsoleEffectReverb = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/reverb', legacyAudioConsole.effects?.reverb ?? defaultAudioConsole.effects.reverb, persistenceOptions)
+  const audioConsoleEffectSpatial = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/spatial', legacyAudioConsole.effects?.spatial ?? defaultAudioConsole.effects.spatial, persistenceOptions)
+  const audioConsoleUstEnabled = useLocalStorageManualReset<boolean>('settings/speech/audio-console/ust/enabled', legacyAudioConsole.ust?.enabled ?? defaultAudioConsole.ust.enabled, persistenceOptions)
+  const audioConsoleUstMode = useLocalStorageManualReset<AudioConsoleUstSettings['mode']>('settings/speech/audio-console/ust/mode', legacyAudioConsole.ust?.mode ?? defaultAudioConsole.ust.mode, persistenceOptions)
+  const audioConsoleUstCustomStripChars = useLocalStorageManualReset<string>('settings/speech/audio-console/ust/custom-strip-chars', legacyAudioConsole.ust?.customStripChars ?? defaultAudioConsole.ust.customStripChars, persistenceOptions)
+  const audioConsoleUstStripEmojis = useLocalStorageManualReset<boolean>('settings/speech/audio-console/ust/strip-emojis', legacyAudioConsole.ust?.stripEmojis ?? defaultAudioConsole.ust.stripEmojis, persistenceOptions)
+  const audioConsoleUstTildeReplacement = useLocalStorageManualReset<string>('settings/speech/audio-console/ust/tilde-replacement', legacyAudioConsole.ust?.tildeReplacement ?? defaultAudioConsole.ust.tildeReplacement, persistenceOptions)
+
+  const audioConsole = computed<AudioConsoleSettings>(() => ({
+    effects: {
+      pitch: audioConsoleEffectPitch.value,
+      rate: audioConsoleEffectRate.value,
+      volume: audioConsoleEffectVolume.value,
+      asmr: audioConsoleEffectAsmr.value,
+      radio: audioConsoleEffectRadio.value,
+      robot: audioConsoleEffectRobot.value,
+      reverb: audioConsoleEffectReverb.value,
+      spatial: audioConsoleEffectSpatial.value,
+    },
+    ust: {
+      enabled: audioConsoleUstEnabled.value,
+      mode: audioConsoleUstMode.value,
+      customStripChars: audioConsoleUstCustomStripChars.value,
+      stripEmojis: audioConsoleUstStripEmojis.value,
+      tildeReplacement: audioConsoleUstTildeReplacement.value,
+    },
+  }))
+  const playbackApplyAudioConsole = refManualReset(false)
   // Each provider owns its latest request status. Settings for the active
   // provider and background provider editors must not consume each other's IO.
   const isLoadingSpeechProviderVoices = computed(() => voiceCatalogStatus.value[activeSpeechProvider.value]?.loading ?? false)
@@ -506,6 +561,60 @@ export const useSpeechStore = defineStore('speech', () => {
     activeSpeechVoice.value = nextVoice
   }
 
+  function transformTextForSpeech(text: string): string {
+    const ust = {
+      enabled: audioConsoleUstEnabled.value,
+      mode: audioConsoleUstMode.value,
+      customStripChars: audioConsoleUstCustomStripChars.value,
+      stripEmojis: audioConsoleUstStripEmojis.value,
+      tildeReplacement: audioConsoleUstTildeReplacement.value,
+    }
+    if (!ust.enabled)
+      return text
+
+    let transformed = text
+    const stripNarrVal = ust.mode === 'mute' || ust.mode === 'flatten'
+    const stripCustomVal = ust.mode === 'custom'
+
+    if (stripNarrVal) {
+      if (ust.mode === 'flatten') {
+        transformed = transformed.replace(/[*[\]()<>\\]/g, '')
+      }
+      else {
+        transformed = transformed.replace(/\*.*?\*|\[.*?\]|\(.*?\)|<.*?>/g, '')
+        transformed = transformed.replace(/[*[\]()<>\\]/g, '')
+      }
+    }
+
+    if (stripCustomVal && ust.customStripChars) {
+      const escapedChars = ust.customStripChars.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (escapedChars) {
+        const regex = new RegExp(`[${escapedChars}]`, 'g')
+        transformed = transformed.replace(regex, '')
+      }
+    }
+
+    if (ust.stripEmojis) {
+      transformed = transformed.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      transformed = transformed.replace(/\u200D/g, '')
+    }
+
+    const replacement = ust.tildeReplacement.trim()
+    transformed = replacement
+      ? transformed.replace(/~/g, ` ${replacement} `)
+      : transformed.replace(/~/g, '')
+
+    return transformed.replace(/\s+/g, ' ').trim()
+  }
+
+  function beginPlaybackAudioConsole() {
+    playbackApplyAudioConsole.value = true
+  }
+
+  function clearPlaybackAudioConsole() {
+    playbackApplyAudioConsole.reset()
+  }
+
   /**
    * Generate speech using the specified provider and settings
    *
@@ -528,13 +637,18 @@ export const useSpeechStore = defineStore('speech', () => {
       voice_type: resolveVoiceType(voice),
     },
   ): Promise<ArrayBuffer> {
+    beginPlaybackAudioConsole()
+    const transformedInput = transformTextForSpeech(input)
+    if (!transformedInput.trim())
+      return new ArrayBuffer(0)
+
     const requestProviderConfig = activeSpeechProvider.value === OFFICIAL_SPEECH_PROVIDER_ID
       || activeSpeechProvider.value === OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
       ? withAiriTtsAnalytics(providerConfig, analytics)
       : providerConfig
     const response = await generateSpeech({
       ...provider.speech(model, requestProviderConfig),
-      input,
+      input: transformedInput,
       voice,
     })
 
@@ -543,19 +657,20 @@ export const useSpeechStore = defineStore('speech', () => {
 
   /** Captures one response's provider, voice, model, and settings before any asynchronous work. */
   function createOutput(turn: TurnRef, selection: AiriExtension['modules']['speech'], output: Pick<SpeechOutput, 'playback' | 'onPlaybackStart' | 'onPlaybackEnd' | 'onSpecial'>, audioContext: AudioContext): SpeechOutput {
-    const providerId = selection.provider
+    const providerId = selection.provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID ? 'speech-noop' : selection.provider
     const config = structuredClone(toRaw(providerStore.getProviderConfig(providerId) ?? {}))
     const selectedVoice = availableVoices.value[providerId]?.find(voice => voice.id === selection.voice_id)
     const voice = selectedVoice ? structuredClone(toRaw(selectedVoice)) : undefined
     const model = selection.model || (typeof config.model === 'string' ? config.model : '')
     const voiceId = selection.voice_id || (typeof config.voice === 'string' ? config.voice : '')
+
     const useSSML = ssmlEnabled.value
     const canUseSSML = ['elevenlabs', 'microsoft-speech', 'azure-speech'].includes(providerId) || (providerId === 'alibaba-cloud-model-studio' && model === 'cosyvoice-v2')
     const pitchValue = pitch.value
     const voiceType = providerId === OFFICIAL_SPEECH_PROVIDER_ID || providerId === OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
       ? 'official_selected' as const
       : 'custom_configured' as const
-    if (!providerId || providerId === 'speech-noop')
+    if (!selection.provider || selection.provider === 'speech-noop')
       return { ...output, synthesize: async () => null }
     if (getDefinedProvider(providerId)?.capabilities?.speech?.transport === 'bidirectional-ws') {
       const streamingModel = model.includes('/') ? model : providersStore.getDefaultModelForProvider(providerId)
@@ -577,9 +692,15 @@ export const useSpeechStore = defineStore('speech', () => {
     const provider = providersStore.getProviderInstance<SpeechProviderWithExtraOptions<string, Record<string, unknown>>>(providerId)
     return { ...output, synthesize: async (request, signal) => {
       signal.throwIfAborted()
+      beginPlaybackAudioConsole()
       const client = await provider
       signal.throwIfAborted()
-      const input = voice && useSSML && canUseSSML ? generateSSML(request.text, voice, { ...config, pitch: pitchValue }) : request.text
+      const plainText = transformTextForSpeech(request.text)
+      if (!plainText.trim())
+        return new Blob([])
+      const input = voice && useSSML && canUseSSML
+        ? generateSSML(plainText, voice, { ...config, pitch: pitchValue })
+        : plainText
       const settings = providerId === OFFICIAL_SPEECH_PROVIDER_ID
         ? { ...config, extraBody: { ...(config.extraBody as Record<string, unknown> | undefined), airi_analytics: { trigger: 'auto', source: 'chat_auto_tts', voice_type: voiceType, turn_id: turn.turnId } } }
         : config
@@ -680,6 +801,11 @@ export const useSpeechStore = defineStore('speech', () => {
       hasVoice ||= !!providerConfig?.voice
     }
 
+    if (activeSpeechProvider.value === 'app-local-audio-speech') {
+      hasModel = true
+      hasVoice ||= !!activeSpeechVoiceId.value
+    }
+
     return hasModel && hasVoice
   })
 
@@ -700,6 +826,20 @@ export const useSpeechStore = defineStore('speech', () => {
     pitch.reset()
     rate.reset()
     ssmlEnabled.reset()
+    audioConsoleEffectPitch.reset()
+    audioConsoleEffectRate.reset()
+    audioConsoleEffectVolume.reset()
+    audioConsoleEffectAsmr.reset()
+    audioConsoleEffectRadio.reset()
+    audioConsoleEffectRobot.reset()
+    audioConsoleEffectReverb.reset()
+    audioConsoleEffectSpatial.reset()
+    audioConsoleUstEnabled.reset()
+    audioConsoleUstMode.reset()
+    audioConsoleUstCustomStripChars.reset()
+    audioConsoleUstStripEmojis.reset()
+    audioConsoleUstTildeReplacement.reset()
+    playbackApplyAudioConsole.reset()
     modelSearchQuery.reset()
     catalog.$patch((state) => {
       state.availableVoices = {}
@@ -718,6 +858,21 @@ export const useSpeechStore = defineStore('speech', () => {
     pitch,
     rate,
     ssmlEnabled,
+    audioConsole,
+    audioConsoleEffectPitch,
+    audioConsoleEffectRate,
+    audioConsoleEffectVolume,
+    audioConsoleEffectAsmr,
+    audioConsoleEffectRadio,
+    audioConsoleEffectRobot,
+    audioConsoleEffectReverb,
+    audioConsoleEffectSpatial,
+    audioConsoleUstEnabled,
+    audioConsoleUstMode,
+    audioConsoleUstCustomStripChars,
+    audioConsoleUstStripEmojis,
+    audioConsoleUstTildeReplacement,
+    playbackApplyAudioConsole,
     voiceCatalogStatus: computed(() => voiceCatalogStatus.value),
     isLoadingSpeechProviderVoices,
     speechProviderError,
@@ -746,6 +901,9 @@ export const useSpeechStore = defineStore('speech', () => {
     ensureActiveSpeechModel,
     generateSSML,
     resolveSpeechInput,
+    transformTextForSpeech,
+    beginPlaybackAudioConsole,
+    clearPlaybackAudioConsole,
     createOutput,
     resetState,
     resetSettings,

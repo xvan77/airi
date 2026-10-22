@@ -1178,6 +1178,19 @@ pages:
             use-ssml:
               description: Enable to input raw SSML instead of plain text
               label: Use Custom SSML
+          audio-console:
+            title: Audio console
+            description: Shape the selected voice with local pitch, filters, and dialogue cleanup.
+            ust:
+              title: Dialogue cleanup
+              description: Strip roleplay markers and symbols before speech.
+            fields:
+              pitch:
+                label: Pitch
+                description: Shift pitch through playback rate
+              rate:
+                label: Speed
+                description: Speech rate multiplier
       title: Speech
     title: Modules
     vision:
@@ -1880,7 +1893,12 @@ pages:
         description: https://github.com/moeru-ai/xsai-transformers
       app-local-audio-speech:
         title: App (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
+        description: Use the built-in Windows, macOS, or Linux text-to-speech voice. No API key or download is required.
+        playground:
+          default-text: Hello! This is your system voice speaking through AIRI.
+      virtual-audio-studio:
+        title: Audio Studio
+        description: Build virtual voice profiles with pitch, speed, filters, and per-profile dialogue cleanup.
       browser-local-audio-transcription:
         title: Browser (Local)
         description: https://github.com/moeru-ai/xsai-transformers
