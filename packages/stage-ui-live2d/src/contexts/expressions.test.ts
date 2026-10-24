@@ -101,12 +101,12 @@ describe('live2D expressions context', () => {
 
     let rendered = 0.5
     const coreModel = {
-      getParameterValueById: () => 0.5,
+      getParameterValueById: () => rendered,
       setParameterValueById: (_: string, value: number) => { rendered = value },
     }
     expressions.setPreviewExpressions(['add', 'multiply'])
     expressions.apply(coreModel)
-    expect(rendered).toBeCloseTo(0.35)
+    expect(rendered).toBeCloseTo(0.525)
     expect(expressions.parameters.value.get('ParamEyeSmile')?.currentValue).toBe(0)
 
     expressions.setPreviewExpressions([])

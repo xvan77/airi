@@ -355,6 +355,47 @@ describe('live2d zip loader settings sanitization', () => {
     expect(() => settings.validateFiles(files.map(file => file.webkitRelativePath))).not.toThrow()
   })
 
+  it('attaches .vtube.json metadata when OPFS restores a flat file directory', async () => {
+    await import('./live2d-zip-loader')
+    const { FileLoader } = await import('pixi-live2d-display/cubism4')
+    type Live2DArchiveMetadataSettings = import('./live2d-zip-loader').Live2DArchiveMetadataSettings
+
+    const vtubeText = JSON.stringify({
+      SavedActiveExpressions: ['expr/hair.exp3.json'],
+      ArtMeshMultiplyAndScreenColors: {
+        ArtMesh001: 'FFFFFFFF|000000FF',
+      },
+    })
+
+    const files = [
+      fileWithRelativePath(
+        createShisihangshiSettingsText(),
+        '302301_shisihangshi.model3.json',
+        '302301_shisihangshi/302301_shisihangshi.model3.json',
+      ),
+      fileWithRelativePath(
+        new Uint8Array([77, 79, 67, 51]),
+        '302301_shisihangshi.moc3',
+        '302301_shisihangshi/302301_shisihangshi.moc3',
+      ),
+      fileWithRelativePath(
+        new Uint8Array([1, 2, 3]),
+        '302301_shisihangshi_00.png',
+        '302301_shisihangshi/textures/302301_shisihangshi_00.png',
+      ),
+      fileWithRelativePath(
+        vtubeText,
+        'Custom F6.vtube.json',
+        '302301_shisihangshi/Custom F6.vtube.json',
+      ),
+    ]
+
+    const settings = await FileLoader.createSettings(files) as Live2DArchiveMetadataSettings
+
+    expect(settings._vtubeZipMetadata?.savedActiveExpressions).toEqual(['expr/hair.exp3.json'])
+    expect(settings._vtubeZipMetadata?.artMeshColors.ArtMesh001).toBe('FFFFFFFF|000000FF')
+  })
+
   it('loads an OPFS-restored file directory whose settings and resources use CJK paths', async () => {
     await import('./live2d-zip-loader')
     const { FileLoader, Live2DModel } = await import('pixi-live2d-display/cubism4')

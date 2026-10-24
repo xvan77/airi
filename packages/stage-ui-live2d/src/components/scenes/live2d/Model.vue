@@ -11,6 +11,7 @@ import type { Cubism4ModelSettings } from 'pixi-live2d-display/cubism4'
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 import type { Live2DExpressionControl } from '../../../controls/manifest'
+import type { Live2DVTubeZipMetadata } from '../../../utils/live2d-vtube-sidecar'
 
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
@@ -31,6 +32,7 @@ import {
   createLive2DHeadTracker,
   createLive2DMotionSpring,
   disableLive2DSdkBreath,
+  hookArtMeshColorsAfterModelUpdate,
   live2DCanvasRectToParent,
   useLive2DMotionManagerUpdate,
   useMotionUpdatePluginAutoEyeBlink,
@@ -48,6 +50,7 @@ import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { useLive2D } from '../../../contexts/live2d'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams } from '../../../stores'
+import { resolveSavedExpressionNames } from '../../../utils/live2d-vtube-sidecar'
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
@@ -272,6 +275,9 @@ const expressionLoader = shallowRef<(fileName: string) => Promise<string>>()
 const savedEyeBlink = shallowRef<any>(null)
 const savedExpressionManager = shallowRef<any>(null)
 
+const artMeshColors = ref<Record<string, string>>({})
+const pendingVtubeSavedExpressions = ref<string[]>([])
+let appliedVtubeSavedExpressionsForLoad = false
 const localCurrentMotion = ref<{ group: string, index: number }>({ group: 'Idle', index: 0 })
 const beatSync = createBeatSyncController({
   baseAngles: () => ({
@@ -309,6 +315,8 @@ async function loadModel() {
 async function performModelLoad() {
   modelLoading.value = true
   componentState.value = 'loading'
+  pendingVtubeSavedExpressions.value = []
+  appliedVtubeSavedExpressionsForLoad = false
   const modelSource = modelSrcRef.value
   const modelId = props.modelId
   live2d.beginModelLoad()
@@ -385,6 +393,13 @@ async function performModelLoad() {
     // --- Motion
 
     const internalModel = model.value.internalModel
+    const settingsWithVtube = internalModel.settings as Cubism4ModelSettings & {
+      _vtubeZipMetadata?: Live2DVTubeZipMetadata
+    }
+    artMeshColors.value = settingsWithVtube._vtubeZipMetadata?.artMeshColors
+      ? { ...settingsWithVtube._vtubeZipMetadata.artMeshColors }
+      : {}
+    pendingVtubeSavedExpressions.value = settingsWithVtube._vtubeZipMetadata?.savedActiveExpressions ?? []
     const coreModel = internalModel.coreModel
     const motionManager = internalModel.motionManager
     disableLive2DSdkBreath(internalModel)
@@ -486,6 +501,9 @@ async function performModelLoad() {
     motionManagerUpdate.register(useMotionUpdatePluginManualControl(manualMotionControl, manualMotionSpring), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginBreathControl(manualBreathControl), 'final')
+
+    // NOTICE: ArtMesh colors must be applied after coreModel.update(), not in the motion hook.
+    hookArtMeshColorsAfterModelUpdate(internalModel, artMeshColors)
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
     motionManager.update = function (model: PixiLive2DInternalModel['coreModel'], now: number) {
@@ -894,6 +912,40 @@ watch(live2dIdleAnimationEnabled, (enabled) => {
     }
   }
 })
+
+function tryApplyVtubeSavedExpressions() {
+  if (appliedVtubeSavedExpressionsForLoad)
+    return
+
+  const saved = pendingVtubeSavedExpressions.value
+  if (saved.length === 0)
+    return
+
+  const references = expressionReferences.value
+  if (references.length === 0)
+    return
+
+  if (live2d.expressions.definitions.value.size < references.length)
+    return
+
+  const names = resolveSavedExpressionNames(saved, references)
+  if (names.length === 0)
+    return
+
+  live2d.expressions.setPreviewExpressions(names)
+  console.info(
+    '[Live2D] Applied SavedActiveExpressions from .vtube.json:',
+    names.join(', '),
+    names.length < saved.length ? `(${names.length}/${saved.length} files matched)` : '',
+  )
+  appliedVtubeSavedExpressionsForLoad = true
+}
+
+watch(
+  [() => live2d.expressions.definitions.value.size, expressionReferences, pendingVtubeSavedExpressions],
+  () => tryApplyVtubeSavedExpressions(),
+  { deep: true, flush: 'post' },
+)
 
 // Watch for expression system toggle — nullify/restore SDK managers at runtime
 watch(live2dExpressionEnabled, (enabled) => {

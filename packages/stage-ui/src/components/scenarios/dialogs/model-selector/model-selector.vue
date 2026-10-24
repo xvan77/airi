@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { Live2DValidationReport } from '@proj-airi/stage-ui-live2d'
+import type { Live2dThumbnailSource, Live2DValidationReport } from '@proj-airi/stage-ui-live2d'
 import type { TachieValidationReport } from '@proj-airi/stage-ui-tachie'
 
 import type { DisplayModel } from '../../../../stores/display-models'
 
-import { validateLive2DZip } from '@proj-airi/stage-ui-live2d'
+import { LIVE2D_THUMBNAIL_SOURCE_STORAGE_KEY, LIVE2D_THUMBNAIL_SOURCE_VALUES, validateLive2DZip } from '@proj-airi/stage-ui-live2d'
 import { TACHIE_ARCHIVE_SUFFIX, validateTachieZip } from '@proj-airi/stage-ui-tachie'
 import { Button } from '@proj-airi/ui'
-import { useFileDialog } from '@vueuse/core'
+import { useFileDialog, useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, EditableArea, EditableEditTrigger, EditableInput, EditablePreview, EditableRoot, EditableSubmitTrigger } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
@@ -49,6 +49,27 @@ const showTachieReportModal = ref(false)
 const pendingTachieFile = ref<File | null>(null)
 const tachieValidationReport = ref<TachieValidationReport | null>(null)
 
+const live2dThumbnailSource = useLocalStorage<Live2dThumbnailSource>(
+  LIVE2D_THUMBNAIL_SOURCE_STORAGE_KEY,
+  'render-fallback-icon',
+)
+const live2dThumbnailRefreshing = ref(false)
+
+const live2dThumbnailModeI18nKey: Record<Live2dThumbnailSource, string> = {
+  'render-fallback-icon': 'settings.model-select.select-model.live2d-thumbnail.render',
+  'icon-fallback-render': 'settings.model-select.select-model.live2d-thumbnail.icon',
+}
+
+watch(live2dThumbnailSource, async () => {
+  live2dThumbnailRefreshing.value = true
+  try {
+    await displayModelStore.refreshAllLive2dZipThumbnails()
+  }
+  finally {
+    live2dThumbnailRefreshing.value = false
+  }
+})
+
 watch(() => props.selectedModel?.id, (modelId) => {
   highlightDisplayModelCard.value = modelId
 }, { immediate: true })
@@ -63,12 +84,12 @@ async function handleAddLive2DModel(file: FileList | null) {
   validationReport.value = report
   pendingFile.value = file[0]
 
-  if (report.status === 'VALID') {
-    await confirmImport()
+  if (report.status === 'INVALID') {
+    showReportModal.value = true
     return
   }
 
-  showReportModal.value = true
+  await confirmImport()
 }
 
 async function confirmImport() {
@@ -236,6 +257,32 @@ mmdDialog.onChange(handleAddMMDModel)
       :report="tachieValidationReport"
       @confirm="confirmTachieImport"
     />
+
+    <div
+      flex="~ col" gap="3" rounded-xl p="3 sm:4"
+      border="~ cyan-400/40 dark:cyan-500/35"
+      bg="cyan-50/80 dark:cyan-950/40"
+    >
+      <div text-sm text-cyan-800 font-medium dark:text-cyan-200>
+        {{ t('settings.model-select.select-model.live2d-thumbnail.label') }}
+      </div>
+      <div grid grid-cols-2 gap="2 sm:3" w-full>
+        <Button
+          v-for="mode in LIVE2D_THUMBNAIL_SOURCE_VALUES"
+          :key="mode"
+          size="lg"
+          color="cyan"
+          block
+          class="min-w-0 w-full px-2 text-center"
+          :loading="live2dThumbnailRefreshing && live2dThumbnailSource === mode"
+          :disabled="live2dThumbnailRefreshing"
+          :variant="live2dThumbnailSource === mode ? 'primary' : 'secondary'"
+          @click="live2dThumbnailSource = mode"
+        >
+          {{ t(live2dThumbnailModeI18nKey[mode]) }}
+        </Button>
+      </div>
+    </div>
 
     <div flex items-center>
       <div w-full flex-1 text-xl>

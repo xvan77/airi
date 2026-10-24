@@ -1,0 +1,2242 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 3db2bb3be..cac5a161b 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -156,6 +156,7 @@ Skills are in `.agents/skills/<name>/SKILL.md`. Read the listed file before you
+ | Create or prepare a pull request | [`create-pr`](.agents/skills/create-pr/SKILL.md) |
+ | Upload a local file through a file input or a file chooser in a web or Electron app | [`use-agent-browser-with-input-file`](.agents/skills/use-agent-browser-with-input-file/SKILL.md) and [`agent-browser`](.agents/skills/agent-browser/SKILL.md). For Electron, also read [`agent-browser-electron`](.agents/skills/agent-browser-electron/SKILL.md). |
+ | Test Live2D, VRM, or MMD import and rendering in stage-web, stage-tamagotchi, or stage-pocket | [`use-agent-browser-for-airi`](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
++| Port legacy da Silva patches, Escritorio archives, or LOGIC 1 features into this fork | [`docs/ai/runbooks/porting-legacy-dasilva-patches.md`](docs/ai/runbooks/porting-legacy-dasilva-patches.md) — follow **User agent policy** (search order, announce fork/backup reads in chat, port 1:1 / adapt / re-read patches when stuck) |
+ 
+ These directories also have their own `AGENTS.md`. Read it before you work in the directory:
+ 
+diff --git a/apps/stage-tamagotchi-kirie/src-web/src/renderer/App.vue b/apps/stage-tamagotchi-kirie/src-web/src/renderer/App.vue
+index 889dfd283..1e44fd38e 100644
+--- a/apps/stage-tamagotchi-kirie/src-web/src/renderer/App.vue
++++ b/apps/stage-tamagotchi-kirie/src-web/src/renderer/App.vue
+@@ -150,12 +150,12 @@ function createFullStageRuntime() {
+       initializeAnalytics()
+       await authStore.initialize()
+       await displayModelsStore.initialize()
+-      await cardStore.initialize()
+       registerAuthenticatedSetup()
+       if (!authStore.isAuthenticated)
+         await removeAuthenticationProviderConfiguration()
+ 
+       await displayModelsStore.loadDisplayModelsFromIndexedDB()
++      await cardStore.initialize()
+       await settingsStore.initializeStageModel()
+       await settingsAudioDeviceStore.initialize()
+ 
+diff --git a/docs/ai/runbooks/porting-legacy-dasilva-patches.md b/docs/ai/runbooks/porting-legacy-dasilva-patches.md
+index 94fa3ee77..7e0d0faff 100644
+--- a/docs/ai/runbooks/porting-legacy-dasilva-patches.md
++++ b/docs/ai/runbooks/porting-legacy-dasilva-patches.md
+@@ -1,43 +1,164 @@
+ # Runbook: Port legacy “da Silva” patches into `moeru-airi`
+ 
+-Use this runbook when the user asks to bring features from old patch folders into the current **moeru-ai/airi** fork (`moeru-airi` on GitHub). Do **not** replay patch files line by line unless they apply cleanly.
++Use this runbook when the user asks to bring features from old patch folders into the current **moeru-ai/airi** fork (`moeru-airi` on GitHub).
++
++## User agent policy (mandatory)
++
++Follow this policy for every legacy port, Live2D/VTube work, and any task that uses the Escritorio patch archives.
++
++### Where to search (in order)
++
++| Priority | Location | Use it for |
++| --- | --- | --- |
++| 1 | `AIRI PATCHES LOGIC 1.txt` on Escritorio (see [Patch archive layout](#patch-archive-layout-user-machine)) | Feature order, UX goals, what “feature N” means |
++| 2 | **Sent:** `Escritorio\Patches sent to DaSilva\FULL PATCH WITH ALL SENT TO DA SILVA\` — start with `SENT-ORDER-REPORT.md`, then `combined-da-silva-sent.patch` or the standalone `.patch` named in the report | **Your** shared diffs (Live2D A1/A2, expressions persistence, Kokoro, and similar) |
++| 3 | **Not sent:** `Escritorio\Patches not sent to da Silva (new features)\Old da silva version patches\` plus reports (`consolidated_changes_report`, `walkthrough.md`) | **Your** private diffs (LLM, TTS, onboarding, Patch 1.01 / 2.00) |
++| 4 | **This repo (`moeru-airi`)** | Current architecture, tests, and what already landed — use `rg` and read files before re-implementing |
++| 5 | `docs/ai/runbooks/porting-legacy-dasilva-patches.md` (this file) | Status tables, architecture maps, checks |
++
++`Downloads\1. Files sent to Da silva via DM` and `Downloads\2. Files sent to Da silva in AIRI chat` are **older mirrors** of the sent bundle. Use them only when the Escritorio **FULL PATCH** folder is missing.
++
++### File access (ask first, announce always)
++
++Do **not** read, copy, or treat as canonical any path **outside** the [search-order table](#where-to-search-in-order) unless the user **names the path in the task** or explicitly approves access in chat.
++
++**Before you open any file** in a fork snapshot or backup tree (including `GitHub\airi` and future moeru/da Silva backups), **tell the user in chat**: the full path (or folder), which files you will read, and why. Wait for approval if they did not already name that path in the task. Do not browse backup folders silently.
++
++| Path | Rule |
++| --- | --- |
++| Escritorio archives + LOGIC 1 | In scope for port work when this runbook applies |
++| `moeru-airi` workspace | In scope for implementation and verification |
++| **Planned moeru / da Silva backup trees** (user will add later) | **Not** canonical. The da Silva fork can contain dasilva333 changes your patches do not list. Use backups only as **reference** when a patch hunk is unclear or moeru needs surrounding context. **Escritorio patches still define what to port.** Announce access before every use (see above). When this runbook lists concrete backup paths, use that table |
++| `C:\Users\iahum\OneDrive\Documentos\GitHub\airi` | Same as backup trees: **not** canonical, stale/mixed snapshot. Reference only after user approval; announce paths before read |
++| Other Desktop logs, zips, or personal folders | Only when the user pastes a path or attaches a file — announce before read |
++| Any fork as “source of truth” | **Forbidden.** When patch and fork disagree, **the Escritorio archives win** |
++
++Until the user registers backup locations in this runbook (or names them in the task), treat all moeru/da Silva trees outside `moeru-airi` as **off-limits** except Escritorio patch folders.
++
++### How to port patches (not improvisation)
++
++1. **Find the patch section** in `SENT-ORDER-REPORT.md` / `combined-da-silva-sent.patch` (or the not-sent folder report for that feature).
++2. **Port 1:1** when moeru’s layout matches the patch (same file role, same lifecycle, same data). Apply the same behavior the hunk describes.
++3. **Adapt** when moeru and the old da Silva fork **diverge** (for example split `eventa`, `core-agent`, Live2D **Root** + `live2d.expressions` vs monolithic `Model.vue` + `activeExpressions`). The adaptation must still deliver the **same user-visible behavior** the patch documents (inputs, outputs, when it runs).
++4. **When adaptation stalls** (missing API, “almost works”, wrong colors/params, unclear ownership): **stop improvising**. Re-read the patch hunk and neighbors in `combined-da-silva-sent.patch`. Compare with current moeru files. If you need a fork or backup tree, **ask the user** and **announce** the paths you will read. If still blocked, report what the patch expects and what moeru lacks — do not invent a new design.
++
++`git apply --check` is optional archaeology. Failed hunks do **not** mean “skip the patch”. They mean **port by intent from the patch text**, with the rules above.
++
++### Live2D / VTube quick map (sent bundle)
++
++| Sent step | Patch intent | Moeru touchpoints (adapt, do not skip) |
++| --- | --- | --- |
++| A1 | `SavedActiveExpressions`, expression list refresh, preview/card behavior | `live2d-zip-loader.ts`, `Model.vue`, expression UI in stage-ui |
++| A2 | ArtMesh colors from `.vtube.json`, hook after `model.update`, pixi multiply/screen shader | `vtube-artmesh-colors.ts`, `motion-manager.ts`, `patches/pixi-live2d-display.patch` |
++| B1 | `expressions_persistence.patch` — do not wipe stacked expressions on reload; vtube defaults once per model | `Model.vue` + card/storage as patch describes |
+ 
+ ## Product goals (source of truth)
+ 
+-Read the user’s living notes first:
++Read the user’s living notes first. The current file is:
+ 
+-`C:\Users\iahum\OneDrive\Escritorio\Patches not sent to da Silva (new features)\AIRI PATCHES LOGIC.txt`
++`C:\Users\iahum\OneDrive\Escritorio\Patches not sent to da Silva (new features)\AIRI PATCHES LOGIC 1.txt`
+ 
+-Summary:
++An older copy may exist as `AIRI PATCHES LOGIC.txt`. When the two differ, **LOGIC 1** wins.
+ 
+-| Goal | Meaning for implementation |
++### Main focus (from LOGIC 1)
++
++| Focus | Meaning for implementation |
+ | --- | --- |
+-| Low friction for non-experts | Show model size, quantization, download progress, server on/off clearly |
+-| Few menus / clicks | Chat popovers, quick actions in Consciousness, onboarding “local setup” |
+-| No external apps or logins for core offline use | Bundled llama-server, local TTS paths, not “install LM Studio first” |
+-| Low-end hardware | Small default models (Gemma 270M), GPU layers where safe, Kokoro CPU limits |
+-| Speed | Parallel TTS, pre-warm Kokoro, avoid blocking UI on long downloads |
+-
+-Feature areas from that file:
+-
+-1. **Local LLM** — download GGUF inside AIRI, run llama-server (Tamagotchi).
+-2. **Local TTS** — Windows SAPI in Tamagotchi (**done**); Kokoro worker fixes still backlog.
+-3. **Audio console** — global Speech panel effects + UST cleanup (**done** in moeru port).
+-4. **Expressions** — Live2D expressions visible in AIRI (check old patches).
+-5. **Chat buttons** — brain/speech popovers, start/stop without opening full settings.
+-6. **Start menu / onboarding** — “local setup” path on first run.
+-7. **General fixes** — memory sanitization, chat errors, navigation, performance.
+-8. **Misc** — grep old patches for anything still useful.
++| Help new users | Show parameters, quantization, providers, download progress, and model state in plain language |
++| Few menus and clicks | Chat controls, Consciousness quick actions, first-run “local setup” |
++| No extra installs or logins for core offline use | Bundled llama-server, local TTS paths, not “install LM Studio first” |
++| Low-end hardware | Small default models, safe GPU layers, Kokoro CPU limits |
++| Speed | Avoid long blocking loads; parallel TTS where it helps |
++
++### Main features (numbered like LOGIC 1)
++
++Use this list when the user says “feature 4” or “point 5”. Do not use the old order (expressions before chat buttons).
++
++| # | LOGIC 1 name | Intent | Moeru port status |
++| --- | --- | --- | --- |
++| 1 | **Local LLM** | Download and run Hugging Face GGUF inside AIRI (Tamagotchi). Show download progress, disk size, parameter count, and state (not downloaded / downloaded / server running). | **Largely done** — see [local LLM](#what-already-landed-in-moeru-airi-local-llm) |
++| 2 | **Local TTS** | Same offline philosophy as LLM. Legacy fork also explored cloud TTS (Azure); moeru port prioritized **Windows SAPI** for Tamagotchi. Kokoro can stay clunky — progress, weight, and quantization UI for Kokoro remain backlog. | **Partial** — SAPI + provider done; Kokoro fixes backlog |
++| 3 | **Audio studio** | Modify voices with local tools when preset voices are too limited. | **Done** as **Speech audio console** (not a separate provider menu) — see [TTS + audio console](#what-already-landed-in-moeru-airi-local-tts--audio-console) |
++| 4 | **Buttons** | Change LLM and TTS from the chat composer without opening full Settings each time. | **Done** (brain + speech popovers) — see [chat buttons](#what-already-landed-in-moeru-airi-feature-4-chat-buttons) |
++| 5 | **Expressions** | Live2D expressions visible in AIRI so edits in Live2D Cubism (colors, params) show on stage. | **Not ported** — study old patches; runtime already discovers some `.exp3.json` in zips |
++| 6 | **Start menu** | First-run **local setup**: download a light LLM/TTS and chat quickly, then explore other options. User asks whether onboarding still exists and whether OpenRouter free models auto-work — verify in current `stage-tamagotchi` / `stage-web` before re-porting. | **Not ported** |
++| 7 | **General fixes** | Optimization and error handling (chat errors, memory loops, navigation). | **Backlog** — items in [not ported yet](#not-ported-yet-use-patch-200--101-reports-as-backlog) |
++| 8 | **From old patches** | Grep legacy folders for anything still useful. | Ongoing |
++
++### Extra notes from LOGIC 1 (for agents)
++
++- User may ask for one patch per feature in dependency order (LLM → TTS → studio → buttons → expressions → onboarding).
++- Confirm with the user whether local LLM/TTS still match their goals after upstream moeru changes.
++- Explain upstream **OpenAI / login / official TTS** only when the user asks; do not expand cloud scope without agreement.
+ 
+ ## Patch archive layout (user machine)
+ 
++To move **all** legacy work into **moeru-airi**, use **both** archives below. One archive alone is not enough.
++
++| Archive | Path | Role |
++| --- | --- | --- |
++| **Sent to da Silva** | `C:\Users\iahum\OneDrive\Escritorio\Patches sent to DaSilva\FULL PATCH WITH ALL SENT TO DA SILVA\` | Comprehensive patches and reports for everything shared with **dasilva333** (Live2D / VTube sends, Kokoro, maintenance patches, and related). Start with `SENT-ORDER-REPORT.md` and `combined-da-silva-sent.patch`. |
++| **Not sent to da Silva** | `C:\Users\iahum\OneDrive\Escritorio\Patches not sent to da Silva (new features)\Old da silva version patches\` | Patches kept on your side only (Patch 1.01 / 2.00, LLM, TTS, onboarding, chat UX, and similar). |
++
++Downloads copies (`Downloads\1. Files sent to Da silva via DM`, `Downloads\2. Files sent to Da silva in AIRI chat`) are older mirrors of the **sent** bundle. Prefer the Escritorio **FULL PATCH** folder when it exists.
++
++### Desktop copies vs files inside `moeru-airi`
++
++The user keeps **canonical** patch bundles on **Escritorio** (paths in the table above). The **moeru-airi** repo is a working tree: clone again, delete the folder, or reset hard, and anything that lives **only** inside that project (agent notes, git-excluded folders, uncommitted docs) can disappear.
++
++**Rule for agents:** always read patches and reports from **Escritorio** (and `AIRI PATCHES LOGIC 1.txt` there). If the same files also exist under `moeru-airi\docs\` or similar, treat those as **optional workspace copies**. After a project nuke, restore from Desktop, not from the repo.
++
++### Why these archives exist (scope: **your** changes only)
++
++The user’s **da Silva–based fork** mixes two kinds of history:
++
++1. **Changes from dasilva333** (upstream collaborator) on the shared `airi` project.
++2. **Changes the user made** on top of that fork.
++
++**moeru-airi** must receive **only the user’s work**, not a blind copy of the whole fork.
++
++The two Escritorio archives are the **scope boundary**:
++
++| Archive | What it represents |
++| --- | --- |
++| **FULL PATCH … SENT TO DA SILVA** | Diffs the user **chose to share** with dasilva333 (plus related reports). |
++| **Old da silva version patches** (not sent) | Diffs the user **kept private** while still on the da Silva lineage. |
++
++Together they define **“mine to port”**. Port by **intent** from those patches into current `moeru-airi` packages. Do not `git merge` the old fork into moeru.
++
++### Fork and backup snapshots (reference only)
++
++The user may keep **backups of moeru and da Silva fork trees** so agents can read surrounding code when patches are thin. That work is **planned**; paths will be added to this runbook when ready.
++
++Until then, the only on-disk fork called out here is:
++
++`C:\Users\iahum\OneDrive\Documentos\GitHub\airi`
++
++It is an **older snapshot** of the da Silva fork. It is **not** canonical. It mixes dasilva333’s changes with the user’s and may be stale.
++
++| Role | Rule |
++| --- | --- |
++| **What to port** | Escritorio sent + not-sent patches and LOGIC 1 |
++| **Why open a backup/fork** | Resolve an ambiguous hunk, find a missing helper, or see how legacy code called an API — not to replace patch-first work |
++| **Before read** | Message the user with folder + file list + reason ([File access](#file-access-ask-first-announce-always)) |
++| **On conflict** | Archives win. Do not import dasilva-only behavior without user agreement |
++
++When new backup roots exist, add a row here (path, label, for example “da Silva fork @ date”, “stock moeru @ date”):
++
++| Label | Path | Notes |
++| --- | --- | --- |
++| *(pending)* | — | User will populate when backups are ready |
++
++### `Patches not sent to da Silva (new features)\` (detail)
++
+ Base folder:
+ 
+ `C:\Users\iahum\OneDrive\Escritorio\Patches not sent to da Silva (new features)\`
+ 
+ | Path | Role |
+ | --- | --- |
+-| `AIRI PATCHES LOGIC.txt` | Why patches exist; prioritize UX goals |
++| `AIRI PATCHES LOGIC 1.txt` | Why patches exist; feature order and UX goals (source of truth) |
++| `AIRI PATCHES LOGIC.txt` | Older copy; use only if LOGIC 1 is missing |
+ | `New moeru Airi patches\local-llm-session.patch` | **Current** moeru-airi local LLM port (preferred baseline) |
+ | `Old da silva version patches\Patch 1.01\` | Core offline stack: local-llm, native-tts, Kokoro, `llm.ts` sanitize |
+ | `Old da silva version patches\Patch 2.00\` | Onboarding local mode, brain popover, consciousness/speech UX, chat errors |
+@@ -53,8 +174,16 @@ Reports (`consolidated_changes_report *.md`, `walkthrough.md`) list **intent** a
+ 
+ Canonical diff for reuse:
+ 
+-- Repo: `local-llm-session.patch` (regenerate with `git diff <parent>..HEAD > local-llm-session.patch` after new commits)
+-- Desktop copy: `New moeru Airi patches\local-llm-session.patch`
++- Desktop: `New moeru Airi patches\local-llm-session.patch`
++- Reference commit: `b8a756693` — `Locall LLM patch`
++- Regenerate (LF, matches commit exactly):
++
++  ```bash
++  git -c core.autocrlf=false format-patch -1 b8a756693 -o <dir>
++  # rename 0001-Locall-LLM-patch.patch → local-llm-session.patch
++  ```
++
++  On Windows, use `git format-patch -o <dir>` or `copy /b`. Do not use PowerShell `>` redirect (UTF-16 breaks `git am`).
+ 
+ ### Architecture map (old → current upstream)
+ 
+@@ -85,8 +214,9 @@ Reference commit: `4c1927eb3` — `feat(stage-tamagotchi): add native local TTS
+ 
+ User archive (optional):
+ 
+-- Desktop: `moeru-airi-local-tts-audio-console.patch`
+-- Regenerate: `git format-patch -1 4c1927eb3 --stdout > local-tts-audio-console.patch`
++- Desktop: `New moeru Airi patches\moeru-airi-local-tts-audio-console.patch`
++- Reference commit: `4c1927eb3` — `feat(stage-tamagotchi): add native local TTS and speech audio console`
++- Regenerate: `git -c core.autocrlf=false format-patch -1 4c1927eb3 -o <dir>` then rename the `0001-*.patch` file
+ 
+ ### Architecture map (legacy → current)
+ 
+@@ -112,9 +242,9 @@ User archive (optional):
+ - **`AudioOutput`**: call `onStart` before `onSource` on the first buffer (`packages/audio/src/browser/audio-output.ts`).
+ - Legacy single-key `settings/speech/audio-console` JSON is read once when new per-field keys are first created.
+ 
+-## What already landed in moeru-airi (chat composer shortcuts)
++## What already landed in moeru-airi (feature 4: chat buttons)
+ 
+-**Status: partial** — brain and speech popovers in Tamagotchi desktop chat.
++**Status: done** for brain and speech popovers in Tamagotchi desktop chat (LOGIC 1 item 4).
+ 
+ | Piece | Path |
+ | --- | --- |
+@@ -129,25 +259,28 @@ User archive (optional):
+ 
+ - Repo root: `moeru-airi-chat-composer-popovers.patch`
+ - Desktop: `moeru-airi-chat-composer-popovers.patch`
+-- Reference commit: `afd6a847c` — `feat(stage-tamagotchi): add chat brain and speech composer popovers`
+-- Regenerate (stage only these paths, then unstage):
++- Reference commit: `afd6a847c` — `feat(stage-tamagotchi): add chat brain and speech composer popovers` (includes runbook in the same commit)
++- Regenerate: `git -c core.autocrlf=false format-patch -1 afd6a847c -o <dir>` then rename to `moeru-airi-chat-composer-popovers.patch`
+ 
+-  ```bash
+-  git add packages/stage-ui/src/components/scenarios/chat/chat-brain-popover.vue \
+-    packages/stage-ui/src/components/scenarios/chat/chat-speech-popover.vue \
+-    packages/stage-ui/src/composables/chat/tamagotchi-eventa-session.ts \
+-    packages/stage-ui/src/components/scenarios/chat/index.ts \
+-    apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue
+-  git diff --cached -p --output=moeru-airi-chat-composer-popovers.patch
+-  git restore --staged <same paths>
+-  ```
++## Feature 5: Live2D expressions (not ported)
++
++**LOGIC 1 intent:** Expressions edited in Live2D Studio must appear in AIRI (not only the default look).
++
++**Current moeru behavior (baseline):**
++
++- Import preview: `packages/stage-ui-live2d/src/utils/live2d-validator.ts` compares `FileReferences.Expressions` in `.model3.json` to `.exp3.json` files in the zip. Extra files → **warnings**, not errors (`0 referenced · N found` is common on custom exports).
++- Runtime load: `packages/stage-ui-live2d/src/utils/live2d-zip-loader.ts` and `packages/stage-ui-live2d/src/controls/manifest.ts` can **merge discovered** expression files into settings when loading a zip.
++- Porting goal: match legacy fork UX (where expressions were visible to the user), not only silent auto-discovery.
++
++Search old patches for expression UI and wiring before re-implementing.
+ 
+ ### Not ported yet (use Patch 2.00 / 1.01 reports as backlog)
+ 
+-| Item | Legacy files to study | Notes |
+-| --- | --- | --- |
+-| Chat memory / images popovers, grounding toggle, token meter | Patch 2.00 fork `InteractiveArea` | Not in moeru port yet |
+-| Onboarding `step-local-llm-setup.vue`, local mode | Patch 2.00, 09-06 | First-run “local setup” |
++| Item | LOGIC 1 # | Legacy files to study | Notes |
++| --- | --- | --- | --- |
++| Live2D expressions UX | 5 | Patch 1.01 / 2.00, `stage-ui-live2d` | Studio color/param changes must show on stage |
++| Onboarding `step-local-llm-setup.vue`, local mode | 6 | Patch 2.00, 09-06 | First-run “local setup”; confirm current onboarding first |
++| Chat memory / images popovers, grounding toggle, token meter | 4 (extra) | Patch 2.00 fork `InteractiveArea` | User did not prioritize in LOGIC 1 |
+ | Auto-stop local server when switching provider | `consciousness.ts` in 2.00 | Saves RAM |
+ | Friendly chat error when server offline | `chat.ts` in 2.00 | Replace raw `Failed to fetch` |
+ | Kokoro worker / adapter fixes | Patch 1.01, 2.00, 13.06 | Progress UI in `speech.vue` |
+@@ -158,34 +291,35 @@ User archive (optional):
+ 
+ ## Agent workflow (every new session)
+ 
+-1. **Read** `AGENTS.md` and this runbook. Read `AIRI PATCHES LOGIC.txt` if the task is UX-wide.
++1. **Read** `AGENTS.md` and this runbook, including [User agent policy](#user-agent-policy-mandatory). Read `AIRI PATCHES LOGIC 1.txt` if the task is UX-wide.
+ 2. **Confirm scope** with the user (one feature area per PR is easier).
+-3. **Locate intent** in `consolidated_changes_report *.md` or `walkthrough.md` for that patch folder.
+-4. **Search current tree** for the same capability (upstream may have added something similar).
++3. **Locate the patch** (sent or not-sent archive). Read the report, then the `.patch` section — not the old fork first.
++4. **Locate intent** in `consolidated_changes_report *.md` or `walkthrough.md` for that patch folder when present.
++5. **Search current tree** for the same capability (upstream may have added something similar).
+ 
+    ```bash
+    # Examples
+    rg "local-llm|native-tts|ChatBrainPopover|kokoro" packages apps
+    ```
+ 
+-5. **Try apply only as archaeology** (optional):
++6. **Try apply only as archaeology** (optional):
+ 
+    ```bash
+    git apply --check path/to/old.patch
+    ```
+ 
+-   If hunks fail, **port by intent** into current files. Never fight a 3-way merge across renames without a plan.
++   If hunks fail, **port from the patch text** ([How to port patches](#how-to-port-patches-not-improvisation)). Never fight a 3-way merge across renames without a plan.
+ 
+-6. **Implement** using current patterns:
++7. **Implement** using current patterns:
+ 
+    - IPC: `@moeru/eventa` contracts under `apps/stage-tamagotchi/src/shared/eventa/`
+    - Providers: `packages/stage-ui/src/libs/providers/providers/`
+    - Settings pages: `packages/stage-pages/src/pages/settings/`
+    - Chat: `packages/stage-ui/src/stores/chat.ts` + `packages/core-agent`
+ 
+-7. **i18n**: edit `packages/i18n/src/locales/en/settings.yaml` (and user locale only). See `packages/i18n/AGENTS.md`.
++8. **i18n**: edit `packages/i18n/src/locales/en/settings.yaml` (and user locale only). See `packages/i18n/AGENTS.md`.
+ 
+-8. **Checks** (report what you ran):
++9. **Checks** (report what you ran):
+ 
+    ```bash
+    pnpm -F @proj-airi/stage-tamagotchi typecheck   # if Electron/main touched
+@@ -196,14 +330,13 @@ User archive (optional):
+    pnpm lint                                       # pre-commit runs ESLint
+    ```
+ 
+-9. **Export patch** for the user’s archive if asked:
++10. **Export patch** for the user’s archive if asked:
+ 
+    ```bash
+-   git diff <upstream-base-commit>..HEAD > local-llm-session.patch
+-   git format-patch -1 <commit> --stdout > local-tts-audio-console.patch
++   git -c core.autocrlf=false format-patch -1 <commit> -o <dir>
+    ```
+ 
+-   Ask before `git commit` unless the user requests a save point.
++   Rename the `0001-*.patch` file. On Windows, do not use PowerShell `>` redirect (UTF-16 breaks `git am`). Ask before `git commit` unless the user requests a save point.
+ 
+ ## Rules that differ from old patches
+ 
+@@ -230,12 +363,14 @@ Pre-commit **fails on errors**. Common fixes when porting old code:
+ Copy into a new chat:
+ 
+ ```text
+-Fork: moeru-airi. Read docs/ai/runbooks/porting-legacy-dasilva-patches.md and
+-AIRI PATCHES LOGIC on my Desktop. Port <FEATURE> from Old da silva version patches/Patch 2.00
+-by intent, not line-by-line. Tamagotchi only unless I say otherwise.
++Fork: moeru-airi. Read docs/ai/runbooks/porting-legacy-dasilva-patches.md (User agent policy) and
++AIRI PATCHES LOGIC 1.txt on Escritorio. Use BOTH archives: (1) Patches sent to DaSilva\FULL PATCH WITH ALL SENT TO DA SILVA,
++(2) Patches not sent\Old da silva version patches. Port 1:1 when moeru allows; adapt when architectures differ.
++When stuck, re-read combined-da-silva-sent.patch—do not improvise. Before any fork/backup file, tell me the path and why. GitHub\airi and future moeru/da Silva backups are reference only, not canonical.
++Port only MY changes—not dasilva’s fork wholesale. LOGIC 1 feature <N>: <name>. Tamagotchi unless I say otherwise.
+ ```
+ 
+-Replace `<FEATURE>` with: `chat brain popover`, `onboarding local setup`, `Kokoro progress`, `Live2D expressions`, etc.
++Examples: `4 buttons` (done), `5 expressions`, `6 start menu local setup`, `2 Kokoro progress`.
+ 
+ ## Git remotes (typical)
+ 
+@@ -248,4 +383,4 @@ Publish: commit on a feature branch, `git push -u origin <branch>`. Open a PR to
+ 
+ ---
+ 
+-*Last updated: local TTS (Windows SAPI), Speech audio console, multi-segment playback effects (`4c1927eb3`). Update when a feature area moves from “not ported” to “done”.*
++*Last updated: 2026-10-23 — fork/backup snapshots: reference only, announce before read; pending backup path table. Update when backup roots are registered or a LOGIC 1 item moves to “done”.*
+diff --git a/packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue b/packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue
+index cbd56ef1d..6505426e0 100644
+--- a/packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue
++++ b/packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue
+@@ -11,6 +11,7 @@ import type { Cubism4ModelSettings } from 'pixi-live2d-display/cubism4'
+ 
+ import type { PixiLive2DInternalModel } from '../../../composables/live2d'
+ import type { Live2DExpressionControl } from '../../../controls/manifest'
++import type { Live2DVTubeZipMetadata } from '../../../utils/live2d-vtube-sidecar'
+ 
+ import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
+ import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
+@@ -31,6 +32,7 @@ import {
+   createLive2DHeadTracker,
+   createLive2DMotionSpring,
+   disableLive2DSdkBreath,
++  hookArtMeshColorsAfterModelUpdate,
+   live2DCanvasRectToParent,
+   useLive2DMotionManagerUpdate,
+   useMotionUpdatePluginAutoEyeBlink,
+@@ -48,6 +50,7 @@ import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
+ import { useLive2D } from '../../../contexts/live2d'
+ import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
+ import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams } from '../../../stores'
++import { resolveSavedExpressionNames } from '../../../utils/live2d-vtube-sidecar'
+ 
+ const props = withDefaults(defineProps<{
+   modelSrc?: string
+@@ -272,6 +275,9 @@ const expressionLoader = shallowRef<(fileName: string) => Promise<string>>()
+ const savedEyeBlink = shallowRef<any>(null)
+ const savedExpressionManager = shallowRef<any>(null)
+ 
++const artMeshColors = ref<Record<string, string>>({})
++const pendingVtubeSavedExpressions = ref<string[]>([])
++let appliedVtubeSavedExpressionsForLoad = false
+ const localCurrentMotion = ref<{ group: string, index: number }>({ group: 'Idle', index: 0 })
+ const beatSync = createBeatSyncController({
+   baseAngles: () => ({
+@@ -309,6 +315,8 @@ async function loadModel() {
+ async function performModelLoad() {
+   modelLoading.value = true
+   componentState.value = 'loading'
++  pendingVtubeSavedExpressions.value = []
++  appliedVtubeSavedExpressionsForLoad = false
+   const modelSource = modelSrcRef.value
+   const modelId = props.modelId
+   live2d.beginModelLoad()
+@@ -385,6 +393,13 @@ async function performModelLoad() {
+     // --- Motion
+ 
+     const internalModel = model.value.internalModel
++    const settingsWithVtube = internalModel.settings as Cubism4ModelSettings & {
++      _vtubeZipMetadata?: Live2DVTubeZipMetadata
++    }
++    artMeshColors.value = settingsWithVtube._vtubeZipMetadata?.artMeshColors
++      ? { ...settingsWithVtube._vtubeZipMetadata.artMeshColors }
++      : {}
++    pendingVtubeSavedExpressions.value = settingsWithVtube._vtubeZipMetadata?.savedActiveExpressions ?? []
+     const coreModel = internalModel.coreModel
+     const motionManager = internalModel.motionManager
+     disableLive2DSdkBreath(internalModel)
+@@ -487,6 +502,9 @@ async function performModelLoad() {
+     motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking), 'final')
+     motionManagerUpdate.register(useMotionUpdatePluginBreathControl(manualBreathControl), 'final')
+ 
++    // NOTICE: ArtMesh colors must be applied after coreModel.update(), not in the motion hook.
++    hookArtMeshColorsAfterModelUpdate(internalModel, artMeshColors)
++
+     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
+     motionManager.update = function (model: PixiLive2DInternalModel['coreModel'], now: number) {
+       return motionManagerUpdate.hookUpdate(model, now, hookedUpdate)
+@@ -895,6 +913,40 @@ watch(live2dIdleAnimationEnabled, (enabled) => {
+   }
+ })
+ 
++function tryApplyVtubeSavedExpressions() {
++  if (appliedVtubeSavedExpressionsForLoad)
++    return
++
++  const saved = pendingVtubeSavedExpressions.value
++  if (saved.length === 0)
++    return
++
++  const references = expressionReferences.value
++  if (references.length === 0)
++    return
++
++  if (live2d.expressions.definitions.value.size < references.length)
++    return
++
++  const names = resolveSavedExpressionNames(saved, references)
++  if (names.length === 0)
++    return
++
++  live2d.expressions.setPreviewExpressions(names)
++  console.info(
++    '[Live2D] Applied SavedActiveExpressions from .vtube.json:',
++    names.join(', '),
++    names.length < saved.length ? `(${names.length}/${saved.length} files matched)` : '',
++  )
++  appliedVtubeSavedExpressionsForLoad = true
++}
++
++watch(
++  [() => live2d.expressions.definitions.value.size, expressionReferences, pendingVtubeSavedExpressions],
++  () => tryApplyVtubeSavedExpressions(),
++  { deep: true, flush: 'post' },
++)
++
+ // Watch for expression system toggle — nullify/restore SDK managers at runtime
+ watch(live2dExpressionEnabled, (enabled) => {
+   if (!model.value)
+diff --git a/packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts b/packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts
+index e58de7609..222a209c7 100644
+--- a/packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts
++++ b/packages/stage-ui-live2d/src/composables/live2d/motion-manager.ts
+@@ -798,3 +798,111 @@ export function useMotionUpdatePluginLipSync(
+     ctx.model.setParameterValueById('ParamMouthOpenY', blended)
+   }
+ }
++
++export interface ArtMeshColorApplyStats {
++  applied: number
++  missed: number
++  missedIds: string[]
++}
++
++function hexToRGBA(hex: string): [number, number, number, number] {
++  const r = Number.parseInt(hex.substring(0, 2), 16) / 255
++  const g = Number.parseInt(hex.substring(2, 4), 16) / 255
++  const b = Number.parseInt(hex.substring(4, 6), 16) / 255
++  const a = Number.parseInt(hex.substring(6, 8), 16) / 255
++  return [r, g, b, a]
++}
++
++/**
++ * Writes VTube multiply/screen colors onto Cubism drawable buffers.
++ * Must run after coreModel.update(). That step recalculates drawables and clears earlier writes.
++ */
++export function applyArtMeshColorsToDrawables(
++  internalModel: PixiLive2DInternalModel,
++  artMeshColors: Record<string, string>,
++): ArtMeshColorApplyStats {
++  const stats: ArtMeshColorApplyStats = { applied: 0, missed: 0, missedIds: [] }
++
++  if (!artMeshColors || Object.keys(artMeshColors).length === 0)
++    return stats
++
++  if (!internalModel?.coreModel)
++    return stats
++
++  const coreModel = internalModel.coreModel
++  const drawables = (coreModel as { getModel?: () => { drawables?: {
++    multiplyColors?: Float32Array
++    screenColors?: Float32Array
++    opacities?: Float32Array
++  } } }).getModel?.()?.drawables
++  if (!drawables?.multiplyColors || !drawables?.screenColors)
++    return stats
++
++  for (const [artMeshId, colorValue] of Object.entries(artMeshColors)) {
++    try {
++      const [multiplyHex, screenHex] = colorValue.split('|')
++      const drawableIndex = typeof internalModel.getDrawableIndex === 'function'
++        ? internalModel.getDrawableIndex(artMeshId)
++        : (coreModel as { getDrawableIndex?: (id: string) => number }).getDrawableIndex?.(artMeshId) ?? -1
++
++      if (drawableIndex < 0) {
++        stats.missed++
++        if (stats.missedIds.length < 5)
++          stats.missedIds.push(artMeshId)
++        continue
++      }
++
++      if (multiplyHex) {
++        const [r, g, b, a] = hexToRGBA(multiplyHex)
++        const offset = drawableIndex * 4
++        drawables.multiplyColors[offset] = r
++        drawables.multiplyColors[offset + 1] = g
++        drawables.multiplyColors[offset + 2] = b
++        drawables.multiplyColors[offset + 3] = a
++        // NOTICE:
++        // VTube uses multiply alpha (RRGGBBAA last byte) for mesh visibility.
++        // pixi-live2d-display shaders tint RGB only; map sub-1 multiply alpha to drawable opacity.
++        // Source: patches sent to da Silva (artmeshes_patch / all_6 pixi shader).
++        // Removal: when upstream pixi-live2d-display applies multiply alpha in the shader path.
++        if (drawables.opacities && a < 1)
++          drawables.opacities[drawableIndex] = a
++      }
++
++      if (screenHex) {
++        const [r, g, b, a] = hexToRGBA(screenHex)
++        const offset = drawableIndex * 4
++        drawables.screenColors[offset] = r
++        drawables.screenColors[offset + 1] = g
++        drawables.screenColors[offset + 2] = b
++        drawables.screenColors[offset + 3] = a
++      }
++
++      stats.applied++
++    }
++    catch {
++      stats.missed++
++    }
++  }
++
++  return stats
++}
++
++export function hookArtMeshColorsAfterModelUpdate(
++  internalModel: PixiLive2DInternalModel,
++  artMeshColors: Ref<Record<string, string>>,
++) {
++  const originalUpdate = internalModel.update.bind(internalModel)
++  let diagLogged = false
++
++  internalModel.update = function (dt: number, now: number) {
++    originalUpdate(dt, now)
++    const stats = applyArtMeshColorsToDrawables(internalModel, artMeshColors.value)
++    if (!diagLogged && Object.keys(artMeshColors.value).length > 0) {
++      diagLogged = true
++      console.info(
++        `[Live2D] ArtMesh colors applied after model.update: ${stats.applied} ok, ${stats.missed} drawable not found`,
++        stats.missedIds.length > 0 ? `(examples: ${stats.missedIds.join(', ')})` : '',
++      )
++    }
++  }
++}
+diff --git a/packages/stage-ui-live2d/src/contexts/expressions.test.ts b/packages/stage-ui-live2d/src/contexts/expressions.test.ts
+index 7f7ed06a2..11c5abdf6 100644
+--- a/packages/stage-ui-live2d/src/contexts/expressions.test.ts
++++ b/packages/stage-ui-live2d/src/contexts/expressions.test.ts
+@@ -101,12 +101,12 @@ describe('live2D expressions context', () => {
+ 
+     let rendered = 0.5
+     const coreModel = {
+-      getParameterValueById: () => 0.5,
++      getParameterValueById: () => rendered,
+       setParameterValueById: (_: string, value: number) => { rendered = value },
+     }
+     expressions.setPreviewExpressions(['add', 'multiply'])
+     expressions.apply(coreModel)
+-    expect(rendered).toBeCloseTo(0.35)
++    expect(rendered).toBeCloseTo(0.525)
+     expect(expressions.parameters.value.get('ParamEyeSmile')?.currentValue).toBe(0)
+ 
+     expressions.setPreviewExpressions([])
+diff --git a/packages/stage-ui-live2d/src/contexts/expressions.ts b/packages/stage-ui-live2d/src/contexts/expressions.ts
+index 06a60d18a..295537b91 100644
+--- a/packages/stage-ui-live2d/src/contexts/expressions.ts
++++ b/packages/stage-ui-live2d/src/contexts/expressions.ts
+@@ -4,6 +4,11 @@ import type { Live2DExpressionControl, Live2DExpressionParameterControl } from '
+ 
+ import { computed, ref } from 'vue'
+ 
++import {
++  applyExpressionDefinitionStackToCoreModel,
++  applyExpressionParametersToCoreModel,
++} from '../utils/apply-expression-stack'
++
+ export type Live2DExpressionBlendMode = Live2DExpressionParameterControl['blend']
+ 
+ /** One parameter operation from an exp3 expression. */
+@@ -225,20 +230,38 @@ export function createLive2DExpressionsContext(
+   function apply(coreModel: Live2DExpressionCoreModel) {
+     const activeThisFrame = new Set<string>()
+ 
+-    for (const parameter of parameters.value.values()) {
+-      const preview = previewParameters.get(parameter.parameterId)
+-      if (!preview && parameter.currentValue === parameter.defaultValue)
+-        continue
++    if (previewExpressionNames.length > 0) {
++      const previewDefinitions = previewExpressionNames
++        .map(name => definitions.value.get(name))
++        .filter((definition): definition is Live2DExpressionDefinition => definition !== undefined)
++
++      applyExpressionDefinitionStackToCoreModel(
++        coreModel,
++        previewDefinitions,
++        parameterId => parameters.value.get(parameterId)?.modelDefault ?? options.getParameterDefault(parameterId),
++      )
+ 
+-      let value = preview?.value ?? parameter.currentValue
+-      const blend = preview?.blend ?? parameter.activeBlend
+-      if (blend === 'Add')
+-        value = parameter.modelDefault + value
+-      else if (blend === 'Multiply')
+-        value = coreModel.getParameterValueById(parameter.parameterId) * value
++      for (const definition of previewDefinitions) {
++        for (const parameter of definition.parameters)
++          activeThisFrame.add(parameter.parameterId)
++      }
++    }
++    else {
++      for (const parameter of parameters.value.values()) {
++        if (parameter.currentValue === parameter.defaultValue)
++          continue
+ 
+-      coreModel.setParameterValueById(parameter.parameterId, value)
+-      activeThisFrame.add(parameter.parameterId)
++        applyExpressionParametersToCoreModel(
++          coreModel,
++          [{
++            parameterId: parameter.parameterId,
++            value: parameter.currentValue,
++            blend: parameter.activeBlend,
++          }],
++          () => parameter.modelDefault,
++        )
++        activeThisFrame.add(parameter.parameterId)
++      }
+     }
+ 
+     for (const parameterId of activeLastFrame) {
+diff --git a/packages/stage-ui-live2d/src/utils/apply-expression-stack.ts b/packages/stage-ui-live2d/src/utils/apply-expression-stack.ts
+new file mode 100644
+index 000000000..3120173ec
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/apply-expression-stack.ts
+@@ -0,0 +1,45 @@
++import type {
++  Live2DExpressionCoreModel,
++  Live2DExpressionDefinition,
++  Live2DExpressionParameterDefinition,
++} from '../contexts/expressions'
++
++export function applyExpressionParametersToCoreModel(
++  coreModel: Live2DExpressionCoreModel,
++  expressionParameters: readonly Live2DExpressionParameterDefinition[],
++  getParameterDefault: (parameterId: string) => number,
++): void {
++  for (const parameter of expressionParameters) {
++    const modelDefault = getParameterDefault(parameter.parameterId)
++    let value = parameter.value
++    if (parameter.blend === 'Add')
++      value = modelDefault + value
++    else if (parameter.blend === 'Multiply')
++      value = coreModel.getParameterValueById(parameter.parameterId) * value
++
++    coreModel.setParameterValueById(parameter.parameterId, value)
++  }
++}
++
++/** Applies each expression in order, matching VTube Studio `SavedActiveExpressions` stacking. */
++export function applyExpressionDefinitionStackToCoreModel(
++  coreModel: Live2DExpressionCoreModel,
++  definitions: readonly Live2DExpressionDefinition[],
++  getParameterDefault: (parameterId: string) => number,
++): void {
++  for (const definition of definitions)
++    applyExpressionParametersToCoreModel(coreModel, definition.parameters, getParameterDefault)
++}
++
++export function readCoreModelParameterDefault(
++  coreModel: Live2DExpressionCoreModel,
++  parameterId: string,
++): number {
++  const coreModelWithDefaultLookup = coreModel as Live2DExpressionCoreModel & {
++    getParameterDefaultValueById?: (id: string) => number
++  }
++  const defaultValue = coreModelWithDefaultLookup.getParameterDefaultValueById?.(parameterId)
++  return typeof defaultValue === 'number'
++    ? defaultValue
++    : coreModel.getParameterValueById(parameterId)
++}
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-apply-vtube-expressions.ts b/packages/stage-ui-live2d/src/utils/live2d-apply-vtube-expressions.ts
+new file mode 100644
+index 000000000..06cd57f64
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-apply-vtube-expressions.ts
+@@ -0,0 +1,123 @@
++import type { PixiLive2DInternalModel } from '../composables/live2d/motion-manager'
++import type { Live2DExpressionCoreModel, Live2DExpressionDefinition } from '../contexts/expressions'
++import type { Live2DExpressionFileReference } from './live2d-expression-references'
++
++import { parseLive2DExpression } from '../contexts/expressions'
++import {
++  applyExpressionDefinitionStackToCoreModel,
++  readCoreModelParameterDefault,
++} from './apply-expression-stack'
++import { resolveSavedExpressionNames } from './live2d-vtube-sidecar'
++
++export function describeVtubeSavedExpressionStack(
++  savedActiveExpressions: readonly string[],
++  expFiles: ReadonlyArray<{ name: string, fileName: string, data: unknown }>,
++  expressionReferences?: readonly Live2DExpressionFileReference[],
++): { savedPaths: number, expFilesInZip: number, resolvedNames: string[], definitionCount: number } {
++  const references = resolveExpressionReferences(expressionReferences, expFiles)
++  const definitions = buildVtubeSavedExpressionDefinitions(savedActiveExpressions, expFiles, references)
++  const resolvedNames = resolveSavedExpressionNames([...savedActiveExpressions], references)
++
++  return {
++    savedPaths: savedActiveExpressions.length,
++    expFilesInZip: expFiles.length,
++    resolvedNames,
++    definitionCount: definitions.length,
++  }
++}
++
++function resolveExpressionReferences(
++  expressionReferences: readonly Live2DExpressionFileReference[] | undefined,
++  expFiles: ReadonlyArray<{ name: string, fileName: string }>,
++): Live2DExpressionFileReference[] {
++  if (expressionReferences?.length)
++    return [...expressionReferences]
++  return expFiles.map(entry => ({ name: entry.name, fileName: entry.fileName }))
++}
++
++function findExpFileForReference(
++  name: string,
++  reference: Live2DExpressionFileReference | undefined,
++  expFiles: ReadonlyArray<{ name: string, fileName: string, data: unknown }>,
++) {
++  const byName = expFiles.find(file => file.name === name)
++  if (byName)
++    return byName
++
++  if (!reference)
++    return undefined
++
++  const refFile = reference.fileName.replace(/\\/g, '/').toLowerCase()
++  return expFiles.find((file) => {
++    const fileName = file.fileName.replace(/\\/g, '/').toLowerCase()
++    return fileName === refFile || fileName.endsWith(`/${refFile}`)
++  })
++}
++
++function buildVtubeSavedExpressionDefinitions(
++  savedActiveExpressions: readonly string[],
++  expFiles: ReadonlyArray<{ name: string, fileName: string, data: unknown }>,
++  expressionReferences?: readonly Live2DExpressionFileReference[],
++): Live2DExpressionDefinition[] {
++  if (savedActiveExpressions.length === 0 || expFiles.length === 0)
++    return []
++
++  const references = resolveExpressionReferences(expressionReferences, expFiles)
++  const names = resolveSavedExpressionNames([...savedActiveExpressions], references)
++
++  return names.flatMap((name) => {
++    const reference = references.find(entry => entry.name === name)
++    const entry = findExpFileForReference(name, reference, expFiles)
++    if (!entry?.data)
++      return []
++
++    try {
++      return [parseLive2DExpression(name, entry.fileName, JSON.stringify(entry.data))]
++    }
++    catch {
++      return []
++    }
++  })
++}
++
++export function applyVtubeSavedExpressionStack(
++  coreModel: Live2DExpressionCoreModel,
++  savedActiveExpressions: readonly string[],
++  expFiles: ReadonlyArray<{ name: string, fileName: string, data: unknown }>,
++  expressionReferences?: readonly Live2DExpressionFileReference[],
++): void {
++  const definitions = buildVtubeSavedExpressionDefinitions(savedActiveExpressions, expFiles, expressionReferences)
++  if (definitions.length === 0)
++    return
++
++  applyExpressionDefinitionStackToCoreModel(
++    coreModel,
++    definitions,
++    parameterId => readCoreModelParameterDefault(coreModel, parameterId),
++  )
++}
++
++/**
++ * Re-applies the VTube expression stack after each `internalModel.update()`, like the stage
++ * expression motion plugin. Idle motion otherwise overwrites one-shot parameter writes.
++ */
++export function hookVtubeSavedExpressionsAfterModelUpdate(
++  internalModel: PixiLive2DInternalModel,
++  savedActiveExpressions: readonly string[],
++  expFiles: ReadonlyArray<{ name: string, fileName: string, data: unknown }>,
++  expressionReferences?: readonly Live2DExpressionFileReference[],
++): void {
++  const definitions = buildVtubeSavedExpressionDefinitions(savedActiveExpressions, expFiles, expressionReferences)
++  if (definitions.length === 0)
++    return
++
++  const originalUpdate = internalModel.update.bind(internalModel)
++  internalModel.update = function (dt: number, now: number) {
++    originalUpdate(dt, now)
++    applyExpressionDefinitionStackToCoreModel(
++      internalModel.coreModel,
++      definitions,
++      parameterId => readCoreModelParameterDefault(internalModel.coreModel, parameterId),
++    )
++  }
++}
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-expression-references.test.ts b/packages/stage-ui-live2d/src/utils/live2d-expression-references.test.ts
+new file mode 100644
+index 000000000..da72baa37
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-expression-references.test.ts
+@@ -0,0 +1,19 @@
++import type { Live2DArchiveMetadataSettings } from './live2d-zip-loader'
++
++import { describe, expect, it } from 'vitest'
++
++import { expressionReferencesFromArchiveSettings } from './live2d-expression-references'
++
++describe('expressionReferencesFromArchiveSettings', () => {
++  it('prefers model3.json expression entries over zip file stems', () => {
++    const references = expressionReferencesFromArchiveSettings({
++      expressions: [{ Name: 'Alt Manta', File: 'Custom Manta/Alt_Manta.exp3.json' }],
++      _expFiles: [{ name: 'Alt_Manta', fileName: 'Custom Manta/Alt_Manta.exp3.json', data: {} }],
++    } as Live2DArchiveMetadataSettings & { expressions: Array<{ Name: string, File: string }> })
++
++    expect(references).toEqual([{
++      name: 'Alt Manta',
++      fileName: 'Custom Manta/Alt_Manta.exp3.json',
++    }])
++  })
++})
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-expression-references.ts b/packages/stage-ui-live2d/src/utils/live2d-expression-references.ts
+new file mode 100644
+index 000000000..58a9f7eac
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-expression-references.ts
+@@ -0,0 +1,26 @@
++import type { Cubism4ModelSettings } from 'pixi-live2d-display/cubism4'
++
++import type { Live2DArchiveMetadataSettings } from './live2d-zip-loader'
++
++export interface Live2DExpressionFileReference {
++  name: string
++  fileName: string
++}
++
++/** Uses model3.json expression entries when present, like stage `Model.vue`. */
++export function expressionReferencesFromArchiveSettings(
++  settings: Live2DArchiveMetadataSettings,
++): Live2DExpressionFileReference[] {
++  const cubismSettings = settings as Cubism4ModelSettings
++  const fromManifest = (cubismSettings.expressions ?? []).map((expression: { Name: string, File: string }) => ({
++    name: expression.Name,
++    fileName: expression.File,
++  }))
++  if (fromManifest.length > 0)
++    return fromManifest
++
++  return (settings._expFiles ?? []).map(entry => ({
++    name: entry.name,
++    fileName: entry.fileName,
++  }))
++}
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-preview-source-key.test.ts b/packages/stage-ui-live2d/src/utils/live2d-preview-source-key.test.ts
+new file mode 100644
+index 000000000..02a350b3c
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-preview-source-key.test.ts
+@@ -0,0 +1,21 @@
++import { describe, expect, it } from 'vitest'
++
++import { buildLive2dPreviewSourceKey, isLive2dPreviewCurrent } from './live2d-preview-source-key'
++
++describe('live2d-preview-source-key', () => {
++  it('buildLive2dPreviewSourceKey fingerprints the file metadata', () => {
++    const file = new File(['zip'], 'Custom Hiyori.zip', { lastModified: 1_700_000_000_000 })
++    expect(buildLive2dPreviewSourceKey(file)).toBe('Custom Hiyori.zip|3|1700000000000')
++  })
++
++  it('isLive2dPreviewCurrent requires version, source key, and preview image', () => {
++    const file = new File(['zip'], 'a.zip', { lastModified: 1 })
++    const key = buildLive2dPreviewSourceKey(file)
++    const base = { file, previewImage: 'data:image/png;base64,abc' }
++
++    expect(isLive2dPreviewCurrent({ ...base, live2dPreviewVersion: 4, live2dPreviewSourceKey: key }, 4)).toBe(true)
++    expect(isLive2dPreviewCurrent({ ...base, live2dPreviewVersion: 3, live2dPreviewSourceKey: key }, 4)).toBe(false)
++    expect(isLive2dPreviewCurrent({ ...base, live2dPreviewVersion: 4, live2dPreviewSourceKey: 'stale' }, 4)).toBe(false)
++    expect(isLive2dPreviewCurrent({ file, live2dPreviewVersion: 4, live2dPreviewSourceKey: key }, 4)).toBe(false)
++  })
++})
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-preview-source-key.ts b/packages/stage-ui-live2d/src/utils/live2d-preview-source-key.ts
+new file mode 100644
+index 000000000..594048c02
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-preview-source-key.ts
+@@ -0,0 +1,22 @@
++/** Stable key for a zip `File` used when persisting Live2D selector thumbnails. */
++export function buildLive2dPreviewSourceKey(file: File): string {
++  return `${file.name}|${file.size}|${file.lastModified}`
++}
++
++export function isLive2dPreviewCurrent(
++  model: {
++    file: File
++    previewImage?: string
++    live2dPreviewVersion?: number
++    live2dPreviewSourceKey?: string
++  },
++  pipelineVersion: number,
++): boolean {
++  if (!model.previewImage)
++    return false
++  if (model.live2dPreviewVersion !== pipelineVersion)
++    return false
++  if (model.live2dPreviewSourceKey !== buildLive2dPreviewSourceKey(model.file))
++    return false
++  return true
++}
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-preview.ts b/packages/stage-ui-live2d/src/utils/live2d-preview.ts
+index b1f6a8666..727d3dc22 100644
+--- a/packages/stage-ui-live2d/src/utils/live2d-preview.ts
++++ b/packages/stage-ui-live2d/src/utils/live2d-preview.ts
+@@ -1,14 +1,51 @@
++import type { PixiLive2DInternalModel } from '../composables/live2d/motion-manager'
++import type { Live2DArchiveMetadataSettings } from './live2d-zip-loader'
++
+ import cropImg from '@lemonneko/crop-empty-pixels'
++import JSZip from 'jszip'
+ 
+ import { Application } from '@pixi/app'
+ import { extensions } from '@pixi/extensions'
+ import { Ticker, TickerPlugin } from '@pixi/ticker'
+ import { Live2DFactory, Live2DModel } from 'pixi-live2d-display/cubism4'
++import { ref } from 'vue'
++
++import { applyArtMeshColorsToDrawables, hookArtMeshColorsAfterModelUpdate } from '../composables/live2d/motion-manager'
++import { applyVtubeSavedExpressionStack, describeVtubeSavedExpressionStack, hookVtubeSavedExpressionsAfterModelUpdate } from './live2d-apply-vtube-expressions'
++import { expressionReferencesFromArchiveSettings } from './live2d-expression-references'
++import { buildLive2dPreviewSourceKey } from './live2d-preview-source-key'
++
++import './live2d-zip-loader'
++import './live2d-opfs-registration'
++
++/** Bump when thumbnail generation changes so stored previews can refresh on load. */
++export const CURRENT_LIVE2D_PREVIEW_VERSION = 5
++
++export { buildLive2dPreviewSourceKey, isLive2dPreviewCurrent } from './live2d-preview-source-key'
++
++let previewGenerationChain: Promise<unknown> = Promise.resolve()
++
++async function waitForPreviewTextures(modelInstance: Live2DModel, frameBudget = 48): Promise<void> {
++  const now = performance.now()
++  for (let frame = 0; frame < frameBudget; frame++)
++    modelInstance.internalModel.update(0, now + frame * 16)
++
++  await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)))
++  await new Promise(resolve => setTimeout(resolve, 200))
++}
+ 
+ /**
+  * Render a Live2D zip/file to an offscreen canvas and return a padded preview data URL.
+  */
+ export async function loadLive2DModelPreview(file: File) {
++  console.info('[Live2D Preview] queued', { fileName: file.name, pipelineVersion: CURRENT_LIVE2D_PREVIEW_VERSION })
++  const run = async () => loadLive2DModelPreviewInner(file)
++  const result = previewGenerationChain.then(run, run)
++  previewGenerationChain = result.then(() => undefined, () => undefined)
++  return await result
++}
++
++async function loadLive2DModelPreviewInner(file: File) {
+   Live2DModel.registerTicker(Ticker)
+   extensions.add(TickerPlugin)
+ 
+@@ -43,9 +80,7 @@ export async function loadLive2DModelPreview(file: File) {
+   app.ticker.stop()
+ 
+   const modelInstance = new Live2DModel()
+-  const objUrl = URL.createObjectURL(file)
+-  const res = await fetch(objUrl)
+-  const blob = await res.blob()
++  const previewZipFile = new File([await file.arrayBuffer()], file.name, { type: file.type || 'application/zip' })
+ 
+   const cleanup = () => {
+     // A loaded model is on the global `Ticker.shared`, and its textures stay in
+@@ -56,13 +91,79 @@ export async function loadLive2DModelPreview(file: File) {
+     app.destroy()
+     if (offscreenCanvas.isConnected)
+       document.body.removeChild(offscreenCanvas)
+-    URL.revokeObjectURL(objUrl)
+   }
+ 
+   try {
+-    await Live2DFactory.setupLive2DModel(modelInstance, [new File([blob], file.name)], { autoInteract: false })
++    try {
++      const zip = await JSZip.loadAsync(file)
++      const iconPath = Object.keys(zip.files).find((name) => {
++        const lower = name.toLowerCase()
++        return lower.endsWith('icon.png') || lower.endsWith('icon.jpg')
++      })
++      const vtubePath = Object.keys(zip.files).find(name => name.toLowerCase().endsWith('.vtube.json'))
++      if (iconPath) {
++        console.info('[Live2D Preview] zip has icon image — not used for thumbnail', {
++          iconPath,
++          hasVtubeJson: Boolean(vtubePath),
++          note: 'Sent-patch used icon.png as preview; custom VTube zips need live render with .vtube.json',
++        })
++      }
++    }
++    catch {
++      // Non-zip inputs are uncommon; live render path still runs.
++    }
++
++    console.info('[Live2D Preview] start', {
++      fileName: file.name,
++      previewSourceKey: buildLive2dPreviewSourceKey(file),
++      pipelineVersion: CURRENT_LIVE2D_PREVIEW_VERSION,
++      loader: 'zip-file',
++    })
++
++    await Live2DFactory.setupLive2DModel(modelInstance, [previewZipFile], { autoInteract: false })
+     app.stage.addChild(modelInstance)
+ 
++    const internalModel = modelInstance.internalModel as PixiLive2DInternalModel
++    internalModel.motionManager?.stopAllMotions()
++    modelInstance.autoUpdate = false
++    const archiveSettings = internalModel.settings as Live2DArchiveMetadataSettings
++    const vtubeMeta = archiveSettings._vtubeZipMetadata
++    const expFiles = archiveSettings._expFiles ?? []
++    const expressionReferences = expressionReferencesFromArchiveSettings(archiveSettings)
++    const expressionSummary = vtubeMeta?.savedActiveExpressions?.length
++      ? describeVtubeSavedExpressionStack(vtubeMeta.savedActiveExpressions, expFiles, expressionReferences)
++      : undefined
++
++    console.info('[Live2D Preview] metadata', {
++      hasVtubeJson: Boolean(vtubeMeta),
++      artMeshColorCount: Object.keys(vtubeMeta?.artMeshColors ?? {}).length,
++      cdiPresent: Boolean(archiveSettings._cdiData),
++      expFilesInZip: expFiles.length,
++      savedActivePaths: vtubeMeta?.savedActiveExpressions?.length ?? 0,
++      expressionReferences: expressionReferences.length,
++      resolvedExpressionNames: expressionSummary?.resolvedNames.join(', ') ?? '',
++      expressionDefinitionsLoaded: expressionSummary?.definitionCount ?? 0,
++      unmatchedSavedPaths: expressionSummary
++        ? Math.max(0, expressionSummary.savedPaths - expressionSummary.resolvedNames.length)
++        : 0,
++    })
++
++    if (vtubeMeta?.savedActiveExpressions?.length && expFiles.length > 0) {
++      hookVtubeSavedExpressionsAfterModelUpdate(
++        internalModel,
++        vtubeMeta.savedActiveExpressions,
++        expFiles,
++        expressionReferences,
++      )
++    }
++    else if (vtubeMeta?.savedActiveExpressions?.length) {
++      console.warn('[Live2D Preview] SavedActiveExpressions present but _expFiles missing — thumbnail will not match stage')
++    }
++
++    const artMeshColors = ref(vtubeMeta?.artMeshColors ? { ...vtubeMeta.artMeshColors } : {})
++    if (Object.keys(artMeshColors.value).length > 0)
++      hookArtMeshColorsAfterModelUpdate(internalModel, artMeshColors)
++
+     modelInstance.x = 275
+     modelInstance.y = 450
+     modelInstance.width = previewWidth
+@@ -70,7 +171,20 @@ export async function loadLive2DModelPreview(file: File) {
+     modelInstance.scale.set(0.1, 0.1)
+     modelInstance.anchor.set(0.5, 0.5)
+ 
+-    await new Promise(resolve => setTimeout(resolve, 500))
++    await waitForPreviewTextures(modelInstance)
++
++    if (vtubeMeta?.savedActiveExpressions?.length && expFiles.length > 0) {
++      applyVtubeSavedExpressionStack(
++        internalModel.coreModel,
++        vtubeMeta.savedActiveExpressions,
++        expFiles,
++        expressionReferences,
++      )
++    }
++    if (Object.keys(artMeshColors.value).length > 0)
++      applyArtMeshColorsToDrawables(internalModel, artMeshColors.value)
++
++    internalModel.update(0, performance.now())
+     app.renderer.render(app.stage)
+ 
+     const croppedCanvas = cropImg(offscreenCanvas)
+@@ -86,10 +200,11 @@ export async function loadLive2DModelPreview(file: File) {
+ 
+     cleanup()
+ 
++    console.info('[Live2D Preview] done', { fileName: file.name })
+     return paddingDataUrl
+   }
+   catch (error) {
+-    console.error(error)
++    console.error('[Live2D Preview] failed', { fileName: file.name, error })
+     cleanup()
+   }
+ }
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-validator.test.ts b/packages/stage-ui-live2d/src/utils/live2d-validator.test.ts
+index d72c24d8f..15f6eb79f 100644
+--- a/packages/stage-ui-live2d/src/utils/live2d-validator.test.ts
++++ b/packages/stage-ui-live2d/src/utils/live2d-validator.test.ts
+@@ -127,25 +127,15 @@ describe('validateLive2DZip', () => {
+     expect(report.model.moc?.path).toBe('avatar.moc3')
+   })
+ 
+-  it('reports unreferenced expressions and motions as import warnings', async () => {
++  it('does not warn when expression and motion files exist only in the zip', async () => {
+     const report = await validateLive2DZip(await createLive2DFile({
+       includeUnreferencedResources: true,
+     }))
+ 
+-    expect(report.status).toBe('WARNING')
+-    expect(report.issues).toEqual(expect.arrayContaining([
+-      expect.objectContaining({
+-        code: 'unreferenced-expressions',
+-        severity: 'warning',
+-        message: '2 expression files are not referenced by avatar.model3.json.',
+-      }),
+-      expect.objectContaining({
+-        code: 'unreferenced-motions',
+-        severity: 'warning',
+-        message: '2 motion files are not referenced by avatar.model3.json.',
+-      }),
+-    ]))
+-    expect(report.issues.every(issue => issue.resolution.length > 0)).toBe(true)
++    expect(report.status).toBe('VALID')
++    expect(report.issues.some(issue =>
++      issue.code === 'unreferenced-expressions' || issue.code === 'unreferenced-motions',
++    )).toBe(false)
+   })
+ 
+   it('derives INVALID from an error that blocks model loading', async () => {
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-validator.ts b/packages/stage-ui-live2d/src/utils/live2d-validator.ts
+index c00dc17e1..c360cac77 100644
+--- a/packages/stage-ui-live2d/src/utils/live2d-validator.ts
++++ b/packages/stage-ui-live2d/src/utils/live2d-validator.ts
+@@ -519,32 +519,6 @@ export async function validateLive2DZip(file: File | Blob): Promise<Live2DValida
+       })
+     }
+ 
+-    const resolvedExpressionReferences = new Set(expressionReferences.map(reference => resolveArchivePath(entryPoint, reference)))
+-    const resolvedMotionReferences = new Set(motionReferences.map(reference => resolveArchivePath(entryPoint, reference)))
+-    const unreferencedExpressionCount = expressionPaths.filter(path => !resolvedExpressionReferences.has(path)).length
+-    const unreferencedMotionCount = motionPaths.filter(path => !resolvedMotionReferences.has(path)).length
+-
+-    if (unreferencedExpressionCount > 0) {
+-      const noun = unreferencedExpressionCount === 1 ? 'expression file is' : 'expression files are'
+-      addIssue(
+-        report,
+-        'unreferenced-expressions',
+-        'warning',
+-        `${unreferencedExpressionCount} ${noun} not referenced by ${settingsFileName}.`,
+-        `Add the files to FileReferences.Expressions in ${settingsFileName}, or remove the unused files.`,
+-      )
+-    }
+-    if (unreferencedMotionCount > 0) {
+-      const noun = unreferencedMotionCount === 1 ? 'motion file is' : 'motion files are'
+-      addIssue(
+-        report,
+-        'unreferenced-motions',
+-        'warning',
+-        `${unreferencedMotionCount} ${noun} not referenced by ${settingsFileName}.`,
+-        `Add the files to FileReferences.Motions in ${settingsFileName}, or remove the unused files.`,
+-      )
+-    }
+-
+     const displayInfoReference = readString(references.DisplayInfo)
+     let displayInfoPath: string | undefined = displayInfoPaths[0]
+     if (displayInfoReference) {
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-vtube-sidecar.test.ts b/packages/stage-ui-live2d/src/utils/live2d-vtube-sidecar.test.ts
+new file mode 100644
+index 000000000..891fcc782
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-vtube-sidecar.test.ts
+@@ -0,0 +1,31 @@
++import { describe, expect, it } from 'vitest'
++
++import { resolveSavedExpressionNames } from './live2d-vtube-sidecar'
++
++describe('resolveSavedExpressionNames', () => {
++  const expressions = [
++    { name: 'Base Hiyori', fileName: 'Custom Hiyori/basehiyori.exp3.json' },
++    { name: 'Preset 2 Hiyori ', fileName: 'Custom Hiyori/preset 2 hiyori.exp3.json' },
++    { name: 'Catears', fileName: 'Custom Hiyori/catears.exp3.json' },
++    { name: 'Catears2', fileName: 'Custom Hiyori/catears2.exp3.json' },
++  ]
++
++  it('maps each SavedActiveExpressions entry by file basename, in list order', () => {
++    const names = resolveSavedExpressionNames(
++      [
++        'Catears.exp3.json',
++        'catears2.exp3.json',
++        'basehiyori.exp3.json',
++        'preset 2 hiyori.exp3.json',
++      ],
++      expressions,
++    )
++
++    expect(names).toEqual(['Catears', 'Catears2', 'Base Hiyori', 'Preset 2 Hiyori '])
++  })
++
++  it('prefers an exact basename match over a display-name stem match', () => {
++    const names = resolveSavedExpressionNames(['basehiyori.exp3.json'], expressions)
++    expect(names).toEqual(['Base Hiyori'])
++  })
++})
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-vtube-sidecar.ts b/packages/stage-ui-live2d/src/utils/live2d-vtube-sidecar.ts
+new file mode 100644
+index 000000000..bae193741
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/live2d-vtube-sidecar.ts
+@@ -0,0 +1,71 @@
++import { extractArtMeshColorsFromVTube, listVTubeColorRelatedKeys } from './vtube-artmesh-colors'
++
++export interface Live2DVTubeZipMetadata {
++  savedActiveExpressions: string[]
++  artMeshColors: Record<string, string>
++}
++
++export function parseLive2DVTubeSidecar(text: string): Live2DVTubeZipMetadata {
++  const vtubeData = JSON.parse(text) as Record<string, unknown>
++  const artMeshColors = extractArtMeshColorsFromVTube(vtubeData)
++  if (Object.keys(artMeshColors).length === 0) {
++    console.warn(
++      '[Live2D] .vtube.json parsed but no ArtMesh multiply/screen colors found. Related keys:',
++      listVTubeColorRelatedKeys(vtubeData),
++    )
++  }
++
++  const savedActiveExpressions = Array.isArray(vtubeData.SavedActiveExpressions)
++    ? vtubeData.SavedActiveExpressions.filter((entry): entry is string => typeof entry === 'string')
++    : []
++
++  return { savedActiveExpressions, artMeshColors }
++}
++
++function basename(path: string): string {
++  return path.split(/[/\\]/).pop() ?? path
++}
++
++function normalizeArchivePath(path: string): string {
++  return path.replace(/\\/g, '/').toLowerCase()
++}
++
++function expressionMatchesSavedPath(
++  expression: { name: string, fileName: string },
++  savedPath: string,
++): boolean {
++  const savedBase = basename(savedPath).toLowerCase()
++  const fileBase = basename(expression.fileName).toLowerCase()
++  if (fileBase === savedBase)
++    return true
++
++  const normalizedSaved = normalizeArchivePath(savedPath)
++  const normalizedFile = normalizeArchivePath(expression.fileName)
++  if (normalizedFile === normalizedSaved || normalizedFile.endsWith(`/${normalizedSaved}`))
++    return true
++
++  const savedStem = savedBase.replace(/\.exp3\.json$/i, '')
++  const fileStem = fileBase.replace(/\.exp3\.json$/i, '')
++  return fileStem === savedStem || expression.name.toLowerCase() === savedStem
++}
++
++/** Maps VTube `SavedActiveExpressions` file paths to Live2D expression control names. */
++export function resolveSavedExpressionNames(
++  savedActiveExpressions: string[],
++  expressions: Array<{ name: string, fileName: string }>,
++): string[] {
++  const names: string[] = []
++
++  for (const savedPath of savedActiveExpressions) {
++    const savedBase = basename(savedPath).toLowerCase()
++    const candidates = expressions.filter(expression => expressionMatchesSavedPath(expression, savedPath))
++    const match = candidates.find(expression => basename(expression.fileName).toLowerCase() === savedBase)
++      ?? candidates.find(expression => normalizeArchivePath(expression.fileName).endsWith(`/${savedBase}`))
++      ?? candidates[0]
++
++    if (match)
++      names.push(match.name)
++  }
++
++  return names
++}
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-zip-loader.test.ts b/packages/stage-ui-live2d/src/utils/live2d-zip-loader.test.ts
+index 01e4fb305..f6781dbf7 100644
+--- a/packages/stage-ui-live2d/src/utils/live2d-zip-loader.test.ts
++++ b/packages/stage-ui-live2d/src/utils/live2d-zip-loader.test.ts
+@@ -355,6 +355,47 @@ describe('live2d zip loader settings sanitization', () => {
+     expect(() => settings.validateFiles(files.map(file => file.webkitRelativePath))).not.toThrow()
+   })
+ 
++  it('attaches .vtube.json metadata when OPFS restores a flat file directory', async () => {
++    await import('./live2d-zip-loader')
++    const { FileLoader } = await import('pixi-live2d-display/cubism4')
++    type Live2DArchiveMetadataSettings = import('./live2d-zip-loader').Live2DArchiveMetadataSettings
++
++    const vtubeText = JSON.stringify({
++      SavedActiveExpressions: ['expr/hair.exp3.json'],
++      ArtMeshMultiplyAndScreenColors: {
++        ArtMesh001: 'FFFFFFFF|000000FF',
++      },
++    })
++
++    const files = [
++      fileWithRelativePath(
++        createShisihangshiSettingsText(),
++        '302301_shisihangshi.model3.json',
++        '302301_shisihangshi/302301_shisihangshi.model3.json',
++      ),
++      fileWithRelativePath(
++        new Uint8Array([77, 79, 67, 51]),
++        '302301_shisihangshi.moc3',
++        '302301_shisihangshi/302301_shisihangshi.moc3',
++      ),
++      fileWithRelativePath(
++        new Uint8Array([1, 2, 3]),
++        '302301_shisihangshi_00.png',
++        '302301_shisihangshi/textures/302301_shisihangshi_00.png',
++      ),
++      fileWithRelativePath(
++        vtubeText,
++        'Custom F6.vtube.json',
++        '302301_shisihangshi/Custom F6.vtube.json',
++      ),
++    ]
++
++    const settings = await FileLoader.createSettings(files) as Live2DArchiveMetadataSettings
++
++    expect(settings._vtubeZipMetadata?.savedActiveExpressions).toEqual(['expr/hair.exp3.json'])
++    expect(settings._vtubeZipMetadata?.artMeshColors.ArtMesh001).toBe('FFFFFFFF|000000FF')
++  })
++
+   it('loads an OPFS-restored file directory whose settings and resources use CJK paths', async () => {
+     await import('./live2d-zip-loader')
+     const { FileLoader, Live2DModel } = await import('pixi-live2d-display/cubism4')
+diff --git a/packages/stage-ui-live2d/src/utils/live2d-zip-loader.ts b/packages/stage-ui-live2d/src/utils/live2d-zip-loader.ts
+index 2792e187b..150b5dfae 100644
+--- a/packages/stage-ui-live2d/src/utils/live2d-zip-loader.ts
++++ b/packages/stage-ui-live2d/src/utils/live2d-zip-loader.ts
+@@ -1,11 +1,14 @@
+ import type { CubismSpec, JSONObject, ModelSettings } from 'pixi-live2d-display/cubism4'
+ 
++import type { Live2DVTubeZipMetadata } from './live2d-vtube-sidecar'
++
+ import JSZip from 'jszip'
+ 
+ import { Cubism4ModelSettings, FileLoader, Live2DFactory, ZipLoader } from 'pixi-live2d-display/cubism4'
+ 
+ import { resolveLive2DModelControls } from '../controls/manifest'
+ import { decodeZipFileName } from './decode-zip-filename'
++import { parseLive2DVTubeSidecar } from './live2d-vtube-sidecar'
+ 
+ // Legacy/VTube-Studio archives often store entry names without the UTF-8 flag in a legacy
+ // codepage; decode them so non-ASCII names (e.g. `手姿势切换.exp3.json`) don't become
+@@ -40,44 +43,64 @@ ZipLoader.createSettings = async (reader: JSZip) => {
+   })()
+ 
+   mergeDiscoveredControlsIntoSettings(settings, filePaths)
++  await enrichLive2DSettingsFromArchivePaths(settings, filePaths, path => ZipLoader.readText(reader, path))
++
++  return settings
++}
+ 
+-  // Extract CDI data from the zip if available
++export type Live2DArchiveMetadataSettings = ModelSettings & {
++  _cdiData?: unknown
++  _expFiles?: Array<{ name: string, fileName: string, data: unknown }>
++  _vtubeZipMetadata?: Live2DVTubeZipMetadata
++}
++
++/**
++ * Attaches CDI, expression payloads, and `.vtube.json` metadata to model settings.
++ * OPFS restores zips as a flat `File[]`, so this must run for `FileLoader` as well as `ZipLoader`.
++ */
++export async function enrichLive2DSettingsFromArchivePaths(
++  settings: ModelSettings,
++  filePaths: string[],
++  readText: (path: string) => Promise<string>,
++): Promise<void> {
+   try {
+-    const metadataSettings = settings as ModelSettings & {
+-      _cdiData?: unknown
+-      _expFiles?: Array<{ name: string, fileName: string, data: unknown }>
+-    }
++    const metadataSettings = settings as Live2DArchiveMetadataSettings
+ 
+-    // Find and parse CDI file
+     const cdiPath = filePaths.find(f => f.toLowerCase().endsWith('.cdi3.json'))
+     if (cdiPath) {
+-      const cdiText = await reader.file(cdiPath)!.async('text')
+-      metadataSettings._cdiData = JSON.parse(cdiText)
++      metadataSettings._cdiData = JSON.parse(await readText(cdiPath))
+       console.info('[ZipLoader] Extracted CDI data from:', cdiPath)
+     }
+ 
+-    // Find and collect expression files
+     const expPaths = filePaths.filter(f => f.toLowerCase().endsWith('.exp3.json'))
+     if (expPaths.length > 0) {
+       const expFiles: Array<{ name: string, fileName: string, data: unknown }> = []
+       for (const expPath of expPaths) {
+-        const expText = await reader.file(expPath)!.async('text')
+         const baseName = expPath.split('/').pop()?.replace('.exp3.json', '') || expPath
+         expFiles.push({
+           name: baseName,
+           fileName: expPath,
+-          data: JSON.parse(expText),
++          data: JSON.parse(await readText(expPath)),
+         })
+       }
+       metadataSettings._expFiles = expFiles
+       console.info('[ZipLoader] Extracted', expFiles.length, 'expression files')
+     }
++
++    const vtubePath = filePaths.find(f => f.toLowerCase().endsWith('.vtube.json'))
++    if (vtubePath) {
++      metadataSettings._vtubeZipMetadata = parseLive2DVTubeSidecar(await readText(vtubePath))
++      console.info(
++        '[ZipLoader] Parsed .vtube.json',
++        Object.keys(metadataSettings._vtubeZipMetadata.artMeshColors).length > 0
++          ? `(${Object.keys(metadataSettings._vtubeZipMetadata.artMeshColors).length} ArtMesh colors)`
++          : '(no ArtMesh colors)',
++      )
++    }
+   }
+   catch (e) {
+     console.warn('[ZipLoader] Failed to extract CDI/EXP metadata:', e)
+   }
+-
+-  return settings
+ }
+ 
+ function mergeDiscoveredControlsIntoSettings(settings: ModelSettings, filePaths: string[]) {
+@@ -257,7 +280,21 @@ FileLoader.createSettings = async (files: File[]) => {
+   const settingsUrl = settingsFile.webkitRelativePath || settingsFile.name
+   const settingsText = await FileLoader.readText(settingsFile)
+   const settings = createModelSettings(settingsText, settingsUrl)
+-  mergeDiscoveredControlsIntoSettings(settings, files.map(file => file.webkitRelativePath || file.name).filter(path => !shouldIgnoreLive2DArchiveEntry(path)))
++  const archivePaths = files
++    .map(file => file.webkitRelativePath || file.name)
++    .filter(path => !shouldIgnoreLive2DArchiveEntry(path))
++  mergeDiscoveredControlsIntoSettings(settings, archivePaths)
++
++  const fileByPath = new Map(archivePaths.map((path) => {
++    const file = files.find(candidate => (candidate.webkitRelativePath || candidate.name) === path)
++    return [path, file]
++  }))
++  await enrichLive2DSettingsFromArchivePaths(settings, archivePaths, async (path) => {
++    const file = fileByPath.get(path)
++    if (!file)
++      throw new Error(`Cannot find file: ${path}`)
++    return FileLoader.readText(file)
++  })
+ 
+   Object.assign(settings, { _objectURL: URL.createObjectURL(settingsFile) })
+ 
+diff --git a/packages/stage-ui-live2d/src/utils/vtube-artmesh-colors.ts b/packages/stage-ui-live2d/src/utils/vtube-artmesh-colors.ts
+new file mode 100644
+index 000000000..b3e05b563
+--- /dev/null
++++ b/packages/stage-ui-live2d/src/utils/vtube-artmesh-colors.ts
+@@ -0,0 +1,171 @@
++/** VTube Studio .vtube.json uses several shapes for persisted ArtMesh multiply/screen colors. */
++
++const COLOR_PAIR_RE = /^[0-9A-F]{8}\|[0-9A-F]{8}$/i
++const HEX8_RE = /^[0-9A-F]{8}$/i
++
++function isColorPair(value: unknown): value is string {
++  return typeof value === 'string' && COLOR_PAIR_RE.test(value)
++}
++
++function joinMultiplyScreen(multiply: unknown, screen: unknown): string | undefined {
++  const m = typeof multiply === 'string' ? multiply.replace('#', '') : ''
++  const s = typeof screen === 'string' ? screen.replace('#', '') : ''
++  if (HEX8_RE.test(m) && HEX8_RE.test(s))
++    return `${m}|${s}`
++  return undefined
++}
++
++function normalizeColorMap(raw: unknown): Record<string, string> {
++  if (!raw || typeof raw !== 'object')
++    return {}
++
++  if (Array.isArray(raw)) {
++    const result: Record<string, string> = {}
++    for (const item of raw) {
++      if (!item || typeof item !== 'object')
++        continue
++      const entry = item as Record<string, unknown>
++      const id = entry.ID ?? entry.Id ?? entry.id ?? entry.Name ?? entry.name
++      if (typeof id !== 'string')
++        continue
++
++      const direct = entry.Value ?? entry.value
++      if (isColorPair(direct)) {
++        result[id] = direct
++        continue
++      }
++
++      const joined = joinMultiplyScreen(
++        entry.Multiply ?? entry.multiply ?? entry.MultiplyColor ?? entry.multiplyColor,
++        entry.Screen ?? entry.screen ?? entry.ScreenColor ?? entry.screenColor,
++      )
++      if (joined)
++        result[id] = joined
++    }
++    return result
++  }
++
++  const record = raw as Record<string, unknown>
++  const result: Record<string, string> = {}
++
++  for (const [key, value] of Object.entries(record)) {
++    if (isColorPair(value)) {
++      result[key] = value
++      continue
++    }
++    if (value && typeof value === 'object') {
++      const nested = value as Record<string, unknown>
++      const direct = nested.Value ?? nested.value
++      if (isColorPair(direct)) {
++        result[key] = direct
++        continue
++      }
++      const joined = joinMultiplyScreen(
++        nested.Multiply ?? nested.multiply ?? nested.MultiplyColor ?? nested.multiplyColor,
++        nested.Screen ?? nested.screen ?? nested.ScreenColor ?? nested.screenColor,
++      )
++      if (joined)
++        result[key] = joined
++    }
++  }
++
++  return result
++}
++
++function findNestedColorMaps(root: unknown, depth = 0): Record<string, string>[] {
++  if (depth > 10 || root == null)
++    return []
++
++  const found: Record<string, string>[] = []
++
++  if (typeof root === 'object') {
++    if (Array.isArray(root)) {
++      const fromArray = normalizeColorMap(root)
++      if (Object.keys(fromArray).length > 0)
++        found.push(fromArray)
++      for (const item of root)
++        found.push(...findNestedColorMaps(item, depth + 1))
++    }
++    else {
++      const record = root as Record<string, unknown>
++      const direct = normalizeColorMap(record)
++      if (Object.keys(direct).length > 0)
++        found.push(direct)
++      for (const value of Object.values(record))
++        found.push(...findNestedColorMaps(value, depth + 1))
++    }
++  }
++
++  return found
++}
++
++function pickLargestMap(maps: Record<string, string>[]): Record<string, string> {
++  return maps.reduce((best, current) =>
++    Object.keys(current).length > Object.keys(best).length ? current : best, {})
++}
++
++function resolvePresetColors(vtubeData: Record<string, unknown>): Record<string, string> {
++  const presetRoot = vtubeData.ColorScreenMultiplyPreset
++  const fromRoot = normalizeColorMap(presetRoot)
++  if (Object.keys(fromRoot).length > 0)
++    return fromRoot
++
++  const nested = (presetRoot as { ArtMeshMultiplyAndScreenColors?: unknown } | undefined)
++    ?.ArtMeshMultiplyAndScreenColors
++  const fromNested = normalizeColorMap(nested)
++  if (Object.keys(fromNested).length > 0)
++    return fromNested
++
++  const presetsList = vtubeData.ColorScreenMultiplyPresets
++    ?? vtubeData.ColorScreenMultiplyPresetList
++    ?? (vtubeData.ColorScreenMultiplyPreset as { Presets?: unknown } | undefined)?.Presets
++
++  if (!Array.isArray(presetsList))
++    return {}
++
++  const activeName = vtubeData.ColorScreenMultiplyPresetName
++    ?? vtubeData.ActiveColorScreenMultiplyPresetName
++    ?? (vtubeData.ColorScreenMultiplyPreset as { Name?: string } | undefined)?.Name
++
++  const presets = presetsList as Record<string, unknown>[]
++  const active = typeof activeName === 'string'
++    ? presets.find(p => (p.Name ?? p.name) === activeName)
++    : undefined
++
++  for (const candidate of [active, ...presets]) {
++    if (!candidate)
++      continue
++    const colors = normalizeColorMap(
++      candidate.ArtMeshMultiplyAndScreenColors
++      ?? candidate.artMeshMultiplyAndScreenColors
++      ?? candidate,
++    )
++    if (Object.keys(colors).length > 0)
++      return colors
++  }
++
++  return {}
++}
++
++export function extractArtMeshColorsFromVTube(vtubeData: Record<string, unknown>): Record<string, string> {
++  const explicitPaths: unknown[] = [
++    (vtubeData.ArtMeshDetails as { ArtMeshMultiplyAndScreenColors?: unknown } | undefined)
++      ?.ArtMeshMultiplyAndScreenColors,
++    vtubeData.ArtMeshMultiplyAndScreenColors,
++    (vtubeData.ArtMeshDetails as { MultiplyAndScreenColors?: unknown } | undefined)?.MultiplyAndScreenColors,
++    resolvePresetColors(vtubeData),
++  ]
++
++  const merged: Record<string, string> = {}
++  for (const candidate of explicitPaths) {
++    Object.assign(merged, normalizeColorMap(candidate))
++  }
++  if (Object.keys(merged).length > 0)
++    return merged
++
++  return pickLargestMap(findNestedColorMaps(vtubeData))
++}
++
++export function listVTubeColorRelatedKeys(vtubeData: Record<string, unknown>): string[] {
++  return Object.keys(vtubeData).filter(key => /art|color|mesh|screen|multiply/i.test(key))
++}
+diff --git a/packages/stage-ui/src/components/scenarios/dialogs/model-selector/model-selector.vue b/packages/stage-ui/src/components/scenarios/dialogs/model-selector/model-selector.vue
+index e858f3b01..32559ec63 100644
+--- a/packages/stage-ui/src/components/scenarios/dialogs/model-selector/model-selector.vue
++++ b/packages/stage-ui/src/components/scenarios/dialogs/model-selector/model-selector.vue
+@@ -63,12 +63,12 @@ async function handleAddLive2DModel(file: FileList | null) {
+   validationReport.value = report
+   pendingFile.value = file[0]
+ 
+-  if (report.status === 'VALID') {
+-    await confirmImport()
++  if (report.status === 'INVALID') {
++    showReportModal.value = true
+     return
+   }
+ 
+-  showReportModal.value = true
++  await confirmImport()
+ }
+ 
+ async function confirmImport() {
+diff --git a/packages/stage-ui/src/stores/display-models.ts b/packages/stage-ui/src/stores/display-models.ts
+index 7c33792fb..1463c7086 100644
+--- a/packages/stage-ui/src/stores/display-models.ts
++++ b/packages/stage-ui/src/stores/display-models.ts
+@@ -2,6 +2,12 @@ import type { TransferTask } from '../libs/file-transfer/transfer-queue'
+ import type { CloudDisplayModel } from '../services/display-model-sync'
+ 
+ import { errorMessageFrom } from '@moeru/std'
++import {
++  buildLive2dPreviewSourceKey,
++  CURRENT_LIVE2D_PREVIEW_VERSION,
++  isLive2dPreviewCurrent,
++  loadLive2DModelPreview,
++} from '@proj-airi/stage-ui-live2d/utils/live2d-preview'
+ import { createEventHook, until } from '@vueuse/core'
+ import { nanoid } from 'nanoid'
+ import { defineStore } from 'pinia'
+@@ -55,6 +61,10 @@ export interface DisplayModelFile {
+   name: string
+   previewImage?: string
+   importedAt: number
++  /** Matches `CURRENT_LIVE2D_PREVIEW_VERSION` in stage-ui-live2d when the thumbnail is current. */
++  live2dPreviewVersion?: number
++  /** Fingerprint of the zip `File` when `previewImage` was last generated successfully. */
++  live2dPreviewSourceKey?: string
+   /** The account whose cloud directory holds this model. Absent for device-only imports. */
+   cloudOwnerId?: string
+ }
+@@ -114,7 +124,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+     },
+   )
+ 
+-  let generateLive2DPreview: (file: File) => Promise<string | undefined>
++  const currentLive2dPreviewVersion = CURRENT_LIVE2D_PREVIEW_VERSION
+   let generateVrmPreview: (file: File) => Promise<string | undefined>
+   let generateSpinePreview: (file: File) => Promise<string | undefined>
+   let generateTachiePreview: (file: File) => Promise<string | undefined>
+@@ -149,6 +159,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+ 
+         displayModels.value = models.sort((a, b) => b.importedAt - a.importedAt)
+         displayModelsFromIndexedDBLoading.value = false
++        void refreshStaleLive2dPreviews()
+       })().finally(() => {
+         displayModelsLoadPromise = undefined
+       })
+@@ -179,7 +190,6 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+     return displayModelsPresets.find(model => model.id === id)
+   }
+ 
+-  const loadLive2DModelPreview = (file: File) => generateLive2DPreview(file)
+   const loadVrmModelPreview = (file: File) => generateVrmPreview(file)
+   const loadSpineModelPreview = (file: File) => generateSpinePreview(file)
+   const loadTachieModelPreview = (file: File) => generateTachiePreview(file)
+@@ -187,7 +197,16 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+ 
+   async function generatePreview(format: DisplayModelFormat, file: File): Promise<string | undefined> {
+     if (format === DisplayModelFormat.Live2dZip) {
+-      return loadLive2DModelPreview(file)
++      console.info('[Live2D Preview] import generate start', { fileName: file.name })
++      try {
++        const previewImage = await loadLive2DModelPreview(file)
++        console.info('[Live2D Preview] import generate done', { fileName: file.name, ok: Boolean(previewImage) })
++        return previewImage
++      }
++      catch (error) {
++        console.error('[Live2D Preview] import generate failed', { fileName: file.name, error })
++        return undefined
++      }
+     }
+     else if (format === DisplayModelFormat.VRM) {
+       return loadVrmModelPreview(file)
+@@ -222,6 +241,10 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+     const newDisplayModel: DisplayModelFile = { id: `display-model-${nanoid()}`, format, type: 'file', file, name: file.name, importedAt: Date.now() }
+ 
+     newDisplayModel.previewImage = await generatePreview(format, file)
++    if (format === DisplayModelFormat.Live2dZip && newDisplayModel.previewImage) {
++      newDisplayModel.live2dPreviewVersion = currentLive2dPreviewVersion
++      newDisplayModel.live2dPreviewSourceKey = buildLive2dPreviewSourceKey(file)
++    }
+ 
+     displayModels.value.unshift(newDisplayModel)
+ 
+@@ -521,12 +544,10 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+     await import('@proj-airi/stage-ui-live2d/utils/live2d-zip-loader')
+     await import('@proj-airi/stage-ui-live2d/utils/live2d-opfs-registration')
+ 
+-    const { loadLive2DModelPreview } = await import('@proj-airi/stage-ui-live2d/utils/live2d-preview')
+     const { loadVrmModelPreview } = await import('@proj-airi/stage-ui-three/utils/vrm-preview')
+     const { loadSpineModelPreview } = await import('@proj-airi/stage-ui-spine/utils/spine-preview')
+     const { loadTachieModelPreview } = await import('@proj-airi/stage-ui-tachie/utils/tachie-preview')
+ 
+-    generateLive2DPreview = loadLive2DModelPreview
+     generateVrmPreview = loadVrmModelPreview
+     generateSpinePreview = loadSpineModelPreview
+     generateTachiePreview = loadTachieModelPreview
+@@ -544,6 +565,67 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
+     catch (err) {
+       console.error('[display-models] failed to load MMD preview module:', err)
+     }
++
++    void refreshStaleLive2dPreviews()
++  }
++
++  async function refreshStaleLive2dPreviews() {
++    const live2dFileModels = displayModels.value.filter((model): model is DisplayModelFile =>
++      model.type === 'file' && model.format === DisplayModelFormat.Live2dZip,
++    )
++    const stale = live2dFileModels.filter(
++      model => !isLive2dPreviewCurrent(model, currentLive2dPreviewVersion),
++    )
++    const upToDate = live2dFileModels.filter(
++      model => isLive2dPreviewCurrent(model, currentLive2dPreviewVersion),
++    )
++
++    console.info('[Live2D Preview] refresh check', {
++      pipelineVersion: currentLive2dPreviewVersion,
++      live2dZipModels: live2dFileModels.length,
++      staleThumbnails: stale.length,
++      staleNames: stale.map(model => model.name),
++      skippedAsUpToDate: upToDate.map(model => ({
++        name: model.name,
++        version: model.live2dPreviewVersion,
++        sourceKey: model.live2dPreviewSourceKey,
++      })),
++      staleReasons: stale.map(model => ({
++        name: model.name,
++        hasPreviewImage: Boolean(model.previewImage),
++        version: model.live2dPreviewVersion ?? 0,
++        sourceKey: model.live2dPreviewSourceKey,
++        expectedSourceKey: buildLive2dPreviewSourceKey(model.file),
++      })),
++    })
++
++    for (const model of stale) {
++      try {
++        console.info('[Live2D Preview] regenerating thumbnail', {
++          name: model.name,
++          storedVersion: model.live2dPreviewVersion ?? 0,
++          targetVersion: currentLive2dPreviewVersion,
++        })
++        const previewImage = await loadLive2DModelPreview(model.file)
++        if (!previewImage)
++          continue
++
++        const updated: DisplayModelFile = {
++          ...model,
++          previewImage,
++          live2dPreviewVersion: currentLive2dPreviewVersion,
++          live2dPreviewSourceKey: buildLive2dPreviewSourceKey(model.file),
++        }
++        const index = displayModels.value.findIndex(entry => entry.id === model.id)
++        if (index !== -1)
++          displayModels.value[index] = updated
++        await displayModelsRepo.save(updated)
++        console.info('[Live2D Preview] saved thumbnail', { name: model.name, id: model.id })
++      }
++      catch (err) {
++        console.error('[display-models] failed to refresh Live2D preview thumbnail:', model.name, err)
++      }
++    }
+   }
+ 
+   return {
+diff --git a/patches/pixi-live2d-display.patch b/patches/pixi-live2d-display.patch
+index e3886442c..a5785a0e0 100644
+--- a/patches/pixi-live2d-display.patch
++++ b/patches/pixi-live2d-display.patch
+@@ -11,7 +11,7 @@ diff --git a/cubism/.vscode/tasks.json b/cubism/.vscode/tasks.json
+ deleted file mode 100644
+ index 7cd3fffed85da69d5af154f63480bce8766a038f..0000000000000000000000000000000000000000
+ diff --git a/dist/cubism2.es.js b/dist/cubism2.es.js
+-index 0d40d5d40533881d154e3c2cdda9b360c57eaaa6..8dbdb1b36e2da42da264dc3533523e61745102f7 100644
++index 0d40d5d40533881d154e3c2cdda9b360c57eaaa6..70e0d63a88a9605ed02330621004d4b6be6cfd6b 100644
+ --- a/dist/cubism2.es.js
+ +++ b/dist/cubism2.es.js
+ @@ -1373,7 +1373,7 @@ const _FileLoader = class {
+@@ -42,7 +42,7 @@ index 0d40d5d40533881d154e3c2cdda9b360c57eaaa6..8dbdb1b36e2da42da264dc3533523e61
+          throw new Error("Settings file not found");
+        }
+ diff --git a/dist/cubism2.js b/dist/cubism2.js
+-index c3db490f8dbfdd63ad40648fe0e0325604f22e95..4b452db0b109ba7deaddf397ef351ae7bcfe145c 100644
++index c3db490f8dbfdd63ad40648fe0e0325604f22e95..3d49392617b92fcb3be29033bcabc2cd53e64a1c 100644
+ --- a/dist/cubism2.js
+ +++ b/dist/cubism2.js
+ @@ -1373,7 +1373,7 @@ var __async = (__this, __arguments, generator) => {
+@@ -73,10 +73,113 @@ index c3db490f8dbfdd63ad40648fe0e0325604f22e95..4b452db0b109ba7deaddf397ef351ae7
+            throw new Error("Settings file not found");
+          }
+ diff --git a/dist/cubism4.es.js b/dist/cubism4.es.js
+-index f21619f5794c00542bb2a9df340e50d4453a0367..38bd069a5d1ec37380c376c2ff2d7fed9c0042b2 100644
++index f21619f5794c00542bb2a9df340e50d4453a0367..56714c57517053b0ab49ab8fdcf4d8963d6e6b69 100644
+ --- a/dist/cubism4.es.js
+ +++ b/dist/cubism4.es.js
+-@@ -5012,7 +5012,7 @@ const _FileLoader = class {
++@@ -1132,6 +1132,32 @@ class CubismModel {
++     const constantFlags = this._model.drawables.constantFlags;
++     return Live2DCubismCore.Utils.hasIsInvertedMaskBit(constantFlags[drawableIndex]);
++   }
+++  getDrawableMultiplyColor(drawableIndex) {
+++    const multiplyColors = this._model.drawables.multiplyColors;
+++    if (multiplyColors) {
+++      const offset = drawableIndex * 4;
+++      return {
+++        R: multiplyColors[offset],
+++        G: multiplyColors[offset + 1],
+++        B: multiplyColors[offset + 2],
+++        A: multiplyColors[offset + 3]
+++      };
+++    }
+++    return { R: 1, G: 1, B: 1, A: 1 };
+++  }
+++  getDrawableScreenColor(drawableIndex) {
+++    const screenColors = this._model.drawables.screenColors;
+++    if (screenColors) {
+++      const offset = drawableIndex * 4;
+++      return {
+++        R: screenColors[offset],
+++        G: screenColors[offset + 1],
+++        B: screenColors[offset + 2],
+++        A: screenColors[offset + 3]
+++      };
+++    }
+++    return { R: 0, G: 0, B: 0, A: 1 };
+++  }
++   getDrawableMasks() {
++     return this._model.drawables.masks;
++   }
++@@ -3186,7 +3212,7 @@ class CubismShader_WebGL {
++   release() {
++     this.releaseShaderProgram();
++   }
++-  setupShaderProgram(renderer, textureId, vertexCount, vertexArray, indexArray, uvArray, bufferData, opacity, colorBlendMode, baseColor, isPremultipliedAlpha, matrix4x4, invertedMask) {
+++  setupShaderProgram(renderer, textureId, vertexCount, vertexArray, indexArray, uvArray, bufferData, opacity, colorBlendMode, baseColor, isPremultipliedAlpha, matrix4x4, invertedMask, multiplyColor = { R: 1, G: 1, B: 1, A: 1 }, screenColor = { R: 0, G: 0, B: 0, A: 1 }) {
++     if (!isPremultipliedAlpha) {
++       CubismLogError("NoPremultipliedAlpha is not allowed");
++     }
++@@ -3287,6 +3313,12 @@ class CubismShader_WebGL {
++       this.gl.uniform1i(shaderSet.samplerTexture0Location, 0);
++       this.gl.uniformMatrix4fv(shaderSet.uniformMatrixLocation, false, matrix4x4.getArray());
++       this.gl.uniform4f(shaderSet.uniformBaseColorLocation, baseColor.R, baseColor.G, baseColor.B, baseColor.A);
+++      if (shaderSet.uniformMultiplyColorLocation) {
+++        this.gl.uniform4f(shaderSet.uniformMultiplyColorLocation, multiplyColor.R, multiplyColor.G, multiplyColor.B, multiplyColor.A);
+++      }
+++      if (shaderSet.uniformScreenColorLocation) {
+++        this.gl.uniform4f(shaderSet.uniformScreenColorLocation, screenColor.R, screenColor.G, screenColor.B, screenColor.A);
+++      }
++     }
++     if (bufferData.index == null) {
++       bufferData.index = this.gl.createBuffer();
++@@ -3385,6 +3417,10 @@ class CubismShader_WebGL {
++     this._shaderSets[9].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_clipMatrix");
++     this._shaderSets[9].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_channelFlag");
++     this._shaderSets[9].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_baseColor");
+++    for (let i = 1; i <= 9; i++) {
+++      this._shaderSets[i].uniformMultiplyColorLocation = this.gl.getUniformLocation(this._shaderSets[i].shaderProgram, "u_multiplyColor");
+++      this._shaderSets[i].uniformScreenColorLocation = this.gl.getUniformLocation(this._shaderSets[i].shaderProgram, "u_screenColor");
+++    }
++   }
++   loadShaderProgram(vertexShaderSource, fragmentShaderSource) {
++     let shaderProgram = this.gl.createProgram();
++@@ -3452,9 +3488,9 @@ const vertexShaderSrcSetupMask = "attribute vec4     a_position;attribute vec2
++ const fragmentShaderSrcsetupMask = "precision mediump float;varying vec2       v_texCoord;varying vec4       v_myPos;uniform vec4       u_baseColor;uniform vec4       u_channelFlag;uniform sampler2D  s_texture0;void main(){   float isInside =        step(u_baseColor.x, v_myPos.x/v_myPos.w)       * step(u_baseColor.y, v_myPos.y/v_myPos.w)       * step(v_myPos.x/v_myPos.w, u_baseColor.z)       * step(v_myPos.y/v_myPos.w, u_baseColor.w);   gl_FragColor = u_channelFlag * texture2D(s_texture0, v_texCoord).a * isInside;}";
++ const vertexShaderSrc = "attribute vec4     a_position;attribute vec2     a_texCoord;varying vec2       v_texCoord;uniform mat4       u_matrix;void main(){   gl_Position = u_matrix * a_position;   v_texCoord = a_texCoord;   v_texCoord.y = 1.0 - v_texCoord.y;}";
++ const vertexShaderSrcMasked = "attribute vec4     a_position;attribute vec2     a_texCoord;varying vec2       v_texCoord;varying vec4       v_clipPos;uniform mat4       u_matrix;uniform mat4       u_clipMatrix;void main(){   gl_Position = u_matrix * a_position;   v_clipPos = u_clipMatrix * a_position;   v_texCoord = a_texCoord;   v_texCoord.y = 1.0 - v_texCoord.y;}";
++-const fragmentShaderSrcPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;uniform vec4       u_baseColor;uniform sampler2D  s_texture0;void main(){   gl_FragColor = texture2D(s_texture0 , v_texCoord) * u_baseColor;}";
++-const fragmentShaderSrcMaskPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;varying vec4       v_clipPos;uniform vec4       u_baseColor;uniform vec4       u_channelFlag;uniform sampler2D  s_texture0;uniform sampler2D  s_texture1;void main(){   vec4 col_formask = texture2D(s_texture0 , v_texCoord) * u_baseColor;   vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;   float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;   col_formask = col_formask * maskVal;   gl_FragColor = col_formask;}";
++-const fragmentShaderSrcMaskInvertedPremultipliedAlpha = "precision mediump float;varying vec2 v_texCoord;varying vec4 v_clipPos;uniform sampler2D s_texture0;uniform sampler2D s_texture1;uniform vec4 u_channelFlag;uniform vec4 u_baseColor;void main(){vec4 col_formask = texture2D(s_texture0, v_texCoord) * u_baseColor;vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;col_formask = col_formask * (1.0 - maskVal);gl_FragColor = col_formask;}";
+++const fragmentShaderSrcPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;uniform vec4       u_baseColor;uniform sampler2D  s_texture0;uniform vec4 u_multiplyColor;uniform vec4 u_screenColor;void main(){   vec4 color = texture2D(s_texture0 , v_texCoord) * u_baseColor;   color.rgb = color.rgb * u_multiplyColor.rgb;   color.rgb = color.rgb + u_screenColor.rgb * color.a - color.rgb * u_screenColor.rgb;   color.a=color.a*u_multiplyColor.a;   color.rgb=color.rgb*u_multiplyColor.a;   gl_FragColor = color;}";
+++const fragmentShaderSrcMaskPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;varying vec4       v_clipPos;uniform vec4       u_baseColor;uniform vec4       u_channelFlag;uniform sampler2D  s_texture0;uniform sampler2D  s_texture1;uniform vec4 u_multiplyColor;uniform vec4 u_screenColor;void main(){   vec4 col_formask = texture2D(s_texture0 , v_texCoord) * u_baseColor;   col_formask.rgb = col_formask.rgb * u_multiplyColor.rgb;   col_formask.rgb = col_formask.rgb + u_screenColor.rgb * col_formask.a - col_formask.rgb * u_screenColor.rgb;   col_formask.a=col_formask.a*u_multiplyColor.a;   col_formask.rgb=col_formask.rgb*u_multiplyColor.a;   vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;   float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;   col_formask = col_formask * maskVal;   gl_FragColor = col_formask;}";
+++const fragmentShaderSrcMaskInvertedPremultipliedAlpha = "precision mediump float;varying vec2 v_texCoord;varying vec4 v_clipPos;uniform sampler2D s_texture0;uniform sampler2D s_texture1;uniform vec4 u_channelFlag;uniform vec4 u_baseColor;uniform vec4 u_multiplyColor;uniform vec4 u_screenColor;void main(){vec4 col_formask = texture2D(s_texture0, v_texCoord) * u_baseColor;col_formask.rgb = col_formask.rgb * u_multiplyColor.rgb;col_formask.rgb = col_formask.rgb + u_screenColor.rgb * col_formask.a - col_formask.rgb * u_screenColor.rgb;col_formask.a=col_formask.a*u_multiplyColor.a;col_formask.rgb=col_formask.rgb*u_multiplyColor.a;vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;col_formask = col_formask * (1.0 - maskVal);gl_FragColor = col_formask;}";
++ class CubismRenderer_WebGL extends CubismRenderer {
++   constructor() {
++     super();
++@@ -3527,10 +3563,12 @@ class CubismRenderer_WebGL extends CubismRenderer {
++       }
++       this.setClippingContextBufferForDraw(this._clippingManager != null ? this._clippingManager.getClippingContextListForDraw()[drawableIndex] : null);
++       this.setIsCulling(this.getModel().getDrawableCulling(drawableIndex));
++-      this.drawMesh(this.getModel().getDrawableTextureIndices(drawableIndex), this.getModel().getDrawableVertexIndexCount(drawableIndex), this.getModel().getDrawableVertexCount(drawableIndex), this.getModel().getDrawableVertexIndices(drawableIndex), this.getModel().getDrawableVertices(drawableIndex), this.getModel().getDrawableVertexUvs(drawableIndex), this.getModel().getDrawableOpacity(drawableIndex), this.getModel().getDrawableBlendMode(drawableIndex), this.getModel().getDrawableInvertedMaskBit(drawableIndex));
+++      const multiplyColor = this.getModel().getDrawableMultiplyColor ? this.getModel().getDrawableMultiplyColor(drawableIndex) : { R: 1, G: 1, B: 1, A: 1 };
+++      const screenColor = this.getModel().getDrawableScreenColor ? this.getModel().getDrawableScreenColor(drawableIndex) : { R: 0, G: 0, B: 0, A: 1 };
+++      this.drawMesh(this.getModel().getDrawableTextureIndices(drawableIndex), this.getModel().getDrawableVertexIndexCount(drawableIndex), this.getModel().getDrawableVertexCount(drawableIndex), this.getModel().getDrawableVertexIndices(drawableIndex), this.getModel().getDrawableVertices(drawableIndex), this.getModel().getDrawableVertexUvs(drawableIndex), this.getModel().getDrawableOpacity(drawableIndex), this.getModel().getDrawableBlendMode(drawableIndex), this.getModel().getDrawableInvertedMaskBit(drawableIndex), multiplyColor, screenColor);
++     }
++   }
++-  drawMesh(textureNo, indexCount, vertexCount, indexArray, vertexArray, uvArray, opacity, colorBlendMode, invertedMask) {
+++  drawMesh(textureNo, indexCount, vertexCount, indexArray, vertexArray, uvArray, opacity, colorBlendMode, invertedMask, multiplyColor = { R: 1, G: 1, B: 1, A: 1 }, screenColor = { R: 0, G: 0, B: 0, A: 1 }) {
++     if (this.isCulling()) {
++       this.gl.enable(this.gl.CULL_FACE);
++     } else {
++@@ -3550,7 +3588,7 @@ class CubismRenderer_WebGL extends CubismRenderer {
++     if (this._textures[textureNo] != null) {
++       drawtexture = this._textures[textureNo];
++     }
++-    CubismShader_WebGL.getInstance().setupShaderProgram(this, drawtexture, vertexCount, vertexArray, indexArray, uvArray, this._bufferData, opacity, colorBlendMode, modelColorRGBA, this.isPremultipliedAlpha(), this.getMvpMatrix(), invertedMask);
+++    CubismShader_WebGL.getInstance().setupShaderProgram(this, drawtexture, vertexCount, vertexArray, indexArray, uvArray, this._bufferData, opacity, colorBlendMode, modelColorRGBA, this.isPremultipliedAlpha(), this.getMvpMatrix(), invertedMask, multiplyColor, screenColor);
++     this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_SHORT, 0);
++     this.gl.useProgram(null);
++     this.setClippingContextBufferForDraw(null);
++@@ -5012,7 +5050,7 @@ const _FileLoader = class {
+    }
+    static createSettings(files) {
+      return __async(this, null, function* () {
+@@ -85,7 +188,7 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..38bd069a5d1ec37380c376c2ff2d7fed
+        if (!settingsFile) {
+          throw new TypeError("Settings file not found");
+        }
+-@@ -5050,7 +5050,7 @@ FileLoader.factory = (context, next) => __async(void 0, null, function* () {
++@@ -5050,7 +5088,7 @@ FileLoader.factory = (context, next) => __async(void 0, null, function* () {
+      } else if (!settings._objectURL) {
+        throw new Error('"_objectURL" must be specified in ModelSettings');
+      }
+@@ -94,7 +197,7 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..38bd069a5d1ec37380c376c2ff2d7fed
+      yield _FileLoader.upload(files, settings);
+      settings.resolveURL = function(url2) {
+        return _FileLoader.resolveURL(this._objectURL, url2);
+-@@ -5097,7 +5097,7 @@ const _ZipLoader = class {
++@@ -5097,7 +5135,7 @@ const _ZipLoader = class {
+    static createSettings(reader) {
+      return __async(this, null, function* () {
+        const filePaths = yield _ZipLoader.getFilePaths(reader);
+@@ -104,10 +207,113 @@ index f21619f5794c00542bb2a9df340e50d4453a0367..38bd069a5d1ec37380c376c2ff2d7fed
+          throw new Error("Settings file not found");
+        }
+ diff --git a/dist/cubism4.js b/dist/cubism4.js
+-index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..99fc587e3ca7e6f433099e13f33e0e480a10c25a 100644
++index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..57c9293ba184c28ea29279222829d35323e59cb6 100644
+ --- a/dist/cubism4.js
+ +++ b/dist/cubism4.js
+-@@ -5012,7 +5012,7 @@ var __async = (__this, __arguments, generator) => {
++@@ -1132,6 +1132,32 @@ var __async = (__this, __arguments, generator) => {
++       const constantFlags = this._model.drawables.constantFlags;
++       return Live2DCubismCore.Utils.hasIsInvertedMaskBit(constantFlags[drawableIndex]);
++     }
+++    getDrawableMultiplyColor(drawableIndex) {
+++      const multiplyColors = this._model.drawables.multiplyColors;
+++      if (multiplyColors) {
+++        const offset = drawableIndex * 4;
+++        return {
+++          R: multiplyColors[offset],
+++          G: multiplyColors[offset + 1],
+++          B: multiplyColors[offset + 2],
+++          A: multiplyColors[offset + 3]
+++        };
+++      }
+++      return { R: 1, G: 1, B: 1, A: 1 };
+++    }
+++    getDrawableScreenColor(drawableIndex) {
+++      const screenColors = this._model.drawables.screenColors;
+++      if (screenColors) {
+++        const offset = drawableIndex * 4;
+++        return {
+++          R: screenColors[offset],
+++          G: screenColors[offset + 1],
+++          B: screenColors[offset + 2],
+++          A: screenColors[offset + 3]
+++        };
+++      }
+++      return { R: 0, G: 0, B: 0, A: 1 };
+++    }
++     getDrawableMasks() {
++       return this._model.drawables.masks;
++     }
++@@ -3186,7 +3212,7 @@ var __async = (__this, __arguments, generator) => {
++     release() {
++       this.releaseShaderProgram();
++     }
++-    setupShaderProgram(renderer, textureId, vertexCount, vertexArray, indexArray, uvArray, bufferData, opacity, colorBlendMode, baseColor, isPremultipliedAlpha, matrix4x4, invertedMask) {
+++    setupShaderProgram(renderer, textureId, vertexCount, vertexArray, indexArray, uvArray, bufferData, opacity, colorBlendMode, baseColor, isPremultipliedAlpha, matrix4x4, invertedMask, multiplyColor = { R: 1, G: 1, B: 1, A: 1 }, screenColor = { R: 0, G: 0, B: 0, A: 1 }) {
++       if (!isPremultipliedAlpha) {
++         CubismLogError("NoPremultipliedAlpha is not allowed");
++       }
++@@ -3287,6 +3313,12 @@ var __async = (__this, __arguments, generator) => {
++         this.gl.uniform1i(shaderSet.samplerTexture0Location, 0);
++         this.gl.uniformMatrix4fv(shaderSet.uniformMatrixLocation, false, matrix4x4.getArray());
++         this.gl.uniform4f(shaderSet.uniformBaseColorLocation, baseColor.R, baseColor.G, baseColor.B, baseColor.A);
+++        if (shaderSet.uniformMultiplyColorLocation) {
+++          this.gl.uniform4f(shaderSet.uniformMultiplyColorLocation, multiplyColor.R, multiplyColor.G, multiplyColor.B, multiplyColor.A);
+++        }
+++        if (shaderSet.uniformScreenColorLocation) {
+++          this.gl.uniform4f(shaderSet.uniformScreenColorLocation, screenColor.R, screenColor.G, screenColor.B, screenColor.A);
+++        }
++       }
++       if (bufferData.index == null) {
++         bufferData.index = this.gl.createBuffer();
++@@ -3385,6 +3417,10 @@ var __async = (__this, __arguments, generator) => {
++       this._shaderSets[9].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_clipMatrix");
++       this._shaderSets[9].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_channelFlag");
++       this._shaderSets[9].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_baseColor");
+++      for (let i = 1; i <= 9; i++) {
+++        this._shaderSets[i].uniformMultiplyColorLocation = this.gl.getUniformLocation(this._shaderSets[i].shaderProgram, "u_multiplyColor");
+++        this._shaderSets[i].uniformScreenColorLocation = this.gl.getUniformLocation(this._shaderSets[i].shaderProgram, "u_screenColor");
+++      }
++     }
++     loadShaderProgram(vertexShaderSource, fragmentShaderSource) {
++       let shaderProgram = this.gl.createProgram();
++@@ -3452,9 +3488,9 @@ var __async = (__this, __arguments, generator) => {
++   const fragmentShaderSrcsetupMask = "precision mediump float;varying vec2       v_texCoord;varying vec4       v_myPos;uniform vec4       u_baseColor;uniform vec4       u_channelFlag;uniform sampler2D  s_texture0;void main(){   float isInside =        step(u_baseColor.x, v_myPos.x/v_myPos.w)       * step(u_baseColor.y, v_myPos.y/v_myPos.w)       * step(v_myPos.x/v_myPos.w, u_baseColor.z)       * step(v_myPos.y/v_myPos.w, u_baseColor.w);   gl_FragColor = u_channelFlag * texture2D(s_texture0, v_texCoord).a * isInside;}";
++   const vertexShaderSrc = "attribute vec4     a_position;attribute vec2     a_texCoord;varying vec2       v_texCoord;uniform mat4       u_matrix;void main(){   gl_Position = u_matrix * a_position;   v_texCoord = a_texCoord;   v_texCoord.y = 1.0 - v_texCoord.y;}";
++   const vertexShaderSrcMasked = "attribute vec4     a_position;attribute vec2     a_texCoord;varying vec2       v_texCoord;varying vec4       v_clipPos;uniform mat4       u_matrix;uniform mat4       u_clipMatrix;void main(){   gl_Position = u_matrix * a_position;   v_clipPos = u_clipMatrix * a_position;   v_texCoord = a_texCoord;   v_texCoord.y = 1.0 - v_texCoord.y;}";
++-  const fragmentShaderSrcPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;uniform vec4       u_baseColor;uniform sampler2D  s_texture0;void main(){   gl_FragColor = texture2D(s_texture0 , v_texCoord) * u_baseColor;}";
++-  const fragmentShaderSrcMaskPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;varying vec4       v_clipPos;uniform vec4       u_baseColor;uniform vec4       u_channelFlag;uniform sampler2D  s_texture0;uniform sampler2D  s_texture1;void main(){   vec4 col_formask = texture2D(s_texture0 , v_texCoord) * u_baseColor;   vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;   float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;   col_formask = col_formask * maskVal;   gl_FragColor = col_formask;}";
++-  const fragmentShaderSrcMaskInvertedPremultipliedAlpha = "precision mediump float;varying vec2 v_texCoord;varying vec4 v_clipPos;uniform sampler2D s_texture0;uniform sampler2D s_texture1;uniform vec4 u_channelFlag;uniform vec4 u_baseColor;void main(){vec4 col_formask = texture2D(s_texture0, v_texCoord) * u_baseColor;vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;col_formask = col_formask * (1.0 - maskVal);gl_FragColor = col_formask;}";
+++  const fragmentShaderSrcPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;uniform vec4       u_baseColor;uniform sampler2D  s_texture0;uniform vec4 u_multiplyColor;uniform vec4 u_screenColor;void main(){   vec4 color = texture2D(s_texture0 , v_texCoord) * u_baseColor;   color.rgb = color.rgb * u_multiplyColor.rgb;   color.rgb = color.rgb + u_screenColor.rgb * color.a - color.rgb * u_screenColor.rgb;   color.a=color.a*u_multiplyColor.a;   color.rgb=color.rgb*u_multiplyColor.a;   gl_FragColor = color;}";
+++  const fragmentShaderSrcMaskPremultipliedAlpha = "precision mediump float;varying vec2       v_texCoord;varying vec4       v_clipPos;uniform vec4       u_baseColor;uniform vec4       u_channelFlag;uniform sampler2D  s_texture0;uniform sampler2D  s_texture1;uniform vec4 u_multiplyColor;uniform vec4 u_screenColor;void main(){   vec4 col_formask = texture2D(s_texture0 , v_texCoord) * u_baseColor;   col_formask.rgb = col_formask.rgb * u_multiplyColor.rgb;   col_formask.rgb = col_formask.rgb + u_screenColor.rgb * col_formask.a - col_formask.rgb * u_screenColor.rgb;   col_formask.a=col_formask.a*u_multiplyColor.a;   col_formask.rgb=col_formask.rgb*u_multiplyColor.a;   vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;   float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;   col_formask = col_formask * maskVal;   gl_FragColor = col_formask;}";
+++  const fragmentShaderSrcMaskInvertedPremultipliedAlpha = "precision mediump float;varying vec2 v_texCoord;varying vec4 v_clipPos;uniform sampler2D s_texture0;uniform sampler2D s_texture1;uniform vec4 u_channelFlag;uniform vec4 u_baseColor;uniform vec4 u_multiplyColor;uniform vec4 u_screenColor;void main(){vec4 col_formask = texture2D(s_texture0, v_texCoord) * u_baseColor;col_formask.rgb = col_formask.rgb * u_multiplyColor.rgb;col_formask.rgb = col_formask.rgb + u_screenColor.rgb * col_formask.a - col_formask.rgb * u_screenColor.rgb;col_formask.a=col_formask.a*u_multiplyColor.a;col_formask.rgb=col_formask.rgb*u_multiplyColor.a;vec4 clipMask = (1.0 - texture2D(s_texture1, v_clipPos.xy / v_clipPos.w)) * u_channelFlag;float maskVal = clipMask.r + clipMask.g + clipMask.b + clipMask.a;col_formask = col_formask * (1.0 - maskVal);gl_FragColor = col_formask;}";
++   class CubismRenderer_WebGL extends CubismRenderer {
++     constructor() {
++       super();
++@@ -3527,10 +3563,12 @@ var __async = (__this, __arguments, generator) => {
++         }
++         this.setClippingContextBufferForDraw(this._clippingManager != null ? this._clippingManager.getClippingContextListForDraw()[drawableIndex] : null);
++         this.setIsCulling(this.getModel().getDrawableCulling(drawableIndex));
++-        this.drawMesh(this.getModel().getDrawableTextureIndices(drawableIndex), this.getModel().getDrawableVertexIndexCount(drawableIndex), this.getModel().getDrawableVertexCount(drawableIndex), this.getModel().getDrawableVertexIndices(drawableIndex), this.getModel().getDrawableVertices(drawableIndex), this.getModel().getDrawableVertexUvs(drawableIndex), this.getModel().getDrawableOpacity(drawableIndex), this.getModel().getDrawableBlendMode(drawableIndex), this.getModel().getDrawableInvertedMaskBit(drawableIndex));
+++        const multiplyColor = this.getModel().getDrawableMultiplyColor ? this.getModel().getDrawableMultiplyColor(drawableIndex) : { R: 1, G: 1, B: 1, A: 1 };
+++        const screenColor = this.getModel().getDrawableScreenColor ? this.getModel().getDrawableScreenColor(drawableIndex) : { R: 0, G: 0, B: 0, A: 1 };
+++        this.drawMesh(this.getModel().getDrawableTextureIndices(drawableIndex), this.getModel().getDrawableVertexIndexCount(drawableIndex), this.getModel().getDrawableVertexCount(drawableIndex), this.getModel().getDrawableVertexIndices(drawableIndex), this.getModel().getDrawableVertices(drawableIndex), this.getModel().getDrawableVertexUvs(drawableIndex), this.getModel().getDrawableOpacity(drawableIndex), this.getModel().getDrawableBlendMode(drawableIndex), this.getModel().getDrawableInvertedMaskBit(drawableIndex), multiplyColor, screenColor);
++       }
++     }
++-    drawMesh(textureNo, indexCount, vertexCount, indexArray, vertexArray, uvArray, opacity, colorBlendMode, invertedMask) {
+++    drawMesh(textureNo, indexCount, vertexCount, indexArray, vertexArray, uvArray, opacity, colorBlendMode, invertedMask, multiplyColor = { R: 1, G: 1, B: 1, A: 1 }, screenColor = { R: 0, G: 0, B: 0, A: 1 }) {
++       if (this.isCulling()) {
++         this.gl.enable(this.gl.CULL_FACE);
++       } else {
++@@ -3550,7 +3588,7 @@ var __async = (__this, __arguments, generator) => {
++       if (this._textures[textureNo] != null) {
++         drawtexture = this._textures[textureNo];
++       }
++-      CubismShader_WebGL.getInstance().setupShaderProgram(this, drawtexture, vertexCount, vertexArray, indexArray, uvArray, this._bufferData, opacity, colorBlendMode, modelColorRGBA, this.isPremultipliedAlpha(), this.getMvpMatrix(), invertedMask);
+++      CubismShader_WebGL.getInstance().setupShaderProgram(this, drawtexture, vertexCount, vertexArray, indexArray, uvArray, this._bufferData, opacity, colorBlendMode, modelColorRGBA, this.isPremultipliedAlpha(), this.getMvpMatrix(), invertedMask, multiplyColor, screenColor);
++       this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_SHORT, 0);
++       this.gl.useProgram(null);
++       this.setClippingContextBufferForDraw(null);
++@@ -5012,7 +5050,7 @@ var __async = (__this, __arguments, generator) => {
+      }
+      static createSettings(files) {
+        return __async(this, null, function* () {
+@@ -116,7 +322,7 @@ index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..99fc587e3ca7e6f433099e13f33e0e48
+          if (!settingsFile) {
+            throw new TypeError("Settings file not found");
+          }
+-@@ -5050,7 +5050,7 @@ var __async = (__this, __arguments, generator) => {
++@@ -5050,7 +5088,7 @@ var __async = (__this, __arguments, generator) => {
+        } else if (!settings._objectURL) {
+          throw new Error('"_objectURL" must be specified in ModelSettings');
+        }
+@@ -125,7 +331,7 @@ index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..99fc587e3ca7e6f433099e13f33e0e48
+        yield _FileLoader.upload(files, settings);
+        settings.resolveURL = function(url) {
+          return _FileLoader.resolveURL(this._objectURL, url);
+-@@ -5097,7 +5097,7 @@ var __async = (__this, __arguments, generator) => {
++@@ -5097,7 +5135,7 @@ var __async = (__this, __arguments, generator) => {
+      static createSettings(reader) {
+        return __async(this, null, function* () {
+          const filePaths = yield _ZipLoader.getFilePaths(reader);
+@@ -135,7 +341,7 @@ index 03c1fb2b32b3b908a8b0e604aa3ee50aa9130169..99fc587e3ca7e6f433099e13f33e0e48
+            throw new Error("Settings file not found");
+          }
+ diff --git a/dist/index.es.js b/dist/index.es.js
+-index f969d304f346c4e420b6798dbd4dec81b902a5e4..7e6b4d3ef53f1ea0648030899de9debd291fc551 100644
++index f969d304f346c4e420b6798dbd4dec81b902a5e4..22e714552a57a83dd2e81b85b3eedc58ec49eb49 100644
+ --- a/dist/index.es.js
+ +++ b/dist/index.es.js
+ @@ -1373,7 +1373,7 @@ const _FileLoader = class {
+@@ -166,7 +372,7 @@ index f969d304f346c4e420b6798dbd4dec81b902a5e4..7e6b4d3ef53f1ea0648030899de9debd
+          throw new Error("Settings file not found");
+        }
+ diff --git a/dist/index.js b/dist/index.js
+-index bc3d800c45889979190175cc88cdd8251feb9b5e..d1a660708ff81e1379f173709a32c6f4aa16696a 100644
++index bc3d800c45889979190175cc88cdd8251feb9b5e..1f4e1f41be7c606e1ef01393eb06af35497a47c7 100644
+ --- a/dist/index.js
+ +++ b/dist/index.js
+ @@ -1373,7 +1373,7 @@ var __async = (__this, __arguments, generator) => {
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 86ac6b48a..28ffd2b17 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -1246,7 +1246,7 @@ packageExtensionsChecksum: sha256-lLxz4me6BFXSsuohDen54RU9DmiItse34Xa+IWGtSzU=
+ patchedDependencies:
+   '@xsai-ext/responses@0.5.1': 869608a1a960b80aef6290aef41763c909252e2401364f1bfa75a67134866eed
+   mineflayer-pathfinder: 4bbfdca823ab48b74086e6e7d4b2f9baf5ee7c0ba9aee0c279b3c91c50bfd797
+-  pixi-live2d-display: 7881eb52793f46a10d6c04d62b1799a3d0ef79f83edc0283777baa6db339ed6d
++  pixi-live2d-display: dea25aee3e458f965a6b674358c06139fedfed623ab38cc5a0420551433bd0ff
+   sponsorkit@17.1.0: f5887da52a29ae85732e01644d05c0c274231fe76b95aebeafbfab6dc4444f88
+   tab-election@4.6.2: ff8fe3c9aed66469fa00180f039fbf9f4f8e682430bfb3f6a07d9baf3f850674
+   uiohook-napi@1.5.5: 012c5e5ad881d5ae40fc0af58832e31a0772ab0a74c038c8f4dfe51efaf398dd
+@@ -5490,7 +5490,7 @@ importers:
+         version: 4.2.0(5af797a0b5bd919a06578c24a7479046)
+       pixi-live2d-display:
+         specifier: 'catalog:'
+-        version: 0.4.0(patch_hash=7881eb52793f46a10d6c04d62b1799a3d0ef79f83edc0283777baa6db339ed6d)(0736f5bd67d2e4de7e9fff36ad63fa2e)
++        version: 0.4.0(patch_hash=dea25aee3e458f965a6b674358c06139fedfed623ab38cc5a0420551433bd0ff)(0736f5bd67d2e4de7e9fff36ad63fa2e)
+       three:
+         specifier: 'catalog:'
+         version: 0.185.1
+@@ -33725,7 +33725,7 @@ snapshots:
+       - '@pixi/settings'
+       - '@pixi/utils'
+ 
+-  pixi-live2d-display@0.4.0(patch_hash=7881eb52793f46a10d6c04d62b1799a3d0ef79f83edc0283777baa6db339ed6d)(0736f5bd67d2e4de7e9fff36ad63fa2e):
++  pixi-live2d-display@0.4.0(patch_hash=dea25aee3e458f965a6b674358c06139fedfed623ab38cc5a0420551433bd0ff)(0736f5bd67d2e4de7e9fff36ad63fa2e):
+     dependencies:
+       '@pixi/core': 6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
+       '@pixi/display': 6.5.10(@pixi/constants@6.5.10)(@pixi/math@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))

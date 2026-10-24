@@ -127,25 +127,15 @@ describe('validateLive2DZip', () => {
     expect(report.model.moc?.path).toBe('avatar.moc3')
   })
 
-  it('reports unreferenced expressions and motions as import warnings', async () => {
+  it('does not warn when expression and motion files exist only in the zip', async () => {
     const report = await validateLive2DZip(await createLive2DFile({
       includeUnreferencedResources: true,
     }))
 
-    expect(report.status).toBe('WARNING')
-    expect(report.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: 'unreferenced-expressions',
-        severity: 'warning',
-        message: '2 expression files are not referenced by avatar.model3.json.',
-      }),
-      expect.objectContaining({
-        code: 'unreferenced-motions',
-        severity: 'warning',
-        message: '2 motion files are not referenced by avatar.model3.json.',
-      }),
-    ]))
-    expect(report.issues.every(issue => issue.resolution.length > 0)).toBe(true)
+    expect(report.status).toBe('VALID')
+    expect(report.issues.some(issue =>
+      issue.code === 'unreferenced-expressions' || issue.code === 'unreferenced-motions',
+    )).toBe(false)
   })
 
   it('derives INVALID from an error that blocks model loading', async () => {

@@ -519,32 +519,6 @@ export async function validateLive2DZip(file: File | Blob): Promise<Live2DValida
       })
     }
 
-    const resolvedExpressionReferences = new Set(expressionReferences.map(reference => resolveArchivePath(entryPoint, reference)))
-    const resolvedMotionReferences = new Set(motionReferences.map(reference => resolveArchivePath(entryPoint, reference)))
-    const unreferencedExpressionCount = expressionPaths.filter(path => !resolvedExpressionReferences.has(path)).length
-    const unreferencedMotionCount = motionPaths.filter(path => !resolvedMotionReferences.has(path)).length
-
-    if (unreferencedExpressionCount > 0) {
-      const noun = unreferencedExpressionCount === 1 ? 'expression file is' : 'expression files are'
-      addIssue(
-        report,
-        'unreferenced-expressions',
-        'warning',
-        `${unreferencedExpressionCount} ${noun} not referenced by ${settingsFileName}.`,
-        `Add the files to FileReferences.Expressions in ${settingsFileName}, or remove the unused files.`,
-      )
-    }
-    if (unreferencedMotionCount > 0) {
-      const noun = unreferencedMotionCount === 1 ? 'motion file is' : 'motion files are'
-      addIssue(
-        report,
-        'unreferenced-motions',
-        'warning',
-        `${unreferencedMotionCount} ${noun} not referenced by ${settingsFileName}.`,
-        `Add the files to FileReferences.Motions in ${settingsFileName}, or remove the unused files.`,
-      )
-    }
-
     const displayInfoReference = readString(references.DisplayInfo)
     let displayInfoPath: string | undefined = displayInfoPaths[0]
     if (displayInfoReference) {

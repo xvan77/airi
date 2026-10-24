@@ -1,11 +1,14 @@
 import type { CubismSpec, JSONObject, ModelSettings } from 'pixi-live2d-display/cubism4'
 
+import type { Live2DVTubeZipMetadata } from './live2d-vtube-sidecar'
+
 import JSZip from 'jszip'
 
 import { Cubism4ModelSettings, FileLoader, Live2DFactory, ZipLoader } from 'pixi-live2d-display/cubism4'
 
 import { resolveLive2DModelControls } from '../controls/manifest'
 import { decodeZipFileName } from './decode-zip-filename'
+import { parseLive2DVTubeSidecar } from './live2d-vtube-sidecar'
 
 // Legacy/VTube-Studio archives often store entry names without the UTF-8 flag in a legacy
 // codepage; decode them so non-ASCII names (e.g. `手姿势切换.exp3.json`) don't become
@@ -40,44 +43,64 @@ ZipLoader.createSettings = async (reader: JSZip) => {
   })()
 
   mergeDiscoveredControlsIntoSettings(settings, filePaths)
+  await enrichLive2DSettingsFromArchivePaths(settings, filePaths, path => ZipLoader.readText(reader, path))
 
-  // Extract CDI data from the zip if available
+  return settings
+}
+
+export type Live2DArchiveMetadataSettings = ModelSettings & {
+  _cdiData?: unknown
+  _expFiles?: Array<{ name: string, fileName: string, data: unknown }>
+  _vtubeZipMetadata?: Live2DVTubeZipMetadata
+}
+
+/**
+ * Attaches CDI, expression payloads, and `.vtube.json` metadata to model settings.
+ * OPFS restores zips as a flat `File[]`, so this must run for `FileLoader` as well as `ZipLoader`.
+ */
+export async function enrichLive2DSettingsFromArchivePaths(
+  settings: ModelSettings,
+  filePaths: string[],
+  readText: (path: string) => Promise<string>,
+): Promise<void> {
   try {
-    const metadataSettings = settings as ModelSettings & {
-      _cdiData?: unknown
-      _expFiles?: Array<{ name: string, fileName: string, data: unknown }>
-    }
+    const metadataSettings = settings as Live2DArchiveMetadataSettings
 
-    // Find and parse CDI file
     const cdiPath = filePaths.find(f => f.toLowerCase().endsWith('.cdi3.json'))
     if (cdiPath) {
-      const cdiText = await reader.file(cdiPath)!.async('text')
-      metadataSettings._cdiData = JSON.parse(cdiText)
+      metadataSettings._cdiData = JSON.parse(await readText(cdiPath))
       console.info('[ZipLoader] Extracted CDI data from:', cdiPath)
     }
 
-    // Find and collect expression files
     const expPaths = filePaths.filter(f => f.toLowerCase().endsWith('.exp3.json'))
     if (expPaths.length > 0) {
       const expFiles: Array<{ name: string, fileName: string, data: unknown }> = []
       for (const expPath of expPaths) {
-        const expText = await reader.file(expPath)!.async('text')
         const baseName = expPath.split('/').pop()?.replace('.exp3.json', '') || expPath
         expFiles.push({
           name: baseName,
           fileName: expPath,
-          data: JSON.parse(expText),
+          data: JSON.parse(await readText(expPath)),
         })
       }
       metadataSettings._expFiles = expFiles
       console.info('[ZipLoader] Extracted', expFiles.length, 'expression files')
     }
+
+    const vtubePath = filePaths.find(f => f.toLowerCase().endsWith('.vtube.json'))
+    if (vtubePath) {
+      metadataSettings._vtubeZipMetadata = parseLive2DVTubeSidecar(await readText(vtubePath))
+      console.info(
+        '[ZipLoader] Parsed .vtube.json',
+        Object.keys(metadataSettings._vtubeZipMetadata.artMeshColors).length > 0
+          ? `(${Object.keys(metadataSettings._vtubeZipMetadata.artMeshColors).length} ArtMesh colors)`
+          : '(no ArtMesh colors)',
+      )
+    }
   }
   catch (e) {
     console.warn('[ZipLoader] Failed to extract CDI/EXP metadata:', e)
   }
-
-  return settings
 }
 
 function mergeDiscoveredControlsIntoSettings(settings: ModelSettings, filePaths: string[]) {
@@ -257,7 +280,21 @@ FileLoader.createSettings = async (files: File[]) => {
   const settingsUrl = settingsFile.webkitRelativePath || settingsFile.name
   const settingsText = await FileLoader.readText(settingsFile)
   const settings = createModelSettings(settingsText, settingsUrl)
-  mergeDiscoveredControlsIntoSettings(settings, files.map(file => file.webkitRelativePath || file.name).filter(path => !shouldIgnoreLive2DArchiveEntry(path)))
+  const archivePaths = files
+    .map(file => file.webkitRelativePath || file.name)
+    .filter(path => !shouldIgnoreLive2DArchiveEntry(path))
+  mergeDiscoveredControlsIntoSettings(settings, archivePaths)
+
+  const fileByPath = new Map(archivePaths.map((path) => {
+    const file = files.find(candidate => (candidate.webkitRelativePath || candidate.name) === path)
+    return [path, file]
+  }))
+  await enrichLive2DSettingsFromArchivePaths(settings, archivePaths, async (path) => {
+    const file = fileByPath.get(path)
+    if (!file)
+      throw new Error(`Cannot find file: ${path}`)
+    return FileLoader.readText(file)
+  })
 
   Object.assign(settings, { _objectURL: URL.createObjectURL(settingsFile) })
 

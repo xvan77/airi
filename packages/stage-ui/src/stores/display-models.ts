@@ -1,7 +1,16 @@
+import type { Live2dThumbnailCache, Live2dThumbnailSource } from '@proj-airi/stage-ui-live2d/utils/live2d-preview'
+
 import type { TransferTask } from '../libs/file-transfer/transfer-queue'
 import type { CloudDisplayModel } from '../services/display-model-sync'
 
 import { errorMessageFrom } from '@moeru/std'
+import {
+  computeLive2dCardThumbnail,
+  getLive2dThumbnailSource,
+
+  readLive2dThumbnailCache,
+  writeLive2dThumbnailCache,
+} from '@proj-airi/stage-ui-live2d/utils/live2d-preview'
 import { createEventHook, until } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -55,6 +64,8 @@ export interface DisplayModelFile {
   name: string
   previewImage?: string
   importedAt: number
+  /** Cached card images per Live2D thumbnail mode (persisted in IndexedDB). */
+  live2dThumbnailCache?: Live2dThumbnailCache
   /** The account whose cloud directory holds this model. Absent for device-only imports. */
   cloudOwnerId?: string
 }
@@ -114,7 +125,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     },
   )
 
-  let generateLive2DPreview: (file: File) => Promise<string | undefined>
+  let generateLive2DPreview: (file: File, options?: { source?: Live2dThumbnailSource }) => Promise<string | undefined>
   let generateVrmPreview: (file: File) => Promise<string | undefined>
   let generateSpinePreview: (file: File) => Promise<string | undefined>
   let generateTachiePreview: (file: File) => Promise<string | undefined>
@@ -217,11 +228,41 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     return undefined
   }
 
+  function seedLive2dThumbnailCacheFromLegacyPreview(model: DisplayModelFile): boolean {
+    if (model.format !== DisplayModelFormat.Live2dZip || !model.previewImage)
+      return false
+    if (readLive2dThumbnailCache(model.live2dThumbnailCache, 'render'))
+      return false
+    model.live2dThumbnailCache = writeLive2dThumbnailCache(model.live2dThumbnailCache, 'render', model.previewImage)
+    return true
+  }
+
+  async function resolveLive2dThumbnailForSource(
+    model: DisplayModelFile,
+    source: Live2dThumbnailSource,
+  ): Promise<{ previewImage: string | undefined, generated: boolean, cacheUpdated: boolean }> {
+    const legacySeed = seedLive2dThumbnailCacheFromLegacyPreview(model)
+    const result = await computeLive2dCardThumbnail(model.file, model.live2dThumbnailCache, source)
+    model.live2dThumbnailCache = result.cache
+    return {
+      previewImage: result.previewImage,
+      generated: result.generated,
+      cacheUpdated: legacySeed || result.cacheUpdated,
+    }
+  }
+
   async function addDisplayModel(format: DisplayModelFormat, file: File) {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
     const newDisplayModel: DisplayModelFile = { id: `display-model-${nanoid()}`, format, type: 'file', file, name: file.name, importedAt: Date.now() }
 
-    newDisplayModel.previewImage = await generatePreview(format, file)
+    if (format === DisplayModelFormat.Live2dZip) {
+      const source = getLive2dThumbnailSource()
+      const { previewImage } = await resolveLive2dThumbnailForSource(newDisplayModel, source)
+      newDisplayModel.previewImage = previewImage
+    }
+    else {
+      newDisplayModel.previewImage = await generatePreview(format, file)
+    }
 
     displayModels.value.unshift(newDisplayModel)
 
@@ -504,6 +545,30 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     syncErrors.value = {}
   }
 
+  async function refreshAllLive2dZipThumbnails() {
+    await until(displayModelsFromIndexedDBLoading).toBe(false)
+    if (!generateLive2DPreview)
+      return
+
+    const source = getLive2dThumbnailSource()
+    const live2dFileModels = displayModels.value.filter((model): model is DisplayModelFile =>
+      model.type === 'file' && model.format === DisplayModelFormat.Live2dZip,
+    )
+
+    for (const model of live2dFileModels) {
+      const { previewImage, generated, cacheUpdated } = await resolveLive2dThumbnailForSource(model, source)
+      model.previewImage = previewImage
+      const index = displayModels.value.findIndex(item => item.id === model.id)
+      const listed = index !== -1 ? displayModels.value[index] : undefined
+      if (listed?.type === 'file') {
+        listed.previewImage = previewImage
+        listed.live2dThumbnailCache = model.live2dThumbnailCache
+      }
+      if (generated || cacheUpdated)
+        await displayModelsRepo.save(model).catch(err => console.error(err))
+    }
+  }
+
   async function initialize() {
     // Start sync before the preview renderers load. A renderer that fails to load must not stop sync.
     const authStore = useAuthStore()
@@ -561,6 +626,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     uploadDisplayModel,
     deleteCloudDisplayModel: deleteCloudDisplayModelById,
     addDisplayModel,
+    refreshAllLive2dZipThumbnails,
     renameDisplayModel,
     removeDisplayModel,
     resetDisplayModels,

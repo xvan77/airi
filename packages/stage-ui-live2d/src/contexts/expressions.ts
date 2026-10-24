@@ -4,6 +4,11 @@ import type { Live2DExpressionControl, Live2DExpressionParameterControl } from '
 
 import { computed, ref } from 'vue'
 
+import {
+  applyExpressionDefinitionStackToCoreModel,
+  applyExpressionParametersToCoreModel,
+} from '../utils/apply-expression-stack'
+
 export type Live2DExpressionBlendMode = Live2DExpressionParameterControl['blend']
 
 /** One parameter operation from an exp3 expression. */
@@ -225,20 +230,38 @@ export function createLive2DExpressionsContext(
   function apply(coreModel: Live2DExpressionCoreModel) {
     const activeThisFrame = new Set<string>()
 
-    for (const parameter of parameters.value.values()) {
-      const preview = previewParameters.get(parameter.parameterId)
-      if (!preview && parameter.currentValue === parameter.defaultValue)
-        continue
+    if (previewExpressionNames.length > 0) {
+      const previewDefinitions = previewExpressionNames
+        .map(name => definitions.value.get(name))
+        .filter((definition): definition is Live2DExpressionDefinition => definition !== undefined)
 
-      let value = preview?.value ?? parameter.currentValue
-      const blend = preview?.blend ?? parameter.activeBlend
-      if (blend === 'Add')
-        value = parameter.modelDefault + value
-      else if (blend === 'Multiply')
-        value = coreModel.getParameterValueById(parameter.parameterId) * value
+      applyExpressionDefinitionStackToCoreModel(
+        coreModel,
+        previewDefinitions,
+        parameterId => parameters.value.get(parameterId)?.modelDefault ?? options.getParameterDefault(parameterId),
+      )
 
-      coreModel.setParameterValueById(parameter.parameterId, value)
-      activeThisFrame.add(parameter.parameterId)
+      for (const definition of previewDefinitions) {
+        for (const parameter of definition.parameters)
+          activeThisFrame.add(parameter.parameterId)
+      }
+    }
+    else {
+      for (const parameter of parameters.value.values()) {
+        if (parameter.currentValue === parameter.defaultValue)
+          continue
+
+        applyExpressionParametersToCoreModel(
+          coreModel,
+          [{
+            parameterId: parameter.parameterId,
+            value: parameter.currentValue,
+            blend: parameter.activeBlend,
+          }],
+          () => parameter.modelDefault,
+        )
+        activeThisFrame.add(parameter.parameterId)
+      }
     }
 
     for (const parameterId of activeLastFrame) {

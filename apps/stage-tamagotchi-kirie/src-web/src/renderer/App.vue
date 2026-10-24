@@ -150,12 +150,12 @@ function createFullStageRuntime() {
       initializeAnalytics()
       await authStore.initialize()
       await displayModelsStore.initialize()
-      await cardStore.initialize()
       registerAuthenticatedSetup()
       if (!authStore.isAuthenticated)
         await removeAuthenticationProviderConfiguration()
 
       await displayModelsStore.loadDisplayModelsFromIndexedDB()
+      await cardStore.initialize()
       await settingsStore.initializeStageModel()
       await settingsAudioDeviceStore.initialize()
 

@@ -129,6 +129,10 @@ model-select:
     button: Select model
     select: Pick
     import: Import
+    live2d-thumbnail:
+      label: Live2D card image on import
+      render: Live render
+      icon: Icon
     remove: Remove
     sync:
       upload: Upload to cloud
