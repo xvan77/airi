@@ -2,51 +2,66 @@
 import type { ProviderMode } from '../../../../composables/use-analytics'
 import type { ProviderMetadata } from '../../../../libs/providers/metadata'
 import type {
+  OnboardingSetupMode,
   OnboardingStep,
   OnboardingStepGuard,
   OnboardingStepNextHandler,
-  OnboardingStepPrevHandler,
   ProviderConfigData,
 } from './types'
 
-import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { isCustomProvidersDisabled, isStageTamagotchi } from '@proj-airi/stage-shared'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 
+import StepLocalChatTtsOffer from './step-local-chat-tts-offer.vue'
+import StepLocalLlmSetup from './step-local-llm-setup.vue'
 import StepModelSelection from './step-model-selection.vue'
 import StepProviderConfiguration from './step-provider-configuration.vue'
 import StepProviderSelection from './step-provider-selection.vue'
 import StepWelcome from './step-welcome.vue'
 
 import { useAnalytics } from '../../../../composables/use-analytics'
+import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useConsciousnessStore } from '../../../../stores/modules/consciousness'
+import { useSpeechStore } from '../../../../stores/modules/speech'
 import { useProviderConfigStore } from '../../../../stores/providers/config'
 import { useProviderStore } from '../../../../stores/providers/provider'
-
-interface Emits {
-  (e: 'configured'): void
-  (e: 'skipped'): void
-}
 
 const props = withDefaults(defineProps<{
   extraSteps?: OnboardingStep[]
 }>(), {
   extraSteps: () => [],
 })
+
 const emit = defineEmits<Emits>()
+
+const LOCAL_SPEECH_PROVIDER_ID = 'app-local-audio-speech'
+const LOCAL_SPEECH_MODEL_ID = 'system-native-tts'
+
+interface Emits {
+  (e: 'configured'): void
+  (e: 'skipped'): void
+}
+
 const step = ref(0)
 const direction = ref<'next' | 'previous'>('next')
 const pendingProviderConfig = ref<ProviderConfigData | null>(null)
+const setupMode = ref<OnboardingSetupMode>(isStageTamagotchi() ? 'local' : 'custom')
+const enableLocalTtsAfterOnboarding = ref(false)
 const { trackOnboardingCompleted, trackOnboardingStarted, trackOnboardingStepCompleted } = useAnalytics()
 
 const providersStore = useProviderStore()
 
 const providerStore = useProviderConfigStore()
 const { allChatProvidersMetadata } = storeToRefs(providersStore)
+const airiCardStore = useAiriCardStore()
 const consciousnessStore = useConsciousnessStore()
+const speechStore = useSpeechStore()
 const {
   activeProvider,
+  activeModel,
 } = storeToRefs(consciousnessStore)
+const { activeSpeechVoiceId } = storeToRefs(speechStore)
 
 // Popular providers for first-time setup
 const popularProviders = computed(() => {
@@ -73,10 +88,6 @@ const selectedProviderType = computed<ProviderMode>(() => {
 // Reset validation state when provider changes
 function selectProvider(provider: ProviderMetadata) {
   selectedProviderId.value = provider.id
-}
-
-const requestPreviousStep: OnboardingStepPrevHandler = () => {
-  return navigatePrevious()
 }
 
 const requestNextStep: OnboardingStepNextHandler = async (configData?: ProviderConfigData) => {
@@ -120,53 +131,125 @@ async function saveProviderConfiguration(data: ProviderConfigData) {
   }
 }
 
+async function finalizeLocalLlmProvider() {
+  const providerId = 'local-llm'
+  await providersStore.initializeProvider(providerId)
+  await providersStore.forceProviderConfigured(providerId)
+}
+
+async function enableLocalSpeechProvider() {
+  if (!isStageTamagotchi())
+    return
+
+  await providersStore.initializeProvider(LOCAL_SPEECH_PROVIDER_ID)
+  await providersStore.forceProviderConfigured(LOCAL_SPEECH_PROVIDER_ID)
+  await speechStore.selectProviderModel(LOCAL_SPEECH_PROVIDER_ID, LOCAL_SPEECH_MODEL_ID, '')
+  const voices = await speechStore.loadVoicesForProvider(LOCAL_SPEECH_PROVIDER_ID, LOCAL_SPEECH_MODEL_ID)
+  const defaultVoiceId = voices[0]?.id
+  if (defaultVoiceId)
+    await speechStore.selectProviderModel(LOCAL_SPEECH_PROVIDER_ID, LOCAL_SPEECH_MODEL_ID, defaultVoiceId)
+}
+
+async function persistActiveCardModuleSelections() {
+  if (!activeProvider.value || !activeModel.value)
+    return
+
+  await airiCardStore.updateActiveCardConsciousness({
+    provider: activeProvider.value,
+    model: activeModel.value,
+  })
+
+  if (setupMode.value === 'local' && enableLocalTtsAfterOnboarding.value) {
+    await airiCardStore.updateActiveCardSpeech({
+      provider: LOCAL_SPEECH_PROVIDER_ID,
+      model: LOCAL_SPEECH_MODEL_ID,
+      voice_id: activeSpeechVoiceId.value,
+    })
+  }
+}
+
 const allSteps = computed<OnboardingStep[]>(() => {
-  const coreSteps: OnboardingStep[] = [
+  const steps: OnboardingStep[] = [
     {
       id: 'welcome',
       component: StepWelcome,
       props: () => ({
         customProviderSetupEnabled: !isCustomProvidersDisabled(),
+        localSetupEnabled: isStageTamagotchi(),
+        onStartSetup: (mode: OnboardingSetupMode) => {
+          setupMode.value = mode
+        },
       }),
-    },
-    {
-      id: 'provider-selection',
-      component: StepProviderSelection,
-      props: () => ({
-        selectedProviderId: selectedProviderId.value,
-        popularProviders: popularProviders.value,
-        onSelectProvider: selectProvider,
-      }),
-    },
-    {
-      id: 'provider-configuration',
-      component: StepProviderConfiguration,
-      props: () => ({
-        selectedProviderId: selectedProviderId.value,
-        selectedProvider: selectedProvider.value,
-      }),
-      beforeNext: async () => {
-        if (!pendingProviderConfig.value)
-          return false
-
-        await saveProviderConfiguration(pendingProviderConfig.value)
-        pendingProviderConfig.value = null
-        return true
-      },
-    },
-    ...props.extraSteps.map(step => ({
-      ...step,
-      props: () => ({
-        ...step.props?.(),
-      }),
-    })),
-    {
-      id: 'model-selection',
-      component: StepModelSelection,
     },
   ]
 
-  return coreSteps
+  if (isStageTamagotchi() && setupMode.value === 'local') {
+    steps.push(
+      {
+        id: 'local-llm-setup',
+        component: StepLocalLlmSetup,
+        beforeNext: async () => {
+          await finalizeLocalLlmProvider()
+          return true
+        },
+      },
+      {
+        id: 'local-chat-tts-offer',
+        component: StepLocalChatTtsOffer,
+        props: () => ({
+          onChooseLocalTts: (enable: boolean) => {
+            enableLocalTtsAfterOnboarding.value = enable
+          },
+        }),
+        beforeNext: async () => {
+          if (enableLocalTtsAfterOnboarding.value)
+            await enableLocalSpeechProvider()
+          return true
+        },
+      },
+    )
+  }
+  else {
+    steps.push(
+      {
+        id: 'provider-selection',
+        component: StepProviderSelection,
+        props: () => ({
+          selectedProviderId: selectedProviderId.value,
+          popularProviders: popularProviders.value,
+          onSelectProvider: selectProvider,
+        }),
+      },
+      {
+        id: 'provider-configuration',
+        component: StepProviderConfiguration,
+        props: () => ({
+          selectedProviderId: selectedProviderId.value,
+          selectedProvider: selectedProvider.value,
+        }),
+        beforeNext: async () => {
+          if (!pendingProviderConfig.value)
+            return false
+
+          await saveProviderConfiguration(pendingProviderConfig.value)
+          pendingProviderConfig.value = null
+          return true
+        },
+      },
+      ...props.extraSteps.map(extraStep => ({
+        ...extraStep,
+        props: () => ({
+          ...extraStep.props?.(),
+        }),
+      })),
+      {
+        id: 'model-selection',
+        component: StepModelSelection,
+      },
+    )
+  }
+
+  return steps
 })
 
 const currentStep = computed(() => allSteps.value[step.value] ?? null)
@@ -176,10 +259,11 @@ const currentStepProps = computed(() => currentStep.value?.props?.() ?? {})
 async function handleSave() {
   trackOnboardingStepCompleted(currentStep.value?.id ?? 'unknown')
   trackOnboardingCompleted({
-    selected_provider_type: selectedProviderType.value,
-    selected_provider_id: selectedProviderId.value || undefined,
-    selected_use_case: 'unknown',
+    selected_provider_type: setupMode.value === 'local' ? 'custom' : selectedProviderType.value,
+    selected_provider_id: setupMode.value === 'local' ? 'local-llm' : (selectedProviderId.value || undefined),
+    selected_use_case: setupMode.value === 'local' ? 'local_offline' : 'custom_provider',
   })
+  await persistActiveCardModuleSelections()
   emit('configured')
 }
 
@@ -233,7 +317,7 @@ onMounted(() => {
         class="flex flex-1 flex-col"
         v-bind="currentStepProps"
         :on-next="requestNextStep"
-        :on-previous="requestPreviousStep"
+        :on-previous="navigatePrevious"
       />
     </Transition>
   </div>

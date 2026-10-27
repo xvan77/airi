@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OnboardingStepNextHandler } from './types'
+import type { OnboardingSetupMode, OnboardingStepNextHandler } from './types'
 
 import { all } from '@proj-airi/i18n'
 import { Button, DropdownMenu } from '@proj-airi/ui'
@@ -18,10 +18,14 @@ import { useSettingsGeneral } from '../../../../stores/settings'
 
 interface Props {
   customProviderSetupEnabled: boolean
+  localSetupEnabled?: boolean
+  onStartSetup: (mode: OnboardingSetupMode) => void
   onNext: OnboardingStepNextHandler
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  localSetupEnabled: false,
+})
 const { t } = useI18n()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
@@ -46,7 +50,8 @@ async function handleLogin() {
   await authStore.requestLogin()
 }
 
-function handleLocalSetup() {
+function handleSetupMode(mode: OnboardingSetupMode) {
+  props.onStartSetup(mode)
   props.onNext()
 }
 </script>
@@ -139,7 +144,7 @@ function handleLocalSetup() {
         @click="handleLogin"
       />
       <Button
-        v-if="props.customProviderSetupEnabled"
+        v-if="props.localSetupEnabled"
         v-motion="{
           initial: { opacity: 0 },
           enter: { opacity: 1 },
@@ -148,9 +153,23 @@ function handleLocalSetup() {
         }"
         variant="secondary"
         :outline="false"
-        :class="['bg-transparent! text-neutral-600 dark:bg-neutral-700/60! dark:text-neutral-200']"
-        :label="t('settings.dialogs.onboarding.setupWithoutSigningIn')"
-        @click="handleLocalSetup"
+        :class="['!bg-neutral-200 !text-neutral-800 dark:!bg-neutral-700 dark:!text-neutral-100']"
+        :label="t('settings.dialogs.onboarding.modeSelection.local.title')"
+        @click="handleSetupMode('local')"
+      />
+      <Button
+        v-if="props.customProviderSetupEnabled"
+        v-motion="{
+          initial: { opacity: 0 },
+          enter: { opacity: 1 },
+          duration: 500,
+          delay: 300,
+        }"
+        variant="secondary"
+        :outline="false"
+        :class="['!bg-neutral-200 !text-neutral-800 dark:!bg-neutral-700 dark:!text-neutral-100']"
+        :label="t('settings.dialogs.onboarding.modeSelection.custom.title')"
+        @click="handleSetupMode('custom')"
       />
     </div>
     <nav
@@ -158,7 +177,7 @@ function handleLocalSetup() {
         initial: { opacity: 0 },
         enter: { opacity: 1 },
         duration: 500,
-        delay: 300,
+        delay: 350,
       }"
       :class="[
         'mx-2 mb-1 mt-8 md:mt-10',

@@ -102,16 +102,9 @@ if (appUserDataPath) {
 // https://github.com/electron/electron/issues/41763#issuecomment-2051725363
 // https://github.com/electron/electron/issues/41763#issuecomment-3143338995
 if (isLinux) {
-  // NOTICE:
-  // All enabled features must be joined into a single comma-separated string
-  // instead of calling appendSwitch('enable-features', ...) once per feature.
-  // Root cause: Chromium's commandLine stores switches by key, so each
-  // appendSwitch('enable-features', ...) call overwrites the previous value and
-  // only the last feature survives.
-  // Source: Chromium base::CommandLine behavior; see
-  // https://github.com/electron/electron/issues/41763 for the WebGPU setup this supports.
-  // Removal condition: never for the join itself; this block can be deleted once
-  // WebGPU works on Linux Electron without manual feature switches.
+  // NOTICE: Join enable-features into one appendSwitch call. Chromium keeps one
+  // value per switch key, so later calls overwrite earlier ones. See
+  // https://github.com/electron/electron/issues/41763
   const enabledFeatures = [
     'SharedArrayBuffer',
   ]
@@ -135,16 +128,8 @@ if (isLinux) {
     }
   }
   else {
-    // NOTICE:
-    // Vulkan must only be enabled on non-Wayland sessions, otherwise GPU
-    // initialization fails or rendering glitches appear.
-    // Root cause: Vulkan is incompatible with '--ozone-platform=wayland' in
-    // Chromium's surface factory; the Wayland Ozone backend cannot present
-    // Vulkan surfaces.
-    // Source: Chromium Ozone/Wayland surface factory; workaround tracked via
-    // https://github.com/electron/electron/issues/41763 (WebGPU on Linux).
-    // Removal condition: when Chromium/Electron supports Vulkan with the Wayland
-    // Ozone backend, drop the isWayland guard and always push 'Vulkan'.
+    // NOTICE: Skip Vulkan on Wayland. The Wayland Ozone backend cannot present
+    // Vulkan surfaces. See https://github.com/electron/electron/issues/41763
     enabledFeatures.push('Vulkan')
   }
 
@@ -355,11 +340,6 @@ app.whenReady().then(async () => {
 
   const devtoolsMarkdownStressWindow = injeca.provide('windows:devtools:markdown-stress', () => setupDevtoolsWindow())
 
-  const onboardingWindowManager = injeca.provide('windows:onboarding', {
-    dependsOn: { serverChannel, i18n },
-    build: ({ dependsOn }) => setupOnboardingWindowManager(dependsOn),
-  })
-
   const noticeWindow = injeca.provide('windows:notice', {
     dependsOn: { i18n, serverChannel },
     build: ({ dependsOn }) => setupNoticeWindowManager(dependsOn),
@@ -387,6 +367,11 @@ app.whenReady().then(async () => {
       openSettingsWindow: openSettings,
       openFullscreenChat,
     }),
+  })
+
+  const onboardingWindowManager = injeca.provide('windows:onboarding', {
+    dependsOn: { serverChannel, i18n, chatWindow },
+    build: ({ dependsOn }) => setupOnboardingWindowManager(dependsOn),
   })
 
   const spotlightWindow = injeca.provide('windows:spotlight', {

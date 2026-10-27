@@ -215,6 +215,7 @@ export function createStreamingCategorizer(
   providerId?: string,
   onSegment?: (segment: CategorizedSegment) => void,
 ) {
+  const passthroughSpeech = providerId === 'local-llm'
   let buffer = ''
   let categorized: CategorizedResponse | null = null
   let lastEmittedSegmentIndex = -1
@@ -368,6 +369,9 @@ export function createStreamingCategorizer(
      * Removes content that falls within thought/reasoning segments
      */
     filterToSpeech(text: string, startPosition: number): string {
+      if (passthroughSpeech)
+        return text
+
       // Check if we're currently inside an incomplete tag
       if (checkIncompleteTag()) {
         // Try to find where the tag closes in the combined buffer + text

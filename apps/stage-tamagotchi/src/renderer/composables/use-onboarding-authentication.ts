@@ -8,7 +8,7 @@ const CONFIRMATION_CLOSE_TIMEOUT_MS = 30_000
 interface UseOnboardingAuthenticationOptions {
   consumeLoginRequest: () => Promise<boolean>
   closeRequestId: Readonly<Ref<number>>
-  closeWindow: () => Promise<unknown>
+  closeWindow: (payload?: { openChat?: boolean }) => Promise<unknown>
   isAuthenticated: Readonly<Ref<boolean>>
   isConfirming: Readonly<Ref<boolean>>
   needsLogin: Readonly<Ref<boolean>>
@@ -17,7 +17,7 @@ interface UseOnboardingAuthenticationOptions {
 }
 
 interface OnboardingAuthenticationControls {
-  closeOnboardingWindow: () => Promise<void>
+  closeOnboardingWindow: (payload?: { openChat?: boolean }) => Promise<void>
 }
 
 /**
@@ -43,13 +43,13 @@ export function useOnboardingAuthentication(options: UseOnboardingAuthentication
    *     -> {@link closeOnboardingWindow}
    *       -> `electronOnboardingClose` through `options.closeWindow`
    */
-  async function closeOnboardingWindow(): Promise<void> {
+  async function closeOnboardingWindow(payload?: { openChat?: boolean }): Promise<void> {
     if (closing)
       return
 
     closing = true
     try {
-      await options.closeWindow()
+      await options.closeWindow(payload)
     }
     catch (error) {
       closing = false

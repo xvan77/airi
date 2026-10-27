@@ -10,6 +10,7 @@ import { computed, onMounted, onScopeDispose, shallowRef, useTemplateRef, watch 
 import { useI18n } from 'vue-i18n'
 
 import ChatDanmakuFeedMenu from '../components/chat-window/chat-danmaku-feed-menu.vue'
+import ChatOpeningOverlay from '../components/chat-window/chat-opening-overlay.vue'
 import ChatSpeechMuteButton from '../components/chat-window/chat-speech-mute-button.vue'
 import ChatWindowStyleMenu from '../components/chat-window/chat-window-style-menu.vue'
 import InteractiveArea from '../components/InteractiveArea.vue'
@@ -24,6 +25,7 @@ import {
 } from '../../shared/eventa'
 import { useChatDraftHandover } from '../composables/use-chat-draft-handover'
 import { dismissOverlays, useChatFloatingClickThrough } from '../composables/use-chat-floating-click-through'
+import { useChatOpeningOverlay } from '../composables/use-chat-opening-overlay'
 import { useDanmakuFeedExpiry } from '../composables/use-danmaku-feed-expiry'
 import { useWindowBackdrop } from '../composables/use-window-backdrop'
 import { useControlsIslandStore } from '../stores/controls-island'
@@ -35,6 +37,7 @@ const { activeCard } = storeToRefs(useAiriCardStore())
 const sessionsDrawerOpen = shallowRef(false)
 const interactiveArea = useTemplateRef<InstanceType<typeof InteractiveArea>>('interactive-area')
 const { t } = useI18n()
+const { showChatOpeningOverlay } = useChatOpeningOverlay()
 
 // Folded until the main process answers, so the first unfold plays the same
 // animation as every later one.
@@ -324,6 +327,7 @@ function moveByKeyboard(delta: WindowDelta) {
             :passive="passiveFeed"
             :expired-before="expiredBefore"
           />
+          <ChatOpeningOverlay :show="showChatOpeningOverlay" />
         </div>
       </div>
     </Transition>

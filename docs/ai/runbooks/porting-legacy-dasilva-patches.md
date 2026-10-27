@@ -14,8 +14,9 @@ Follow this policy for every legacy port, Live2D/VTube work, and any task that u
 | 2 | **Sent:** `Escritorio\Patches sent to DaSilva\FULL PATCH WITH ALL SENT TO DA SILVA\` — start with `SENT-ORDER-REPORT.md`, then `combined-da-silva-sent.patch` or the standalone `.patch` named in the report | **Your** shared diffs (Live2D A1/A2, expressions persistence, Kokoro, and similar) |
 | 3 | **Not sent:** `Escritorio\Patches not sent to da Silva (new features)\Old da silva version patches\` plus reports (`consolidated_changes_report`, `walkthrough.md`) | **Your** private diffs (LLM, TTS, onboarding, Patch 1.01 / 2.00) |
 | 4 | **This repo (`moeru-airi`)** | Where you implement. Use `rg` on paths the patch names before you re-implement |
-| 5 | `C:\Users\iahum\OneDrive\Documentos\GitHub\airi` | **Secondary reference only** — see [Credit-conscious workflow](#credit-conscious-workflow-mandatory). Your **final integrated fork** (patches applied on the da Silva lineage). Use for call-site context when a hunk is unclear. Not a search root |
-| 6 | `docs/ai/runbooks/porting-legacy-dasilva-patches.md` (this file) | Status tables, architecture maps, checks |
+| 5 | [Moeru port artifacts](#moeru-port-artifacts-finished-work) (`docs/`, `patches/local/`, Escritorio `New moeru Airi patches\`) | **Finished** moeru ports (LOGIC 1 #1–#5). Secondary backups. Do not re-port unless the user reports a bug |
+| 6 | `C:\Users\iahum\OneDrive\Documentos\GitHub\airi` | **Secondary reference only** — see [Credit-conscious workflow](#credit-conscious-workflow-mandatory). Your **final integrated fork** (patches applied on the da Silva lineage). Use for call-site context when a hunk is unclear. Not a search root |
+| 7 | `docs/ai/runbooks/porting-legacy-dasilva-patches.md` (this file) | Status tables, architecture maps, checks |
 
 `Downloads\1. Files sent to Da silva via DM` and `Downloads\2. Files sent to Da silva in AIRI chat` are **older mirrors** of the sent bundle. Use them only when the Escritorio **FULL PATCH** folder is missing.
 
@@ -89,7 +90,7 @@ Use this list when the user says “feature 4” or “point 5”. Do not use th
 | 2 | **Local TTS** | Same offline philosophy as LLM. Legacy fork also explored cloud TTS (Azure); moeru port prioritized **Windows SAPI** for Tamagotchi. Kokoro can stay clunky — progress, weight, and quantization UI for Kokoro remain backlog. | **Partial** — SAPI + provider done; Kokoro fixes backlog |
 | 3 | **Audio studio** | Modify voices with local tools when preset voices are too limited. | **Done** as **Speech audio console** (not a separate provider menu) — see [TTS + audio console](#what-already-landed-in-moeru-airi-local-tts--audio-console) |
 | 4 | **Buttons** | Change LLM and TTS from the chat composer without opening full Settings each time. | **Done** (brain + speech popovers) — see [chat buttons](#what-already-landed-in-moeru-airi-feature-4-chat-buttons) |
-| 5 | **Expressions** | Live2D expressions visible in AIRI so edits in Live2D Cubism (colors, params) show on stage. | **Not ported** — study old patches; runtime already discovers some `.exp3.json` in zips |
+| 5 | **Expressions** | Live2D expressions visible in AIRI so edits in Live2D Cubism (colors, params) show on stage. | **Done** on `Patch-4` — commit `2d50e30cb`; see [feature 5: Live2D / VTube](#what-already-landed-in-moeru-airi-feature-5-live2d--vtube-expressions) |
 | 6 | **Start menu** | First-run **local setup**: download a light LLM/TTS and chat quickly, then explore other options. User asks whether onboarding still exists and whether OpenRouter free models auto-work — verify in current `stage-tamagotchi` / `stage-web` before re-porting. | **Not ported** |
 | 7 | **General fixes** | Optimization and error handling (chat errors, memory loops, navigation). | **Backlog** — items in [not ported yet](#not-ported-yet-use-patch-200--101-reports-as-backlog) |
 | 8 | **From old patches** | Grep legacy folders for anything still useful. | Ongoing |
@@ -113,9 +114,39 @@ Downloads copies (`Downloads\1. Files sent to Da silva via DM`, `Downloads\2. Fi
 
 ### Desktop copies vs files inside `moeru-airi`
 
-The user keeps **canonical** patch bundles on **Escritorio** (paths in the table above). The **moeru-airi** repo is a working tree: clone again, delete the folder, or reset hard, and anything that lives **only** inside that project (agent notes, git-excluded folders, uncommitted docs) can disappear.
+The user keeps **canonical legacy scope** on **Escritorio** (sent + not-sent da Silva archives and `AIRI PATCHES LOGIC 1.txt`). The **moeru-airi** repo is a working tree: clone again, delete the folder, or reset hard, and anything that lives **only** inside that project (agent notes, git-excluded folders, uncommitted docs) can disappear.
 
-**Rule for agents:** always read patches and reports from **Escritorio** (and `AIRI PATCHES LOGIC 1.txt` there). If the same files also exist under `moeru-airi\docs\` or similar, treat those as **optional workspace copies**. After a project nuke, restore from Desktop, not from the repo.
+**Rule for agents (legacy port scope):** read da Silva-era patches and reports from **Escritorio** first. After a project nuke, restore those archives from Desktop, not from the repo alone.
+
+**Rule for agents (moeru agent output):** prior sessions store runbooks and backup diffs under `moeru-airi\docs\` and `moeru-airi\patches\`. The user often copies the same files to Escritorio `New moeru Airi patches\`. Either location is valid. See [Moeru port artifacts](#moeru-port-artifacts-finished-work).
+
+### Moeru port artifacts (finished work)
+
+These sources describe **ports already merged into moeru-airi** (LOGIC 1 items marked done in this runbook). They are **secondary**: use them to check behavior, copy a hunk, or debug. They are **not** the scope list for new da Silva work (that stays in sent + not-sent archives and LOGIC 1).
+
+| Source | Path | Role |
+| --- | --- | --- |
+| Escritorio bundle | `C:\Users\iahum\OneDrive\Escritorio\Patches not sent to da Silva (new features)\New moeru Airi patches\` | User backup of finished moeru `.patch` files and a runbook mirror |
+| Repo docs | `docs/ai/runbooks/porting-legacy-dasilva-patches.md` | Canonical runbook in git (same intent as the Desktop mirror) |
+| Repo patches | `patches/local/` (for example `live2d-vtube-expressions/`), plus dependency patches at `patches/*.patch` | Agent-written offline diffs; Live2D feature backup lives here |
+| Git commits | Hashes in each “What already landed” section below | Regenerate `.patch` files when asked. **Do not** treat `git log` / full-tree `git diff` as the first step — prefer the `.patch` files above (lower credit use) |
+
+**Files in `New moeru Airi patches\` (user naming):**
+
+| File | LOGIC 1 | Notes |
+| --- | --- | --- |
+| `1. local-llm-session.patch` | #1 Local LLM | Moeru port baseline |
+| `2. moeru-airi-local-tts-audio-console.patch` | #2–#3 TTS + audio console | SAPI + Speech audio console |
+| `3. moeru-airi-chat-composer-popovers.patch` | #4 Buttons | Brain + speech popovers |
+| `4. live2d-vtube-expressions.patch` | #5 Expressions | Same scope as `patches/local/live2d-vtube-expressions/` |
+| `porting-legacy-dasilva-patches.md` | — | Mirror of this runbook; prefer the repo copy when both exist |
+| `discarded (use for future reference only)\` | — | Dropped experiments (for example preview-source v5). Do not re-port |
+
+**Agent rules for finished moeru ports:**
+
+1. Do **not** re-port LOGIC 1 #1–#5 unless the user reports a bug or asks for a deliberate change.
+2. Open a moeru `.patch` before you walk git history or large commits.
+3. For **new** work (for example LOGIC 1 #6 onboarding), start in **Patch 2.00** / not-sent reports, then implement in the repo. Use moeru port artifacts only when you need how an existing local LLM or TTS hook already works in moeru.
 
 ### Why these archives exist (scope: **your** changes only)
 
@@ -165,7 +196,7 @@ Base folder:
 | --- | --- |
 | `AIRI PATCHES LOGIC 1.txt` | Why patches exist; feature order and UX goals (source of truth) |
 | `AIRI PATCHES LOGIC.txt` | Older copy; use only if LOGIC 1 is missing |
-| `New moeru Airi patches\local-llm-session.patch` | **Current** moeru-airi local LLM port (preferred baseline) |
+| `New moeru Airi patches\` | Finished moeru ports (#1–#5). See [Moeru port artifacts](#moeru-port-artifacts-finished-work) |
 | `Old da silva version patches\Patch 1.01\` | Core offline stack: local-llm, native-tts, Kokoro, `llm.ts` sanitize |
 | `Old da silva version patches\Patch 2.00\` | Onboarding local mode, brain popover, consciousness/speech UX, chat errors |
 | `Old da silva version patches\11-06\` | Gemma default, brain button tweaks |
@@ -280,23 +311,91 @@ User archive (optional):
 - Reference commit: `afd6a847c` — `feat(stage-tamagotchi): add chat brain and speech composer popovers` (includes runbook in the same commit)
 - Regenerate: `git -c core.autocrlf=false format-patch -1 afd6a847c -o <dir>` then rename to `moeru-airi-chat-composer-popovers.patch`
 
-## Feature 5: Live2D expressions (not ported)
+## What already landed in moeru-airi (feature 5: Live2D / VTube expressions)
 
-**LOGIC 1 intent:** Expressions edited in Live2D Studio must appear in AIRI (not only the default look).
+**Status: done** on branch **`Patch-4`** (user-tested in Tamagotchi). Scope matches the **sent** Live2D bundle (A1 / A2 / B1), not a wholesale merge of `GitHub\airi`.
 
-**Current moeru behavior (baseline):**
+| Field | Value |
+| --- | --- |
+| Branch | `Patch-4` |
+| Canonical commit | `2d50e30cb` — `Live2d expressions patch` |
+| Apply base (parent) | `25f82d131` |
+| Offline backup | `patches/local/live2d-vtube-expressions/live2d-vtube-expressions.patch` and `README.md` in that folder |
 
-- Import preview: `packages/stage-ui-live2d/src/utils/live2d-validator.ts` compares `FileReferences.Expressions` in `.model3.json` to `.exp3.json` files in the zip. Extra files → **warnings**, not errors (`0 referenced · N found` is common on custom exports).
-- Runtime load: `packages/stage-ui-live2d/src/utils/live2d-zip-loader.ts` and `packages/stage-ui-live2d/src/controls/manifest.ts` can **merge discovered** expression files into settings when loading a zip.
-- Porting goal: match legacy fork UX (where expressions were visible to the user), not only silent auto-discovery.
+**Superseded tip (do not pull-merge):** `a4eefeef1` included a **preview-source v5** experiment. The user dropped it. Backup only: `patches/local/patch-4-full-with-preview-wip/`, tag `patch-4-full-with-preview-wip`.
 
-Search old patches for expression UI and wiring before re-implementing.
+### Sent bundle → moeru (what shipped)
+
+| Sent step | Patch intent | Delivered in moeru |
+| --- | --- | --- |
+| A1 | `SavedActiveExpressions`, expression list / stack on stage | `live2d-vtube-sidecar.ts`, `live2d-apply-vtube-expressions.ts`, `apply-expression-stack.ts`, `Model.vue`, `expressions.ts`, `live2d-zip-loader.ts` |
+| A2 | ArtMesh colors from `.vtube.json` after `model.update` | `vtube-artmesh-colors.ts`, `motion-manager.ts`, `patches/pixi-live2d-display.patch` |
+| B1 | Do not wipe stacked expressions on reload; vtube defaults once per model | `Model.vue` + expression stack wiring as in sent patch |
+| Import UX | Block only on `INVALID` validation | `model-selector.vue` |
+
+### Card thumbnails (extra; not VTube card PNG parity)
+
+Selector toggles **Live render** / **Icon** (`packages/i18n` en strings under `model-select.select-model.live2d-thumbnail`).
+
+| Storage mode | User label | Behavior |
+| --- | --- | --- |
+| `render-fallback-icon` (default) | Live render | Offscreen render first, then zip `icon.png` / `icon.jpg` if render fails |
+| `icon-fallback-render` | Icon | Icon first, then render if no icon |
+
+- `localStorage` key: `airi:live2d-thumbnail-source`
+- Per-model cache: `DisplayModelFile.live2dThumbnailCache` in IndexedDB (`live2d-thumbnail-cache.ts`, `display-models.ts`, `live2d-preview.ts`)
+- **`GitHub\airi` did not fix** selector PNG parity either. Do not re-open the v5 `live2d-preview-source-key` path unless the user asks.
+
+### Architecture map (agents)
+
+| Concern | Path |
+| --- | --- |
+| Expression refs in zip | `live2d-expression-references.ts` |
+| VTube sidecar read/write | `live2d-vtube-sidecar.ts` |
+| Apply stack on stage | `live2d-apply-vtube-expressions.ts`, `apply-expression-stack.ts` |
+| Runtime + motions | `Model.vue`, `motion-manager.ts`, `contexts/expressions.ts` |
+| Validator (warnings vs errors) | `live2d-validator.ts` (stricter blocking removed for non-`INVALID`) |
+| Kirie init order (minor) | `apps/stage-tamagotchi-kirie/src-web/src/renderer/App.vue` |
+
+### Checks before you change this area
+
+```bash
+pnpm -F @proj-airi/stage-ui-live2d typecheck
+pnpm -F @proj-airi/stage-ui typecheck
+pnpm -F @proj-airi/stage-ui-live2d exec vitest run --project node
+pnpm exec eslint --fix <touched files>
+```
+
+Full `vitest run` (browser project) needs `pnpm exec playwright install` on a clean machine.
+
+Regenerate the offline backup after the tip moves:
+
+```bash
+git diff 25f82d131..HEAD > patches/local/live2d-vtube-expressions/live2d-vtube-expressions.patch
+```
+
+Update the commit row in `patches/local/live2d-vtube-expressions/README.md`.
+
+### Git: replace Patch-4 tip without merge conflicts
+
+When a **new** Patch-4 commit **replaces** an old push, GitHub Desktop shows **↑1 ↓1** (diverged).
+
+1. **Do not Pull.** Pull merges the old tip (`a4eefeef1`) and conflicts in `live2d-preview.ts`, `display-models.ts`, and this runbook.
+2. If a merge already started: `git merge --abort`
+3. Publish only the new tip: `git push --force-with-lease origin Patch-4`
+
+## Next session handoff (save credits)
+
+1. Read this runbook and [User agent policy](#user-agent-policy-mandatory). **Do not** re-port feature 5 unless the user reports a bug.
+2. **LOGIC 1 next priority** is usually **#6 Start menu** (local setup onboarding). Confirm current `stage-tamagotchi` / `stage-web` onboarding before you port Patch 2.00 hunks.
+3. **Patch-first.** Use Escritorio sent + not-sent archives. Open `GitHub\airi` only for named paths when a hunk is unclear. Announce fork reads in chat.
+4. **Branch state:** `origin/Patch-4` = `2d50e30cb`. Open a PR to upstream when the user asks.
+5. **Local-only** (often uncommitted): `AGENTS.md`, `start_tamagotchi_gpu.bat`. Optional commit; not required for stage behavior.
 
 ### Not ported yet (use Patch 2.00 / 1.01 reports as backlog)
 
 | Item | LOGIC 1 # | Legacy files to study | Notes |
 | --- | --- | --- | --- |
-| Live2D expressions UX | 5 | Patch 1.01 / 2.00, `stage-ui-live2d` | Studio color/param changes must show on stage |
 | Onboarding `step-local-llm-setup.vue`, local mode | 6 | Patch 2.00, 09-06 | First-run “local setup”; confirm current onboarding first |
 | Chat memory / images popovers, grounding toggle, token meter | 4 (extra) | Patch 2.00 fork `InteractiveArea` | User did not prioritize in LOGIC 1 |
 | Auto-stop local server when switching provider | `consciousness.ts` in 2.00 | Saves RAM |
@@ -381,14 +480,15 @@ Pre-commit **fails on errors**. Common fixes when porting old code:
 Copy into a new chat:
 
 ```text
-Fork: moeru-airi. Read docs/ai/runbooks/porting-legacy-dasilva-patches.md (User agent policy) and
-AIRI PATCHES LOGIC 1.txt on Escritorio. Use BOTH archives: (1) Patches sent to DaSilva\FULL PATCH WITH ALL SENT TO DA SILVA,
-(2) Patches not sent\Old da silva version patches. Port 1:1 when moeru allows; adapt when architectures differ.
-Patches first; GitHub\airi only as secondary reference on the same paths the patch names—no whole-repo search. Announce fork reads in chat.
-When stuck, re-read combined-da-silva-sent.patch—do not improvise. Port only MY changes—not dasilva’s fork wholesale. LOGIC 1 feature <N>: <name>. Tamagotchi unless I say otherwise.
+Fork: moeru-airi, branch Patch-4 (feature 5 Live2D/VTube is on origin at 2d50e30cb—do not re-port unless I report a bug).
+Read docs/ai/runbooks/porting-legacy-dasilva-patches.md (User agent policy + Moeru port artifacts + Next session handoff) and
+AIRI PATCHES LOGIC 1.txt on Escritorio. Use BOTH da Silva archives: (1) Patches sent to DaSilva\FULL PATCH WITH ALL SENT TO DA SILVA,
+(2) Patches not sent\Old da silva version patches. Finished moeru work (#1–#5): Escritorio\New moeru Airi patches\ or repo docs/patches—secondary, do not re-port.
+Port 1:1 when moeru allows; adapt when architectures differ. Prefer .patch files over git history. GitHub\airi only on paths the patch names—announce fork reads.
+When stuck, re-read the relevant .patch—do not improvise. Port only MY changes—not dasilva’s fork wholesale. LOGIC 1 feature <N>: <name>. Tamagotchi unless I say otherwise.
 ```
 
-Examples: `4 buttons` (done), `5 expressions`, `6 start menu local setup`, `2 Kokoro progress`.
+Examples: `4 buttons` (done), `5 expressions` (done on `Patch-4`), `6 start menu local setup`, `2 Kokoro progress`.
 
 ## Git remotes (typical)
 
@@ -399,6 +499,8 @@ Examples: `4 buttons` (done), `5 expressions`, `6 start menu local setup`, `2 Ko
 
 Publish: commit on a feature branch, `git push -u origin <branch>`. Open a PR to upstream only when lint/tests pass and scope is agreed.
 
+When you **replace** a branch tip the remote already has, use `git push --force-with-lease`. Do not Pull first.
+
 ---
 
-*Last updated: 2026-10-24 — patch-first workflow; `GitHub\airi` as narrow secondary reference; audio console noted as patches + fork + moeru. Update when backup roots are registered or a LOGIC 1 item moves to “done”.*
+*Last updated: 2026-10-24 — Moeru port artifacts section (docs/patches, New moeru Airi patches, patch-before-git). LOGIC 1 #5 on `Patch-4` (`2d50e30cb`). Next: #6 onboarding. Update when backup roots are registered or a LOGIC 1 item moves.*

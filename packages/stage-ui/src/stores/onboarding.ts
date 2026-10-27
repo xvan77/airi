@@ -6,7 +6,7 @@ import { computed, ref, watch } from 'vue'
 import { useAuthStore } from './auth'
 import { useProviderConfigStore } from './providers/config'
 
-const essentialProviderIds = ['openai', 'azure-openai', 'anthropic', 'google-generative-ai', 'openrouter-ai', 'ollama', 'deepseek', 'openai-compatible', 'official-provider'] as const
+const essentialProviderIds = ['openai', 'azure-openai', 'anthropic', 'google-generative-ai', 'openrouter-ai', 'ollama', 'deepseek', 'openai-compatible', 'official-provider', 'local-llm'] as const
 const credentialBasedEssentialProviderIds = ['openai', 'azure-openai', 'anthropic', 'google-generative-ai', 'openrouter-ai', 'deepseek'] as const
 
 function hasNonEmptyText(value: unknown): boolean {
@@ -37,6 +37,7 @@ const useOnboardingStateStore = defineStore('onboarding-state', () => {
   // This counter is a transient cross-window command. The Electron onboarding
   // renderer owns the actual BrowserWindow close side effect.
   const closeRequestId = ref(0)
+  const openingChatAfterSetup = ref(false)
 
   function markSetupCompleted() {
     hasCompletedSetup.value = true
@@ -60,23 +61,37 @@ const useOnboardingStateStore = defineStore('onboarding-state', () => {
     hasSkippedSetup.value = false
     storage.setCompleted(false)
     storage.setSkipped(false)
+    openingChatAfterSetup.value = false
+  }
+
+  function requestOpeningChat() {
+    openingChatAfterSetup.value = true
+  }
+
+  function clearOpeningChat() {
+    openingChatAfterSetup.value = false
   }
 
   return {
     closeAfterAuthentication,
+    clearOpeningChat,
     closeRequestId,
     hasCompletedSetup,
     hasSkippedSetup,
     markSetupCompleted,
     markSetupSkipped,
+    openingChatAfterSetup,
+    requestOpeningChat,
     resetSetupState,
   }
 }, {
   synced: {
     actions: [
       'closeAfterAuthentication',
+      'clearOpeningChat',
       'markSetupCompleted',
       'markSetupSkipped',
+      'requestOpeningChat',
       'resetSetupState',
     ],
     state: true,
@@ -88,6 +103,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   const authStore = useAuthStore()
   const onboardingStateStore = useOnboardingStateStore()
   const closeRequestId = computed(() => onboardingStateStore.closeRequestId)
+  const openingChatAfterSetup = computed(() => onboardingStateStore.openingChatAfterSetup)
   const hasCompletedSetup = computed(() => onboardingStateStore.hasCompletedSetup)
   const hasSkippedSetup = computed(() => onboardingStateStore.hasSkippedSetup)
 
@@ -158,6 +174,14 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     return onboardingStateStore.resetSetupState()
   }
 
+  function requestOpeningChat() {
+    return onboardingStateStore.requestOpeningChat()
+  }
+
+  function clearOpeningChat() {
+    return onboardingStateStore.clearOpeningChat()
+  }
+
   // Force show setup dialog
   function forceShowSetup() {
     showingSetup.value = true
@@ -172,9 +196,12 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     hasEssentialProviderCredentialConfigured,
     needsOnboarding,
 
+    clearOpeningChat,
     closeAfterAuthentication,
     markSetupCompleted,
     markSetupSkipped,
+    openingChatAfterSetup,
+    requestOpeningChat,
     resetSetupState,
     forceShowSetup,
   }

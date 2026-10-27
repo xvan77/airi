@@ -29,6 +29,7 @@ export function toggleWindowShow(window?: BrowserWindow | null): void {
 
   window?.show()
   window?.focus()
+  window?.moveTop()
 }
 
 export function transparentWindowConfig(): BrowserWindowConstructorOptions {

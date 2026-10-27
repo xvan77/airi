@@ -736,7 +736,7 @@ export const widgetsIframeRequestEvent = defineEventa<WidgetsIframeRequestPayloa
 export const widgetsIframeRequestResultEvent = defineEventa<WidgetsIframeRequestResultPayload>('eventa:event:electron:windows:widgets:iframe-request-result')
 
 // Onboarding window events
-export const electronOnboardingClose = defineInvokeEventa('eventa:invoke:electron:windows:onboarding:close')
+export const electronOnboardingClose = defineInvokeEventa<void, { openChat?: boolean }>('eventa:invoke:electron:windows:onboarding:close')
 export const electronOpenOnboarding = defineInvokeEventa('eventa:invoke:electron:windows:onboarding:open')
 
 // Auth — OIDC Authorization Code + PKCE flow via system browser

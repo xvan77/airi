@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { LocalLlmCatalogEntry } from '../../../lib/local-llm-catalog'
+import type { LocalLlmCatalogEntry } from '@proj-airi/stage-ui/libs/local-llm-catalog'
 
 import { Alert, ErrorContainer, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { LOCAL_LLM_BASE_CATALOG } from '@proj-airi/stage-ui/libs/local-llm-catalog'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useConsciousnessSettingsStore } from '@proj-airi/stage-ui/stores/modules/consciousness-settings'
@@ -17,7 +18,6 @@ import { RouterLink } from 'vue-router'
 import ConsciousnessLocalLlmActions from './consciousness-local-llm-actions.vue'
 
 import { useLocalLlmElectron } from '../../../composables/use-local-llm-electron'
-import { LOCAL_LLM_BASE_CATALOG } from '../../../lib/local-llm-catalog'
 
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()

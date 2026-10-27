@@ -1,5 +1,7 @@
 import type { Component } from 'vue'
 
+export type OnboardingSetupMode = 'custom' | 'local'
+
 export type OnboardingStepGuard = () => Promise<boolean>
 export type OnboardingStepPrevHandler = () => Promise<void> | void
 

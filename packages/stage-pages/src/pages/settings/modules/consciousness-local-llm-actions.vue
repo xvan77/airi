@@ -1,8 +1,7 @@
 <script setup lang="ts">
+import { LOCAL_LLM_BASE_CATALOG } from '@proj-airi/stage-ui/libs/local-llm-catalog'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-import { LOCAL_LLM_BASE_CATALOG } from '../../../lib/local-llm-catalog'
 
 const props = defineProps<{
   activeModel: string

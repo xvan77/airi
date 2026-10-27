@@ -18,12 +18,12 @@ const onboardingStore = useOnboardingStore()
 const { closeRequestId } = storeToRefs(onboardingStore)
 const { isDark } = useTheme()
 const startLogin = useElectronEventaInvoke(electronAuthStartLogin)
-const closeWindow = useElectronEventaInvoke(electronOnboardingClose)
+const closeOnboardingWindowInvoke = useElectronEventaInvoke(electronOnboardingClose)
 const authStatus = useAuthStatusStore()
 const { closeOnboardingWindow } = useOnboardingAuthentication({
   consumeLoginRequest: () => authStore.consumeLoginRequest(),
   closeRequestId,
-  closeWindow,
+  closeWindow: payload => closeOnboardingWindowInvoke(payload ?? {}),
   isAuthenticated,
   isConfirming: computed(() => authStatus.status?.state === 'confirming'),
   needsLogin,
@@ -45,7 +45,8 @@ async function handleSkipped() {
 
 async function handleConfigured() {
   onboardingStore.markSetupCompleted()
-  await closeOnboardingWindow()
+  onboardingStore.requestOpeningChat()
+  await closeOnboardingWindow({ openChat: true })
 }
 </script>
 
@@ -55,8 +56,8 @@ async function handleConfigured() {
     class="onboarding-root h-full min-h-0 w-full flex flex-col overflow-hidden overscroll-none"
     :class="bgClass"
   >
-    <div class="min-h-8 w-full flex-shrink-0 select-none drag-region" :class="bgClass" />
-    <div class="mx-8 mb-8 mt-2 min-h-0 flex flex-1 flex-col">
+    <div class="min-h-6 w-full flex-shrink-0 select-none drag-region" :class="bgClass" />
+    <div class="mx-6 mb-4 mt-1 min-h-0 flex flex-1 flex-col">
       <OnboardingScreen :extra-steps="extraSteps" @skipped="handleSkipped" @configured="handleConfigured" />
     </div>
   </div>

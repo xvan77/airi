@@ -1,5 +1,6 @@
 import type { I18n } from '../../libs/i18n'
 import type { ServerChannel } from '../../services/airi/channel-server'
+import type { ChatWindowManager } from '../chat'
 
 import { join, resolve } from 'node:path'
 
@@ -27,6 +28,7 @@ export interface OnboardingWindowManager {
 export function setupOnboardingWindowManager(params: {
   serverChannel: ServerChannel
   i18n: I18n
+  chatWindow: ChatWindowManager
 }): OnboardingWindowManager {
   const closeCallbacks = new Set<() => void>()
 
@@ -57,7 +59,11 @@ export function setupOnboardingWindowManager(params: {
       },
     })
 
-    newWindow.on('ready-to-show', () => newWindow.show())
+    newWindow.on('ready-to-show', () => {
+      newWindow.show()
+      newWindow.focus()
+      newWindow.moveTop()
+    })
     protectPrivilegedWindowNavigation(newWindow)
 
     // TODO: once we refactored eventa to support window-namespaced contexts,
@@ -67,8 +73,10 @@ export function setupOnboardingWindowManager(params: {
 
     const { context } = createContext(ipcMain, newWindow)
 
-    defineInvokeHandler(context, electronOnboardingClose, async () => {
+    defineInvokeHandler(context, electronOnboardingClose, async (payload) => {
       safeClose(newWindow)
+      if (payload?.openChat)
+        await params.chatWindow.open()
     })
 
     await setupBaseWindowElectronInvokes({ context, window: newWindow, i18n: params.i18n, serverChannel: params.serverChannel })

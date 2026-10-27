@@ -29,6 +29,7 @@ import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, onScopeDispose, ref, shallowRef, toRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -46,6 +47,7 @@ import { useFullscreenHost } from '../composables/use-fullscreen-host'
 import { provideFullscreenLayout } from '../composables/use-fullscreen-layout'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
+import { useStageChatOpeningOverlay } from '../composables/use-stage-chat-opening-overlay'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useFullscreenStore } from '../stores/fullscreen'
@@ -75,8 +77,11 @@ const isLoading = computed(() => !stageMounted.value && !stageError.value)
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
 
+const { t } = useI18n()
 const onboardingStore = useOnboardingStore()
+const { showChatOpeningOverlay } = useStageChatOpeningOverlay()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
+const onboardingOpenRequested = shallowRef(false)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
@@ -669,10 +674,24 @@ watch(
       void openInlay()
   },
 )
-onMounted(() => {
-  if (onboardingStore.needsOnboarding)
-    openOnboarding()
-})
+function requestOnboardingWindow() {
+  if (!onboardingStore.needsOnboarding || onboardingOpenRequested.value)
+    return
+  onboardingOpenRequested.value = true
+  void openOnboarding().catch((error: unknown) => {
+    onboardingOpenRequested.value = false
+    console.error('[Stage] Failed to open onboarding.', error)
+  })
+}
+
+watch(
+  () => [onboardingStore.needsOnboarding, stageMounted.value] as const,
+  ([needsOnboarding, mounted]) => {
+    if (needsOnboarding && mounted)
+      requestOnboardingWindow()
+  },
+  { immediate: true },
+)
 
 const cursorPosition = computed(() => ({
   x: relativeMouseX.value,
@@ -748,6 +767,18 @@ const cursorPosition = computed(() => ({
           </ControlsIslandRoot>
         </div>
       </div>
+    </div>
+    <div
+      v-show="showChatOpeningOverlay"
+      :class="[
+        'absolute inset-0 z-[100] flex flex-col items-center justify-center gap-3',
+        'bg-white/85 text-neutral-700 backdrop-blur-md dark:bg-neutral-950/85 dark:text-neutral-200',
+      ]"
+    >
+      <div class="i-solar:refresh-line-duotone animate-spin text-3xl text-primary-500" />
+      <p class="text-sm font-semibold tracking-wide uppercase">
+        {{ t('settings.dialogs.onboarding.localChatTtsOffer.loadingChat') }}
+      </p>
     </div>
     <!-- Loading overlay sits on top, does not hide the stage -->
     <div v-show="isLoading" class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden">

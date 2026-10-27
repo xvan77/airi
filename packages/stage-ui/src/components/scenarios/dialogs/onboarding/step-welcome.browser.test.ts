@@ -32,10 +32,12 @@ function createTestI18n() {
 }
 
 /** Renders the welcome step with real Pinia and i18n plugins. */
-async function renderWelcomeStep(customProviderSetupEnabled: boolean) {
+async function renderWelcomeStep(customProviderSetupEnabled: boolean, localSetupEnabled = false) {
   return render(StepWelcome, {
     props: {
       customProviderSetupEnabled,
+      localSetupEnabled,
+      onStartSetup: vi.fn(),
       onNext: vi.fn(),
     },
     global: {
@@ -66,7 +68,7 @@ describe('steam onboarding provider restrictions', () => {
     await renderWelcomeStep(false)
 
     expect(document.body.textContent).toContain('Sign in')
-    expect(document.body.textContent).not.toContain('Setup with your provider')
+    expect(document.body.textContent).not.toContain('Advanced setup')
   })
 
   /**
@@ -76,7 +78,7 @@ describe('steam onboarding provider restrictions', () => {
   it('keeps custom provider setup in direct builds', async () => {
     await renderWelcomeStep(true)
 
-    expect(document.body.textContent).toContain('Setup with your provider')
+    expect(document.body.textContent).toContain('Advanced setup')
   })
 })
 
@@ -87,6 +89,8 @@ describe('desktop onboarding sign-in', () => {
     const screen = await render(StepWelcome, {
       props: {
         customProviderSetupEnabled: true,
+        localSetupEnabled: false,
+        onStartSetup: vi.fn(),
         onNext: vi.fn(),
       },
       global: {
@@ -119,7 +123,7 @@ describe('onboarding language choice', () => {
       setup() {
         // The card store creates its runtime stores in the setup of the app, where they can bind i18n.
         void useAiriCardStore().initialize()
-        return () => h(StepWelcome, { customProviderSetupEnabled: true, onNext: vi.fn() })
+        return () => h(StepWelcome, { customProviderSetupEnabled: true, localSetupEnabled: false, onStartSetup: vi.fn(), onNext: vi.fn() })
       },
     })
     await render(App, {

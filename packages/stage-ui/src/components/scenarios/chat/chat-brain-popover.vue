@@ -324,7 +324,7 @@ function handleGoToSettings() {
         :class="[
           !isLlmActive
             ? 'border-red-500 text-red-500 dark:border-red-500/50 dark:text-red-400'
-            : 'border-neutral-100/60 dark:border-neutral-800/30 text-neutral-500 dark:text-neutral-400',
+            : 'border-primary-500/50 text-primary-600 dark:border-primary-400/40 dark:text-primary-400',
         ]"
         :title="!isLlmActive ? 'Select a Model & Provider (Required / Not connected)' : title"
       >
@@ -336,7 +336,7 @@ function handleGoToSettings() {
         :class="[
           !isLlmActive
             ? 'bg-red-500/10 text-red-500 hover:text-red-600 dark:bg-red-950/20 dark:text-red-400 dark:hover:text-red-300 ring-1 ring-red-500/30'
-            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-primary-500 dark:hover:text-primary-400',
+            : 'bg-primary-500/15 text-primary-600 ring-1 ring-primary-500/35 dark:bg-primary-400/15 dark:text-primary-400 dark:ring-primary-400/30',
         ]"
         :title="!isLlmActive ? 'Select a Model & Provider (Required / Not connected)' : title"
       >

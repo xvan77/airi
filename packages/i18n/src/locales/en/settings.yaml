@@ -49,7 +49,54 @@ dialogs:
     start: Let's do it!
     loginPrompt: Sign in to use the official AIRI provider for the best experience.
     loginAction: Sign in
-    setupWithoutSigningIn: Setup with your provider
+    setupWithoutSigningIn: Setup without signing in
+    modeSelection:
+      title: How do you want to start?
+      description: Pick offline local models or bring your own provider keys.
+      local:
+        title: Local setup
+        description: Download a suggested model and chat on this PC. No API keys or extra apps.
+      custom:
+        title: Advanced setup
+        description: Connect cloud or self-hosted providers with your own credentials.
+    localLlmSetup:
+      title: Local LLM setup
+      description: Download a suggested model to run offline. The server stays on this device.
+      downloadDisclaimer: >-
+        Disclaimer: Download has two steps: 0–30% installs the local runtime (llama.cpp).
+        30–100% downloads the model. If you cancel before 30%, the next download starts at 0%.
+        If you cancel after 30%, the next download starts near this number.
+      error: 'Error: {error}'
+      port: 'Port {port}'
+      download: Download
+      downloading: Downloading ({progress}%)
+      downloadingStarting: Downloading...
+      cancelling: Cancelling download...
+      cancel: Cancel
+      run: Run
+      starting: Starting...
+      active: Active
+      stop: Stop
+      continue: Continue
+      continueBlocked: Run a model to continue
+      serverRunReminder: >-
+        Friendly reminder: Local models need to be run before you can use them.
+        That is why you see "starting" or "server starting" on screen. You must
+        run the server each time you start the app. To avoid extra troubles,
+        however, you can always start the server from the consciousness button (brain
+        icon) on the chat screen.
+    localChatTtsOffer:
+      title: Ready to chat
+      lead: We will open a chat window so you can talk to the AI.
+      ttsPrompt: >-
+        You can turn on lightweight local text-to-speech (TTS). It is fast and works
+        well for quick tests.
+      ttsNote: >-
+        (You can still set up another speech provider later in Settings if you want other
+        voices for the AI to talk back).
+      yes: Yes, enable local TTS
+      no: No, not now
+      loadingChat: Loading chat...
     pricingLink: Pricing
     termsLink: Terms of Service
     flux: Flux

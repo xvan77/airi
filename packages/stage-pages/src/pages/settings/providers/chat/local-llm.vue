@@ -6,11 +6,10 @@ import {
   ProviderSettingsContainer,
   ProviderSettingsLayout,
 } from '@proj-airi/stage-ui/components'
+import { LOCAL_LLM_BASE_CATALOG } from '@proj-airi/stage-ui/libs/local-llm-catalog'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-
-import { LOCAL_LLM_BASE_CATALOG } from '../../../../lib/local-llm-catalog'
 
 // Inlined Eventa contracts from eventa.ts
 const electronLocalLlmGetStatus = defineInvokeEventa<any>('eventa:invoke:electron:local-llm:get-status')

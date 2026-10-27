@@ -228,7 +228,7 @@ function handleGoToSettings() {
           'w-fit flex items-center justify-center border-2 rounded-xl border-solid bg-neutral-50/70 p-2 backdrop-blur-md transition-all active:scale-95 dark:bg-neutral-800/70',
           !isSpeechActive
             ? 'border-red-500 text-red-500 dark:border-red-500/50 dark:text-red-400'
-            : 'border-neutral-100/60 dark:border-neutral-800/30 text-neutral-500 dark:text-neutral-400',
+            : 'border-primary-500/50 text-primary-600 dark:border-primary-400/40 dark:text-primary-400',
         ]"
         :title="!isSpeechActive ? 'Select a Speech Voice & Provider (Required)' : title"
       >
@@ -240,7 +240,7 @@ function handleGoToSettings() {
           'max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md p-2 outline-none transition-colors transition-transform active:scale-95',
           !isSpeechActive
             ? 'bg-red-500/10 text-red-500 hover:text-red-600 dark:bg-red-950/20 dark:text-red-400 dark:hover:text-red-300 ring-1 ring-red-500/30'
-            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-primary-500 dark:hover:text-primary-400',
+            : 'bg-primary-500/15 text-primary-600 ring-1 ring-primary-500/35 dark:bg-primary-400/15 dark:text-primary-400 dark:ring-primary-400/30',
         ]"
         :title="!isSpeechActive ? 'Select a Speech Voice & Provider (Required)' : title"
       >

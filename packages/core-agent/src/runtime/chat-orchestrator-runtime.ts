@@ -164,6 +164,8 @@ export interface ChatOrchestratorSendOptions {
   temperature?: number
   /** Top_p for the LLM request. */
   topP?: number
+  /** When false, the stream omits tool definitions for this request. */
+  supportsTools?: boolean
   /** Work beside the conversation, for example a task recipe in its own session. It never speaks. */
   background?: boolean
   /** The send answers an external scene, for example a Discord channel. Its reply returns as text and never speaks on the host. */
@@ -325,7 +327,7 @@ export interface ChatOrchestratorRuntimeDeps {
    */
   getSystemPrompt?: (sessionId: string) => string | undefined
   /** Runtime context providers ingested immediately before prompt composition. */
-  runtimeContextProviders?: Array<() => ContextMessage | null | undefined>
+  runtimeContextProviders?: Array<(providerId: string) => ContextMessage | null | undefined>
   /**
    * Tools whose calls show as content of the reply, by tool name. A reply keeps no slice for their calls, and the model
    * still sees the calls in the provider transcript.
@@ -592,9 +594,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       deps.foregroundStream.reset()
   }
 
-  function ingestRuntimeContexts() {
+  function ingestRuntimeContexts(providerId: string) {
     for (const provider of deps.runtimeContextProviders ?? []) {
-      const contextMessage = provider()
+      const contextMessage = provider(providerId)
       if (contextMessage)
         deps.context.ingest(contextMessage)
     }
@@ -657,7 +659,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     // It is applied at message-assembly time (see below) as a system-prompt
     // date anchor + per-message [HH:MM] prefixes, which is more KV-cache
     // friendly and less prone to weak models echoing timestamps verbatim.
-    ingestRuntimeContexts()
+    ingestRuntimeContexts(activeProvider)
 
     const sendingCreatedAt = now()
 
@@ -920,6 +922,16 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             speech: finalCategorization.speech,
             reasoning: reasoningContentField || finalCategorization.reasoning,
           }
+          const visibleSpeech = finalCategorization.speech.trim()
+          const fallbackSpeech = !visibleSpeech && activeProvider === 'local-llm'
+            ? speechText.trim()
+            : ''
+          const displaySpeech = visibleSpeech || fallbackSpeech
+          const hasTextSlice = buildingMessage.slices.some(slice => slice.type === 'text' && slice.text.trim())
+          if (displaySpeech && !hasTextSlice) {
+            buildingMessage.content = displaySpeech
+            buildingMessage.slices.push({ type: 'text', text: displaySpeech })
+          }
           updateStream(sessionId, buildingMessage)
         },
         // The parser keeps its own marker-safety tail. Emit each safe literal
@@ -1052,6 +1064,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           turnId: correlation.roundId,
         },
         tools: options.tools,
+        supportsTools: options.supportsTools,
         temperature: options.temperature,
         topP: options.topP,
         waitForTools: true,
