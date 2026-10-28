@@ -45,6 +45,7 @@ import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
 import { useAuthStore } from './auth'
+import { bootstrapSpeechForChat } from './chat/bootstrap-speech-for-chat'
 import { createMinecraftContext, createRuntimePromptContext, createUserAccountContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { describeChatImages, replaceToolResultImages } from './chat/image-projection'
@@ -284,7 +285,16 @@ export const useChatStore = defineStore('chat', () => {
    */
   function sessionSystemPrompt(sessionId: string) {
     const persona = personaOf(sessionId)
-    const identity = composeSystemPrompt(cardStore.getSystemPrompt(persona))
+    let includeFormatRules = true
+    if (cardStore.ready) {
+      try {
+        includeFormatRules = cardStore.getModules(persona).consciousness.provider !== 'local-llm'
+      }
+      catch {
+        includeFormatRules = true
+      }
+    }
+    const identity = composeSystemPrompt(cardStore.getSystemPrompt(persona), { includeFormatRules })
       + (memory.enabled ? composeMemoryPrompt(memory.indexFor(persona)) : '')
       + (drawsCards(sessionId) ? composeDrawCardPrompt() : '')
     const recipeId = chatSession.sessionMetas[sessionId]?.recipeId
@@ -1129,6 +1139,8 @@ export const useChatStore = defineStore('chat', () => {
       captured.signal.throwIfAborted()
       if (chatSession.getSessionGeneration(sessionId) !== generation)
         throw new DOMException('Chat session changed during preparation', 'AbortError')
+      await bootstrapSpeechForChat()
+      captured.signal.throwIfAborted()
       return runtime.submit(sendingMessage, { ...captured, stickers }, sessionId)
     })()
     const request = {

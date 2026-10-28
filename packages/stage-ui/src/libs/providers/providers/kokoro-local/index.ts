@@ -70,6 +70,16 @@ async function ensureModelLoaded(adapter: KokoroAdapter, modelId: string) {
   await adapter.loadModel(model.quantization, model.platform)
 }
 
+function resolveConfiguredModelId(
+  config: Record<string, unknown>,
+  speechModel?: string,
+): string {
+  const fromConfig = typeof config.model === 'string' ? config.model : ''
+  const fromSpeech = typeof speechModel === 'string' ? speechModel : ''
+  const capabilities = getWebGpuState()
+  return fromConfig || fromSpeech || getDefaultKokoroModel(capabilities.supported, capabilities.fp16Supported)
+}
+
 let lastLoadedModelId: string | null = null
 
 export const providerKokoroLocal = defineProvider({
@@ -163,13 +173,14 @@ export const providerKokoroLocal = defineProvider({
       }
     },
     voiceCatalogConfig: ({ model }) => ({ model }),
-    listVoices: async (config) => {
+    listVoices: async (config, _provider, speechModel) => {
       try {
+        const modelId = resolveConfiguredModelId(config, speechModel)
         const adapter = await getKokoroAdapter()
-        if (adapter.state !== 'ready' || config.model !== lastLoadedModelId) {
-          const model = assertModelSupported(config.model)
+        if (adapter.state !== 'ready' || modelId !== lastLoadedModelId) {
+          const model = assertModelSupported(modelId)
           await adapter.loadModel(model.quantization, model.platform)
-          lastLoadedModelId = config.model
+          lastLoadedModelId = modelId
         }
 
         return Object.entries(adapter.getVoices() as Record<string, KokoroVoice>).map(([id, voice]) => {

@@ -566,6 +566,28 @@ describe('single model speech providers', () => {
 
     expect(speechStore.activeSpeechModel).toBe('')
   })
+
+  it('selects a Kokoro catalog model and mirrors it into provider config', async () => {
+    const providersStore = useProviderStore()
+    const providerConfigStore = useProviderConfigStore()
+    const speechStore = useSpeechStore()
+    speechStore.activeSpeechProvider = 'kokoro-local'
+    speechStore.activeSpeechModel = ''
+    providersStore.providerRuntimeState['kokoro-local'] = {
+      models: [
+        { id: 'q4', name: 'Q4 (WASM)', provider: 'kokoro-local' },
+        { id: 'q8', name: 'Q8 (WASM)', provider: 'kokoro-local' },
+      ],
+      defaultModel: null,
+      modelStatus: 'ready',
+      modelError: null,
+    }
+
+    speechStore.ensureActiveSpeechModel()
+
+    expect(speechStore.activeSpeechModel).toBe('q4')
+    expect(providerConfigStore.getProviderConfig('kokoro-local')?.model).toBe('q4')
+  })
 })
 
 describe('vOICEVOX provider defaults', () => {

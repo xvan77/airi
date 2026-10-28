@@ -63,6 +63,22 @@ describe('kokoro local speech provider', () => {
     expect(mocks.adapter.generate).toHaveBeenCalledWith('Hello', 'af_heart')
   })
 
+  it('listVoices uses the speech-module model when provider config has no model', async () => {
+    mocks.adapter.loadModel.mockImplementation(async (quantization: string, device: string) => markLoaded(quantization, device))
+    mocks.adapter.getVoices.mockReturnValue({ af_heart: { language: 'en-us', name: 'Heart', gender: 'Female' } })
+
+    const provider = await providerKokoroLocal.createProvider({ model: '', voiceId: '' })
+    const voices = await providerKokoroLocal.extraMethods?.listVoices?.(
+      { model: '', voiceId: '' },
+      provider,
+      'q8',
+    )
+
+    expect(mocks.adapter.loadModel).toHaveBeenCalledWith('q8', 'wasm')
+    expect(voices).toHaveLength(1)
+    expect(voices?.[0]?.id).toBe('af_heart')
+  })
+
   it('reloads when the configured model differs from the loaded model', async () => {
     markLoaded('q4', 'wasm')
     mocks.adapter.loadModel.mockImplementation(async (quantization: string, device: string) => markLoaded(quantization, device))

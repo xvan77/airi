@@ -3,6 +3,8 @@ import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 const MIN_VISIBLE_MS = 1400
+/** Never block the chat window if the cross-window opening flag stays true. */
+const MAX_OVERLAY_MS = 8000
 
 export function useChatOpeningOverlay() {
   const onboardingStore = useOnboardingStore()
@@ -40,12 +42,19 @@ export function useChatOpeningOverlay() {
       void showUntilReady()
   }, { immediate: true })
 
+  const showChatOpeningOverlay = computed(() => showLocalOverlay.value || openingChatAfterSetup.value)
+
   onMounted(() => {
     if (openingChatAfterSetup.value)
       void showUntilReady()
+    setTimeout(() => {
+      if (showChatOpeningOverlay.value) {
+        showLocalOverlay.value = false
+        clearHideTimer()
+        onboardingStore.clearOpeningChat()
+      }
+    }, MAX_OVERLAY_MS)
   })
-
-  const showChatOpeningOverlay = computed(() => showLocalOverlay.value || openingChatAfterSetup.value)
 
   return { showChatOpeningOverlay }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatTimePrefix } from './datetime-prefix'
+import { formatTimePrefix, stripPromptTimePrefix } from './datetime-prefix'
 
 describe('formatTimePrefix', () => {
   it('wraps `[YYYY-MM-DD HH:MM]` with trailing space', () => {
@@ -30,5 +30,11 @@ describe('formatTimePrefix', () => {
     const a = new Date(2026, 3, 25, 18, 47, 12).getTime()
     const b = new Date(2026, 3, 25, 18, 47, 58).getTime()
     expect(formatTimePrefix(a)).toBe(formatTimePrefix(b))
+  })
+})
+
+describe('stripPromptTimePrefix', () => {
+  it('removes a leading prompt time prefix', () => {
+    expect(stripPromptTimePrefix('[2026-10-27 22:45] hi')).toBe('hi')
   })
 })

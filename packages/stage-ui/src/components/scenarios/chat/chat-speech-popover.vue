@@ -25,7 +25,7 @@ const providersStore = useProviderStore()
 const airiCardStore = useAiriCardStore()
 
 const { activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId } = storeToRefs(speechStore)
-const { activeCard, activeCardId, cards } = storeToRefs(airiCardStore)
+const { cards } = storeToRefs(airiCardStore)
 const { availableSpeechProvidersMetadata } = storeToRefs(speechStore)
 
 const showAddForm = ref(false)
@@ -177,27 +177,7 @@ function handleDeleteFavorite(fav: FavoriteSpeechModel) {
 
 async function handleSelectFavorite(fav: FavoriteSpeechModel) {
   await speechStore.selectProviderModel(fav.provider, fav.model, fav.voiceId)
-
-  // Update active card extensions to keep character state synced
-  if (activeCard.value) {
-    airiCardStore.updateCard(activeCardId.value, {
-      extensions: {
-        ...activeCard.value.extensions,
-        airi: {
-          ...activeCard.value.extensions?.airi,
-          modules: {
-            ...activeCard.value.extensions?.airi?.modules,
-            speech: {
-              ...activeCard.value.extensions?.airi?.modules?.speech,
-              provider: fav.provider,
-              model: fav.model,
-              voice_id: fav.voiceId,
-            },
-          },
-        },
-      },
-    } as any)
-  }
+  await airiCardStore.syncActiveCardSpeechFromRuntime()
 }
 
 const electronOpenSettings = defineInvokeEventa<void, { route?: string }>('eventa:invoke:electron:windows:settings:open')

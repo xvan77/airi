@@ -16,11 +16,51 @@ import type {
 } from '../../libs/inference/protocol'
 import type { VoiceKey, Voices } from './types'
 
+import { env } from '@huggingface/transformers'
 import { errorMessageFromValue } from '@proj-airi/stage-shared'
 import { KokoroTTS } from 'kokoro-js'
 
 import { MODEL_IDS, MODEL_NAMES } from '../../libs/inference/constants'
 import { classifyError, isRecoverable } from '../../libs/inference/protocol'
+
+env.allowLocalModels = false
+env.useBrowserCache = true
+env.backends.onnx.logLevel = 'error'
+
+// NOTICE: Limit WASM thread count so Kokoro does not starve the renderer on low-end CPUs.
+// Legacy Patch 1.01.
+if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
+  env.backends.onnx.wasm!.numThreads = Math.min(4, Math.max(1, Math.floor(navigator.hardwareConcurrency / 2)))
+}
+else {
+  env.backends.onnx.wasm!.numThreads = 2
+}
+
+const TRANSFORMERS_CACHE_NAME = 'transformers-cache'
+
+async function configureRemoteModelAccessForLoad(): Promise<void> {
+  try {
+    if (typeof caches === 'undefined')
+      return
+
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    const isCached = keys.some(request => request.url.includes(MODEL_IDS.KOKORO))
+    if (isCached) {
+      console.info('[Kokoro Worker] Model files found in cache. Disabling remote checks to load offline.')
+      env.allowLocalModels = true
+      env.allowRemoteModels = false
+    }
+    else {
+      console.info('[Kokoro Worker] Model files not found in cache. Enabling remote checks.')
+      env.allowLocalModels = false
+      env.allowRemoteModels = true
+    }
+  }
+  catch (error) {
+    console.warn('[Kokoro Worker] Cache check failed, proceeding with default settings:', errorMessageFromValue(error))
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Inference-specific input/output types
@@ -121,6 +161,8 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
   const { requestId, device, dtype } = request
   const quantization = dtype ?? 'fp32'
 
+  await configureRemoteModelAccessForLoad()
+
   try {
     // Check if we already have the correct model loaded
     if (ttsModel && currentQuantization === quantization && currentDevice === device) {
@@ -207,6 +249,13 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
           `[Kokoro Worker] Failed with dtype=${attempt.dtype} device=${attempt.device}, trying next fallback...`,
           errorMessageFromValue(error),
         )
+        // NOTICE: Corrupted cache entries can leave remote fetches disabled. Re-enable
+        // remote downloads so the next attempt can repair files. Legacy Patch 2.00.
+        if (!env.allowRemoteModels) {
+          console.info('[Kokoro Worker] Load failed with remote models disabled. Re-enabling remote models to repair or redownload files.')
+          env.allowRemoteModels = true
+          env.allowLocalModels = false
+        }
       }
     }
 

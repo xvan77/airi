@@ -614,6 +614,31 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     return updated
   }
 
+  /** Writes the speech store selection onto the active card so Stage chat uses the same TTS config. */
+  async function syncActiveCardSpeechFromRuntime() {
+    await pendingAuthenticationSetup
+    const { speech } = useRuntimeModuleStores()
+    const provider = speech.activeSpeechProvider
+    const model = speech.activeSpeechModel
+    const voice_id = speech.activeSpeechVoiceId
+    if (!provider || provider === 'speech-noop' || !model || !voice_id)
+      return false
+
+    const current = activeCard.value?.extensions?.airi?.modules?.speech
+    if (current?.provider === provider && current?.model === model && current?.voice_id === voice_id)
+      return false
+
+    const updated = updateActiveCardModules(({ modules }) => ({
+      speech: {
+        ...modules.speech,
+        provider,
+        model,
+        voice_id,
+      },
+    }))
+    return !!updated
+  }
+
   /** Clears a removed provider from defaults and the active card, not other cards. */
   async function clearProviderSelections(providerId: string) {
     await pendingAuthenticationSetup
@@ -1408,6 +1433,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     setActiveCardDefaultAvatarModel,
     removeDeletedAvatarModels,
     updateActiveCardSpeech,
+    syncActiveCardSpeechFromRuntime,
     updateActiveCardVision,
     selectActiveCardVisionProvider,
     getCard,
@@ -1465,6 +1491,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       'setActiveCardDefaultAvatarModel',
       'removeDeletedAvatarModels',
       'updateActiveCardSpeech',
+      'syncActiveCardSpeechFromRuntime',
       'updateActiveCardVision',
       'selectActiveCardVisionProvider',
       'updateCard',

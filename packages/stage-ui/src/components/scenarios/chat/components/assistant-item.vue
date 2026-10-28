@@ -15,6 +15,7 @@ import ChatResponsePart from './response-part.vue'
 import ChatSticker from './sticker.vue'
 import ChatToolCallGroup from './tool-call-group.vue'
 
+import { stripPromptTimePrefix } from '../../../../stores/chat/datetime-prefix'
 import { MarkdownRenderer } from '../../../markdown'
 import { getChatHistoryItemCopyText } from '../utils'
 import { ChatActionMenu } from './action-menu'
@@ -58,19 +59,29 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+function stripAssistantTextSlice(slice: ChatSlicesText): ChatSlicesText {
+  return { ...slice, text: stripPromptTimePrefix(slice.text) }
+}
+
 const resolvedSlices = computed<ChatSlices[]>(() => {
   if (props.message.slices?.length) {
     return props.message.slices
+      .map((slice) => {
+        if (slice.type === 'text' || slice.type === 'card')
+          return stripAssistantTextSlice(slice as ChatSlicesText)
+        return slice
+      })
+      .filter(slice => slice.type !== 'text' || slice.text.trim().length > 0)
   }
 
   if (typeof props.message.content === 'string' && props.message.content.trim()) {
-    return [{ type: 'text', text: props.message.content } satisfies ChatSlicesText]
+    return [stripAssistantTextSlice({ type: 'text', text: props.message.content })]
   }
 
   if (Array.isArray(props.message.content)) {
     const textPart = props.message.content.find(part => 'type' in part && part.type === 'text') as { text?: string } | undefined
     if (textPart?.text)
-      return [{ type: 'text', text: textPart.text } satisfies ChatSlicesText]
+      return [stripAssistantTextSlice({ type: 'text', text: textPart.text })]
   }
 
   return []

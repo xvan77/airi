@@ -1,5 +1,7 @@
 import type { ChatHistoryItem } from '../../../types/chat'
 
+import { stripPromptTimePrefix } from '../../../stores/chat/datetime-prefix'
+
 function isTextPart(part: unknown): part is { type: 'text', text?: string } {
   return typeof part === 'object'
     && part !== null
@@ -30,7 +32,7 @@ export function getChatHistoryItemCopyText(message: ChatHistoryItem): string {
       // A card copies as its text.
       const text = message.slices
         .flatMap(slice => slice.type === 'text' || slice.type === 'card' ? [slice.text] : [])
-        .map(text => text.trim())
+        .map(text => stripPromptTimePrefix(text).trim())
         .filter(Boolean)
         .join('\n\n')
 
@@ -39,7 +41,7 @@ export function getChatHistoryItemCopyText(message: ChatHistoryItem): string {
     }
 
     if (typeof message.content === 'string')
-      return message.content
+      return stripPromptTimePrefix(message.content)
 
     if (Array.isArray(message.content)) {
       return getTextFromContentParts(message.content)

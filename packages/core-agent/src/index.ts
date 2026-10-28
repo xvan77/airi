@@ -9,7 +9,7 @@ export {
   formatContextPromptText,
 } from './messages/context-prompt'
 export type { ContextSnapshot } from './messages/context-prompt'
-export { formatTimePrefix } from './messages/datetime-prefix'
+export { formatTimePrefix, stripPromptTimePrefix } from './messages/datetime-prefix'
 
 export { normalizeLlamaServerChatMessages } from './messages/llama-server-chat'
 export { renderConversationPreview } from './messages/preview'

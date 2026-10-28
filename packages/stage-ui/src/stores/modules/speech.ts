@@ -8,6 +8,7 @@ import type { VoiceCatalogConfiguration, VoiceCatalogIdentity, VoiceInfo } from 
 
 import { errorMessageFrom } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { getCachedWebGPUCapabilities } from '@proj-airi/stage-shared/webgpu'
 import { refManualReset } from '@vueuse/core'
 import { generateSpeech } from '@xsai/generate-speech'
 import { isEqual } from 'es-toolkit'
@@ -22,6 +23,8 @@ import { getDefinedProvider } from '../../libs/providers/providers'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, pickOfficialSpeechVoice } from '../../libs/providers/providers/official'
 import { streamSpeech } from '../../libs/speech/streaming-pipeline'
 import { createDefaultAudioConsoleSettings, VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '../../libs/speech/voice-profile'
+import { getDefaultKokoroModel } from '../../workers/kokoro/constants'
+import { stripPromptTimePrefix } from '../chat/datetime-prefix'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
 
@@ -305,12 +308,27 @@ export const useSpeechStore = defineStore('speech', () => {
       model ??= activeSpeechModel.value || undefined
     }
 
+    const catalogConfiguration: VoiceCatalogConfiguration = {
+      definitionId: configuration.definitionId,
+      config: structuredClone(toRaw(configuration.config)),
+    }
+    if (!model && resolveProviderDefinitionId(provider) === 'kokoro-local')
+      model = defaultKokoroModelId()
+    if (model)
+      catalogConfiguration.config.model = model
+
+    if (provider === activeSpeechProvider.value && typeof catalogConfiguration.config.model === 'string' && catalogConfiguration.config.model) {
+      if (!activeSpeechModel.value)
+        activeSpeechModel.value = catalogConfiguration.config.model
+      mirrorSpeechModelToProviderConfig(provider, catalogConfiguration.config.model)
+    }
+
     const loadSequence = ++voiceLoadSequence
     latestVoiceLoads.set(provider, loadSequence)
     if (voiceCatalogIdentities.value[provider]?.model !== model) {
       discardVoiceCatalog(provider)
     }
-    const identity = await providersStore.getVoiceCatalogIdentity(model, configuration)
+    const identity = await providersStore.getVoiceCatalogIdentity(model, catalogConfiguration)
     // Hashing yields. Reset, a newer request, or provider ownership changes
     // during that work must not clear or replace a newer catalog.
     if (latestVoiceLoads.get(provider) !== loadSequence || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
@@ -321,7 +339,7 @@ export const useSpeechStore = defineStore('speech', () => {
       discardVoiceCatalog(provider)
     }
 
-    const voices = await providersStore.listProviderVoices(provider, model, configuration)
+    const voices = await providersStore.listProviderVoices(provider, model, catalogConfiguration)
     // Undefined is an expired session. A cleared sequence also rejects work
     // from an outgoing leader or a reset, even if its network response arrives.
     if (latestVoiceLoads.get(provider) !== loadSequence || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
@@ -387,14 +405,7 @@ export const useSpeechStore = defineStore('speech', () => {
     }
   }, { immediate: true })
 
-  // Streaming TTS voices are model-scoped: the server only returns recommended
-  // voices for an explicit `?model=`. Ensure the active model is a valid
-  // streaming model id so voice loading gets the right recommendations (parity
-  // with the HTTP provider's auto-pick). Reseeds the server-curated default
-  // both when no model is selected AND when `activeSpeechModel` still holds a
-  // stale id from a previously-active provider (the global model ref is shared
-  // across providers, and the per-surface reset may not have run yet). No-op
-  // for non-streaming providers.
+  // Streaming voices need `?model=`. Reseed default when selection is empty or stale.
   function ensureStreamingDefaultModel() {
     if (activeSpeechProvider.value !== OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
       return
@@ -415,13 +426,7 @@ export const useSpeechStore = defineStore('speech', () => {
     clearVoiceSelection()
   }
 
-  // A provider that publishes one model publishes no choice. An empty selection
-  // keeps `configured` false until the user opens the dropdown and picks that
-  // one entry, and the provider looks broken until then. This applies to every
-  // single-model speech provider, not only to the VOICEVOX family.
-  //
-  // The voice selection stays as it is. Voices belong to the provider, not to
-  // this model, and a provider switch clears both before this runs.
+  // Single-model providers stay "unconfigured" until that lone id is selected.
   function ensureSingleOptionSpeechModel() {
     // An explicit model can be a valid custom endpoint name absent from discovery.
     if (activeSpeechModel.value)
@@ -435,12 +440,85 @@ export const useSpeechStore = defineStore('speech', () => {
       return
 
     activeSpeechModel.value = onlyModelId
+    mirrorSpeechModelToProviderConfig(activeSpeechProvider.value, onlyModelId)
+  }
+
+  function resolveProviderDefinitionId(providerId: string) {
+    return providerStore.providers[providerId]?.definitionId ?? providerId
+  }
+
+  function defaultKokoroModelId() {
+    const capabilities = getCachedWebGPUCapabilities()
+    const supported = capabilities?.supported ?? (typeof navigator !== 'undefined' && Boolean(navigator.gpu))
+    return getDefaultKokoroModel(supported, capabilities?.fp16Supported ?? false)
+  }
+
+  function mirrorSpeechModelToProviderConfig(providerId: string, model: string) {
+    if (!model)
+      return
+
+    const definitionId = resolveProviderDefinitionId(providerId)
+    const definition = getDefinedProvider(definitionId)
+    if (definition?.requiresCredentials !== false || !definition.tasks.includes('text-to-speech'))
+      return
+
+    const config = providerStore.getProviderConfig(providerId)
+    if (!config) {
+      providerStore.ensureProvider(providerId, definitionId, { model })
+      return
+    }
+
+    if (config.model !== model)
+      config.model = model
+  }
+
+  function ensureCatalogSpeechModel() {
+    const providerId = activeSpeechProvider.value
+    if (!providerId
+      || providerId === OFFICIAL_SPEECH_PROVIDER_ID
+      || providerId === OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
+      || providerId === 'speech-noop') {
+      return
+    }
+
+    const definition = getDefinedProvider(resolveProviderDefinitionId(providerId))
+    if (definition?.requiresCredentials !== false)
+      return
+
+    const models = providersStore.getModelsForProvider(providerId)
+    if (!models.length)
+      return
+
+    const configModel = typeof providerStore.getProviderConfig(providerId)?.model === 'string'
+      ? providerStore.getProviderConfig(providerId)?.model as string
+      : ''
+
+    const hasValidSelection = !!activeSpeechModel.value && models.some(model => model.id === activeSpeechModel.value)
+    if (hasValidSelection) {
+      mirrorSpeechModelToProviderConfig(providerId, activeSpeechModel.value)
+      return
+    }
+
+    const defaultModel = providersStore.getDefaultModelForProvider(providerId)
+    const fromConfig = configModel && models.some(model => model.id === configModel) ? configModel : ''
+    const nextModel = fromConfig
+      || (defaultModel && models.some(model => model.id === defaultModel) ? defaultModel : '')
+      || models[0]?.id
+      || ''
+
+    if (!nextModel || activeSpeechModel.value === nextModel)
+      return
+
+    activeSpeechModel.value = nextModel
+    mirrorSpeechModelToProviderConfig(providerId, nextModel)
+    clearVoiceSelection()
   }
 
   function ensureActiveSpeechModel() {
     ensureStreamingDefaultModel()
 
     if (activeSpeechProvider.value !== OFFICIAL_SPEECH_PROVIDER_ID) {
+      ensureCatalogSpeechModel()
       ensureSingleOptionSpeechModel()
       return
     }
@@ -470,6 +548,8 @@ export const useSpeechStore = defineStore('speech', () => {
     if (changed)
       clearVoiceSelection()
     ensureActiveSpeechModel()
+    if (activeSpeechModel.value)
+      mirrorSpeechModelToProviderConfig(provider, activeSpeechModel.value)
     // Discard the previous model before applying an explicit card voice. The
     // loader must not treat that new choice as a selection from the old catalog.
     if (voiceCatalogIdentities.value[provider]?.model !== (activeSpeechModel.value || undefined))
@@ -519,6 +599,22 @@ export const useSpeechStore = defineStore('speech', () => {
     }
   }, { immediate: true, deep: true })
 
+  /**
+   * Loads catalog state before a voiced chat turn.
+   * Opening the speech popover used to be the only path that did this early enough.
+   */
+  async function prepareSpeechForChatTurn() {
+    const provider = activeSpeechProvider.value
+    if (!provider || provider === 'speech-noop' || provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
+      return
+
+    ensureActiveSpeechModel()
+    const model = activeSpeechModel.value
+    if (model)
+      await loadVoicesForProvider(provider, model)
+    await ensureActiveSpeechVoice()
+  }
+
   /** Applies official recommendations and the matching voice object in the leader. */
   async function ensureActiveSpeechVoice() {
     if (disposed)
@@ -562,6 +658,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 
   function transformTextForSpeech(text: string): string {
+    let transformed = stripPromptTimePrefix(text)
     const ust = {
       enabled: audioConsoleUstEnabled.value,
       mode: audioConsoleUstMode.value,
@@ -570,9 +667,8 @@ export const useSpeechStore = defineStore('speech', () => {
       tildeReplacement: audioConsoleUstTildeReplacement.value,
     }
     if (!ust.enabled)
-      return text
+      return transformed
 
-    let transformed = text
     const stripNarrVal = ust.mode === 'mute' || ust.mode === 'flatten'
     const stripCustomVal = ust.mode === 'custom'
 
@@ -655,14 +751,50 @@ export const useSpeechStore = defineStore('speech', () => {
     return response
   }
 
+  function resolveSpeechSelectionForChat(selection: AiriExtension['modules']['speech']): AiriExtension['modules']['speech'] {
+    const runtimeProvider = activeSpeechProvider.value
+    const runtimeModel = activeSpeechModel.value
+    const runtimeVoiceId = activeSpeechVoiceId.value
+
+    let provider = selection.provider
+    if (!provider || provider === 'speech-noop' || provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID) {
+      if (runtimeProvider && runtimeProvider !== 'speech-noop' && runtimeProvider !== VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
+        provider = runtimeProvider
+    }
+
+    const useRuntime = provider === runtimeProvider
+      && runtimeProvider !== 'speech-noop'
+      && runtimeProvider !== VIRTUAL_AUDIO_STUDIO_PROVIDER_ID
+    const providerConfig = providerStore.getProviderConfig(provider) ?? {}
+
+    const model = selection.model
+      || (useRuntime ? runtimeModel : '')
+      || (typeof providerConfig.model === 'string' ? providerConfig.model : '')
+
+    const voice_id = selection.voice_id
+      || (useRuntime ? runtimeVoiceId : '')
+      || (typeof providerConfig.voiceId === 'string' ? providerConfig.voiceId : '')
+      || (typeof providerConfig.voice === 'string' ? providerConfig.voice : '')
+
+    return { provider, model, voice_id }
+  }
+
   /** Captures one response's provider, voice, model, and settings before any asynchronous work. */
   function createOutput(turn: TurnRef, selection: AiriExtension['modules']['speech'], output: Pick<SpeechOutput, 'playback' | 'onPlaybackStart' | 'onPlaybackEnd' | 'onSpecial'>, audioContext: AudioContext): SpeechOutput {
-    const providerId = selection.provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID ? 'speech-noop' : selection.provider
+    const resolved = resolveSpeechSelectionForChat(selection)
+    const providerId = resolved.provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID ? 'speech-noop' : resolved.provider
     const config = structuredClone(toRaw(providerStore.getProviderConfig(providerId) ?? {}))
-    const selectedVoice = availableVoices.value[providerId]?.find(voice => voice.id === selection.voice_id)
+    const model = resolved.model || (typeof config.model === 'string' ? config.model : '')
+    const voiceId = resolved.voice_id
+      || (typeof config.voiceId === 'string' ? config.voiceId : '')
+      || (typeof config.voice === 'string' ? config.voice : '')
+    if (model && config.model !== model)
+      config.model = model
+    if (voiceId && typeof config.voiceId === 'string' && !config.voiceId)
+      config.voiceId = voiceId
+
+    const selectedVoice = availableVoices.value[providerId]?.find(voice => voice.id === voiceId)
     const voice = selectedVoice ? structuredClone(toRaw(selectedVoice)) : undefined
-    const model = selection.model || (typeof config.model === 'string' ? config.model : '')
-    const voiceId = selection.voice_id || (typeof config.voice === 'string' ? config.voice : '')
 
     const useSSML = ssmlEnabled.value
     const canUseSSML = ['elevenlabs', 'microsoft-speech', 'azure-speech'].includes(providerId) || (providerId === 'alibaba-cloud-model-studio' && model === 'cosyvoice-v2')
@@ -670,7 +802,7 @@ export const useSpeechStore = defineStore('speech', () => {
     const voiceType = providerId === OFFICIAL_SPEECH_PROVIDER_ID || providerId === OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
       ? 'official_selected' as const
       : 'custom_configured' as const
-    if (!selection.provider || selection.provider === 'speech-noop')
+    if (!resolved.provider || resolved.provider === 'speech-noop')
       return { ...output, synthesize: async () => null }
     if (getDefinedProvider(providerId)?.capabilities?.speech?.transport === 'bidirectional-ws') {
       const streamingModel = model.includes('/') ? model : providersStore.getDefaultModelForProvider(providerId)
@@ -896,6 +1028,7 @@ export const useSpeechStore = defineStore('speech', () => {
     invalidateVoiceCatalogs,
     selectProviderModel,
     ensureActiveSpeechVoice,
+    prepareSpeechForChatTurn,
     getVoicesForProvider,
     ensureStreamingDefaultModel,
     ensureActiveSpeechModel,

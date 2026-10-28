@@ -12,7 +12,7 @@ import {
   TestDummyMarker,
   VoiceCardManySelect,
 } from '@proj-airi/stage-ui/components'
-import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { useAnalytics, useInferenceStatus } from '@proj-airi/stage-ui/composables'
 import { applyVoiceProfileEffects } from '@proj-airi/stage-ui/composables/audio/audio-effects'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } from '@proj-airi/stage-ui/libs/providers/providers/official'
 import { VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '@proj-airi/stage-ui/libs/speech/voice-profile'
@@ -21,6 +21,7 @@ import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+import { KOKORO_MODELS } from '@proj-airi/stage-ui/workers/kokoro/constants'
 import {
   FieldCheckbox,
   FieldInput,
@@ -80,6 +81,58 @@ const audioUrl = ref('')
 const audioPlayer = ref<HTMLAudioElement | null>(null)
 const errorMessage = ref('')
 let lastOfficialTtsExposureKey = ''
+
+const { models: inferenceModels } = useInferenceStatus()
+
+function kokoroInferenceStatusId(speechModelId: string) {
+  const definition = KOKORO_MODELS.find(entry => entry.id === speechModelId)
+  return definition ? `kokoro-${definition.quantization}` : ''
+}
+
+const kokoroLoadingStatus = computed(() => {
+  if (activeSpeechProvider.value !== 'kokoro-local')
+    return null
+  const statusId = kokoroInferenceStatusId(activeSpeechModel.value)
+  if (!statusId)
+    return null
+  return inferenceModels.value.find(entry => entry.modelId === statusId) ?? null
+})
+
+const kokoroProgressText = computed(() => {
+  if (activeSpeechProvider.value !== 'kokoro-local')
+    return ''
+
+  const status = kokoroLoadingStatus.value
+  if (!status) {
+    if (isLoadingSpeechProviderVoices.value)
+      return 'Initializing speech engine...'
+    return ''
+  }
+
+  if (status.state === 'downloading') {
+    const progress = status.progress
+    if (progress) {
+      if (progress.percent >= 0 && progress.percent < 100) {
+        const fileName = progress.file ? progress.file.split('/').pop() : ''
+        return `Downloading model${fileName ? ` (${fileName})` : ''}: ${Math.round(progress.percent)}%`
+      }
+      if (progress.message === 'initiate' || progress.message === 'downloading')
+        return 'Preparing download...'
+      if (progress.message === 'done')
+        return 'Model downloaded, compiling weights...'
+    }
+    return 'Downloading model...'
+  }
+
+  if (status.state === 'compiling')
+    return 'Compiling shaders...'
+  if (status.state === 'warming-up')
+    return 'Warming up audio engine...'
+  if (isLoadingSpeechProviderVoices.value)
+    return 'Loading voice definitions...'
+
+  return ''
+})
 
 const STREAMING_MODEL_OPTION_PREFIX = 'streaming:'
 
@@ -294,6 +347,8 @@ async function selectSpeechVoice(voiceId: string | undefined) {
 
 /** Persists the selection only after the leader commits its provider and model. */
 async function selectSpeechSource(sourceId: string) {
+  if (providersStore.supportsModelListing(sourceId))
+    await providersStore.fetchModelsForProvider(sourceId)
   const selection = await speechStore.selectProviderModel(sourceId, '')
   if (!selection)
     return
@@ -360,6 +415,7 @@ onMounted(async () => {
     if (activeSpeechProvider.value === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
       await speechStore.selectProviderModel('speech-noop', '')
     await providersStore.loadModelsForConfiguredProviders()
+    speechStore.ensureActiveSpeechModel()
     await speechStore.loadVoicesForProvider(activeSpeechProvider.value, activeSpeechModel.value || undefined)
     await syncOpenAICompatibleSettings()
     trackOfficialTtsExposure()
@@ -376,6 +432,7 @@ watch(activeSpeechProvider, async (newProvider) => {
     if (newProvider !== activeSpeechProvider.value)
       return
 
+    speechStore.ensureActiveSpeechModel()
     // Model discovery can finish after the selection commit. The leader loader
     // resolves defaults from that catalog before it requests matching voices.
     await speechStore.loadVoicesForProvider(newProvider, activeSpeechModel.value || undefined)
@@ -397,6 +454,21 @@ watch(activeSpeechModel, () => {
     return
 
   trackOfficialTtsExposure(activeSpeechProvider.value, currentTtsModelId())
+})
+
+watch(displayedProviderModels, async (models, previous) => {
+  if (!activeSpeechProvider.value || models.length === 0)
+    return
+  if (previous?.length)
+    return
+
+  try {
+    speechStore.ensureActiveSpeechModel()
+    await speechStore.loadVoicesForProvider(activeSpeechProvider.value, activeSpeechModel.value || undefined)
+  }
+  catch (error) {
+    errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+  }
 })
 
 async function persistSelection() {
@@ -443,6 +515,9 @@ async function generateTestSpeech() {
       }
     }
   }
+
+  if (!model && providerConfig?.model)
+    model = providerConfig.model as string
 
   if (!model) {
     console.error('No model selected')
@@ -495,6 +570,8 @@ async function generateTestSpeech() {
         source: 'manual_preview',
       })
     }
+
+    await persistSelection()
 
     const response = await generateSpeech({
       ...provider.speech(
@@ -790,9 +867,18 @@ async function handleDeleteProvider(providerId: string) {
       <div v-if="activeSpeechProvider && activeSpeechProvider !== 'speech-noop'">
         <div flex="~ col gap-4">
           <div>
-            <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-400">
-              Voice Configuration
-            </h2>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-400">
+                Voice Configuration
+              </h2>
+              <div
+                v-if="kokoroProgressText"
+                class="flex items-center gap-2 border border-primary-500/10 rounded-full bg-primary-500/5 px-2.5 py-1 text-sm text-primary-500 font-medium"
+              >
+                <div class="i-solar:refresh-line-duotone animate-spin text-sm" />
+                <span>{{ kokoroProgressText }}</span>
+              </div>
+            </div>
             <div class="flex flex-col items-start gap-1 text-neutral-400 md:flex-row md:items-center md:justify-between dark:text-neutral-500">
               <span>Customize how your AI assistant speaks</span>
               <span v-if="currentSpeechVoiceId" class="text-sm text-neutral-400 font-medium dark:text-neutral-400">

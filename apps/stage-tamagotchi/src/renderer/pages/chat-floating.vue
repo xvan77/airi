@@ -56,7 +56,13 @@ const stopStateChanged = getElectronEventaContext().on(electronChatFloatingState
 })
 onScopeDispose(stopStateChanged)
 onMounted(async () => {
-  state.value = await getState()
+  try {
+    state.value = await getState()
+  }
+  catch (error) {
+    console.error('[chat-window] Failed to read floating chat state. The window stays unfolded.', error)
+    state.value = { ...state.value, folded: false, relocating: false }
+  }
 })
 
 useChatDraftHandover(interactiveArea)

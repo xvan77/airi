@@ -40,6 +40,7 @@ import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
 import { useChatStore } from '../../stores/chat'
+import { bootstrapSpeechForChat } from '../../stores/chat/bootstrap-speech-for-chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useSharedLive2DExpressionPreview } from '../../stores/live2d'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
@@ -585,6 +586,12 @@ function holdsVoice(context: { speaks?: boolean }) {
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   if (!holdsVoice(context))
     return
+  try {
+    await bootstrapSpeechForChat()
+  }
+  catch (error) {
+    console.error('Speech preparation before chat turn failed', error)
+  }
   voice.startResponse(context)
   if (context.sessionId === chatSession.activeSessionId)
     resetAssistantSpeechSurface('new-message')

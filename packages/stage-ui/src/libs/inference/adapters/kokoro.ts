@@ -376,6 +376,10 @@ export function createKokoroAdapter(): KokoroAdapter {
       if (!worker || state !== 'ready')
         throw notReadyError
 
+      // NOTICE: Brief yield before GPU work reduces DXGI device hung resets on Windows.
+      // Legacy Patch 1.01.
+      await new Promise(resolve => setTimeout(resolve, 100))
+
       // Update LRU timestamp for memory pressure tracking
       if (allocationToken)
         getGPUCoordinator().touch(allocationToken.modelId)

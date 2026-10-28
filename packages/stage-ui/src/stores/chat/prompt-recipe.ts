@@ -17,8 +17,10 @@ export const CHAT_FORMAT_RULES = `${[
  * Use when:
  * - A chat run starts. Identity is read for its persona then, so history never stores it.
  */
-export function composeSystemPrompt(identity: string) {
-  return CHAT_FORMAT_RULES + identity
+export function composeSystemPrompt(identity: string, options?: { includeFormatRules?: boolean }) {
+  const includeFormatRules = options?.includeFormatRules !== false
+  const rules = includeFormatRules ? CHAT_FORMAT_RULES : ''
+  return rules + identity
 }
 
 /**

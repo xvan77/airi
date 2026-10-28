@@ -15,6 +15,13 @@ describe('chat prompt recipe', () => {
     expect(content).not.toContain('eg: $ x^3 $')
     expect(content.endsWith('You are AIRI.')).toBe(true)
   })
+
+  it('skips format rules when the caller opts out for local models', () => {
+    const content = composeSystemPrompt('You are AIRI.', { includeFormatRules: false })
+
+    expect(content).toBe('You are AIRI.')
+    expect(content).not.toContain('@shikijs/rehype')
+  })
   // A recipe runs in its own session, so its steps join that session's prefix and never the conversation's.
   it('describes a task recipe space', () => {
     const recipe = { id: 'user:look', name: 'Look', description: '', instructions: 'Read the screen slot.', keywords: [], source: 'user' as const, enabled: true, approved: true }

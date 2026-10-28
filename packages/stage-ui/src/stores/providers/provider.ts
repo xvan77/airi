@@ -190,13 +190,7 @@ export const useProviderStore = defineStore('provider', () => {
   })
   const providerRevalidationLoops = new Map<string, { pause: () => void, resume: () => void }>()
 
-  // Server-driven availability overrides for providers whose visibility can
-  // only be decided at runtime from the backend (e.g. the streaming TTS
-  // provider, which exists only when `UNSPEECH_UPSTREAM.streaming` is
-  // configured server-side). A `false` entry hides the provider from the
-  // available lists regardless of its static `isAvailableBy`; an absent entry
-  // means no override. Written by the auth-sync glue after it probes the
-  // server. Reactive so the available/configured provider lists re-derive.
+  // Runtime backend flags hide providers (for example streaming TTS when upstream is off).
   const providerAvailabilityOverrides = computed({
     get: () => providerStateStore.availabilityOverrides,
     set: value => providerStateStore.availabilityOverrides = value,
@@ -817,15 +811,6 @@ export const useProviderStore = defineStore('provider', () => {
     return providerRuntimeState.value[providerId]?.defaultModel ?? null
   })
 
-  // Load models for all configured providers
-  async function loadModelsForConfiguredProviders() {
-    for (const providerId of availableProviders.value) {
-      if (supportsModelListing(providerId)) {
-        await fetchModelsForProvider(providerId)
-      }
-    }
-  }
-
   async function refreshModelsForChangedCredentials() {
     const changedProviders: string[] = []
 
@@ -1009,6 +994,25 @@ export const useProviderStore = defineStore('provider', () => {
   const allAudioSpeechProvidersMetadata = computed(() => {
     return availableProvidersMetadata.value.filter(metadata => metadata.category === 'speech')
   })
+
+  // Load models for configured providers and credential-free speech providers on Speech.
+  async function loadModelsForConfiguredProviders() {
+    const providerIds = new Set(availableProviders.value)
+    for (const metadata of allAudioSpeechProvidersMetadata.value) {
+      const definition = findProviderDefinition(metadata.id)
+      if (definition?.requiresCredentials === false)
+        providerIds.add(metadata.id)
+    }
+
+    for (const providerId of providerIds) {
+      if (!supportsModelListing(providerId))
+        continue
+      const definition = findProviderDefinition(providerId)
+      if (definition?.requiresCredentials !== false && !providerConfigStore.configuredProviders[providerId])
+        continue
+      await fetchModelsForProvider(providerId)
+    }
+  }
 
   const allAudioTranscriptionProvidersMetadata = computed(() => {
     return availableProvidersMetadata.value.filter(metadata => metadata.category === 'transcription')

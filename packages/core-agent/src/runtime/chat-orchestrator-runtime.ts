@@ -11,7 +11,7 @@ import type { LlmUsage, StreamEvent, StreamOptions } from '../types/llm'
 import { createQueue } from '@proj-airi/stream-kit'
 
 import { chatMessagesToTurns } from '../messages/chat-completions'
-import { formatTimePrefix } from '../messages/datetime-prefix'
+import { drainPromptTimePrefixEchoHold, formatTimePrefix, stripPromptTimePrefix, takeSpeechAfterPromptTimePrefixEcho } from '../messages/datetime-prefix'
 import { renderConversationPreview } from '../messages/preview'
 import { createChatHooks } from './agent-hooks'
 import { useLlmmarkerParser } from './llm-marker-parser'
@@ -843,6 +843,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       let streamPosition = 0
       let pendingSpeechWhitespace = ''
       let speechStarted = false
+      const promptTimePrefixEchoStrip = { hold: '', resolved: false, trimLeadingSpace: false }
       const stickers = options.stickers
       let stickerEmitted = false
 
@@ -857,6 +858,10 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           streamPosition += literal.length
 
           if (speechOnly) {
+            speechOnly = takeSpeechAfterPromptTimePrefixEcho(promptTimePrefixEchoStrip, speechOnly)
+            if (!speechOnly)
+              return
+
             if (!speechStarted) {
               // Leading whitespace belongs to speech only after visible text arrives.
               pendingSpeechWhitespace += speechOnly
@@ -913,6 +918,16 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           if (shouldAbort())
             return
 
+          const heldSpeech = drainPromptTimePrefixEchoHold(promptTimePrefixEchoStrip)
+          if (heldSpeech) {
+            buildingMessage.content += heldSpeech
+            const lastSlice = buildingMessage.slices.at(-1)
+            if (lastSlice?.type === 'text')
+              lastSlice.text += heldSpeech
+            else
+              buildingMessage.slices.push({ type: 'text', text: heldSpeech })
+          }
+
           // Strip only sticker markers, including the escaped form accepted by the parser.
           const speechText = fullText.replace(/<(?:\||\{'\|'\})STICKER\b[\s\S]*?(?:(?:\||\{'\|'\})>|$)/g, '')
           const finalCategorization = categorizeResponse(speechText, activeProvider)
@@ -926,12 +941,30 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           const fallbackSpeech = !visibleSpeech && activeProvider === 'local-llm'
             ? speechText.trim()
             : ''
-          const displaySpeech = visibleSpeech || fallbackSpeech
+          const displaySpeech = stripPromptTimePrefix(visibleSpeech || fallbackSpeech)
+
+          for (const slice of buildingMessage.slices) {
+            if (slice.type === 'text')
+              slice.text = stripPromptTimePrefix(slice.text)
+          }
+          buildingMessage.slices = buildingMessage.slices.filter(slice =>
+            slice.type !== 'text' || slice.text.trim().length > 0,
+          )
+
           const hasTextSlice = buildingMessage.slices.some(slice => slice.type === 'text' && slice.text.trim())
-          if (displaySpeech && !hasTextSlice) {
+          if (!hasTextSlice && displaySpeech.trim()) {
             buildingMessage.content = displaySpeech
             buildingMessage.slices.push({ type: 'text', text: displaySpeech })
           }
+
+          buildingMessage.content = stripPromptTimePrefix(buildingMessage.content).trim()
+          if (!buildingMessage.slices.some(slice => slice.type === 'text') && buildingMessage.content) {
+            buildingMessage.slices.push({ type: 'text', text: buildingMessage.content })
+          }
+
+          if (buildingMessage.categorization)
+            buildingMessage.categorization.speech = stripPromptTimePrefix(buildingMessage.categorization.speech)
+
           updateStream(sessionId, buildingMessage)
         },
         // The parser keeps its own marker-safety tail. Emit each safe literal
@@ -1227,7 +1260,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         || slice.type === 'tool-call'
         || (slice.type === 'text' && Boolean(slice.text.trim())))
       const silent = Boolean(options.notice) && !hasVisibleReply
-      if (!silent && !shouldAbort() && (buildingMessage.slices.length > 0 || generatedTurn?.rounds.length)) {
+      if (!silent && !shouldAbort() && (hasVisibleReply || generatedTurn?.rounds.length)) {
         const finalAssistant = buildingMessage
         finalAssistant.completedAt = now()
         deps.session.appendSessionMessage(sessionId, finalAssistant)
