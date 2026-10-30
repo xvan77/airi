@@ -108,6 +108,9 @@ export default defineConfig({
   },
 
   renderer: {
+    define: {
+      'import.meta.env.VITE_TAMAGOTCHI_AGGRESSIVE_STARTUP': JSON.stringify('true'),
+    },
     // Thanks to [@Maqsyo](https://github.com/Maqsyo)
     // https://github.com/alex8088/electron-vite/issues/99#issuecomment-1862671727
     base: './',

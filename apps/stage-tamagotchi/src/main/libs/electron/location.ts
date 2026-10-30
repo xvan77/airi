@@ -5,6 +5,8 @@ import { env } from 'node:process'
 
 import { is } from '@electron-toolkit/utils'
 
+import { getRendererWindowLoadIndicatorService } from '../../services/electron/renderer-window-load-indicator'
+
 let electronMainDirname: string = ''
 
 export function setElectronMainDirname(dirname: string) {
@@ -34,6 +36,8 @@ export function baseUrl(parentOfIndexHtml: string, filename?: string) {
 }
 
 export async function load(window: BrowserWindow, url: string | { url: string, options?: LoadURLOptions } | { file: string, options?: LoadFileOptions }) {
+  getRendererWindowLoadIndicatorService()?.trackWindow(window, url)
+
   try {
     if (typeof url === 'object' && 'url' in url) {
       return await window.loadURL(url.url, url.options)

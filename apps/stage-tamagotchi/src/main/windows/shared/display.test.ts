@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   centerWindowOnDisplay,
+  clampWindowToDominantWorkArea,
   computeCenteredWindowBounds,
   computeResizedBoundsAnchoredToDominantDisplay,
   heightFrom,
@@ -199,6 +200,41 @@ describe('computeCenteredWindowBounds', () => {
     })
 
     expect(result).toEqual({ x: 120, y: 45, width: 1000, height: 640 })
+  })
+})
+
+describe('clampWindowToDominantWorkArea', () => {
+  const primaryDisplay = {
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    workArea: { x: 0, y: 25, width: 1920, height: 1055 },
+  }
+
+  it('moves an off-screen window back into the dominant work area', () => {
+    const setBounds = vi.fn()
+    const windowBounds = { x: -400, y: 900, width: 450, height: 600 }
+
+    const result = clampWindowToDominantWorkArea({
+      getBounds: () => windowBounds,
+      isDestroyed: () => false,
+      setBounds,
+    }, [primaryDisplay])
+
+    expect(result).toEqual({ x: 0, y: 480, width: 450, height: 600 })
+    expect(setBounds).toHaveBeenCalledWith({ x: 0, y: 480, width: 450, height: 600 })
+  })
+
+  it('returns the current bounds when the window is already inside the work area', () => {
+    const setBounds = vi.fn()
+    const windowBounds = { x: 120, y: 80, width: 450, height: 600 }
+
+    const result = clampWindowToDominantWorkArea({
+      getBounds: () => windowBounds,
+      isDestroyed: () => false,
+      setBounds,
+    }, [primaryDisplay])
+
+    expect(result).toEqual(windowBounds)
+    expect(setBounds).not.toHaveBeenCalled()
   })
 })
 

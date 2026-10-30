@@ -135,10 +135,10 @@ describe('controls Island notifications', () => {
     expect(menu.contains(list.element())).toBe(true)
     expect(document.querySelectorAll('[data-reka-popper-content-wrapper]').length).toBe(0)
     await expect.element(screen.getByRole('button', { name: /You received 500 Flux/ })).toBeVisible()
-    await expect.element(screen.getByLabelText(label('open-settings'), { exact: true })).not.toBeVisible()
+    await expect.element(screen.getByLabelText(label('open-settings'), { exact: true })).toBeVisible()
 
     await screen.getByRole('button', { name: 'Back' }).click()
-    await expect.element(screen.getByLabelText(label('open-settings'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByRole('button', { name: 'Open notifications, 2 unread' })).toBeVisible()
     expect(document.querySelector('[data-testid="controls-island-notifications-view"]')).toBeNull()
   })
 

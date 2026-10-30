@@ -35,6 +35,8 @@ import { toast } from 'vue-sonner'
 
 import FullscreenBackdrop from '../components/fullscreen/fullscreen-backdrop.vue'
 import FullscreenOverlay from '../components/fullscreen/fullscreen-overlay.vue'
+import RendererWindowLoadingStatus from '../components/renderer-window-loading-status.vue'
+import StageAuxiliaryWindowLoadingHint from '../components/stage-auxiliary-window-loading-hint.vue'
 import AuthStatusIsland from '../components/stage-islands/auth-status-island.vue'
 import ControlsIslandRoot from '../components/stage-islands/controls-island/controls-island-root.vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
@@ -43,9 +45,12 @@ import ResourceStatusIsland from '../components/stage-islands/resource-status-is
 import { defaultFullscreenSurface, electronAppIsWayland, electronFullscreenExit, electronFullscreenSetMode, electronMainWindowEnterFullscreen, electronMainWindowGetFullscreenState, electronMainWindowSetFullscreenBounds, electronOpenInlay, electronOpenOnboarding, electronOpenSettings } from '../../shared/eventa'
 import { fullscreenHostPages, fullscreenSurfaceOf } from '../components/fullscreen/surfaces'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
+import { useMainStageBootCardVisible, useRendererBootComplete } from '../composables/renderer-boot-complete'
 import { useFullscreenHost } from '../composables/use-fullscreen-host'
 import { provideFullscreenLayout } from '../composables/use-fullscreen-layout'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
+import { useRendererWindowLoadActivity } from '../composables/use-renderer-window-load-activity'
+import { useRendererWindowLoadingCopy } from '../composables/use-renderer-window-loading-copy'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageChatOpeningOverlay } from '../composables/use-stage-chat-opening-overlay'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
@@ -73,6 +78,11 @@ const stageMounted = computed(() => componentStateStage.value === 'mounted')
 // keep covering the error surface. The error event ends the wait instead.
 const stageError = shallowRef<Error>()
 const isLoading = computed(() => !stageMounted.value && !stageError.value)
+const { auxiliaryLabelIds } = useRendererWindowLoadActivity()
+const primaryAuxiliaryLabelId = computed(() => auxiliaryLabelIds.value[0])
+const { loadingMessage: mainStageLoadingMessage } = useRendererWindowLoadingCopy('model')
+const rendererBootComplete = useRendererBootComplete()
+const mainStageBootCardVisible = useMainStageBootCardVisible()
 
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
@@ -768,6 +778,10 @@ const cursorPosition = computed(() => ({
         </div>
       </div>
     </div>
+    <StageAuxiliaryWindowLoadingHint
+      v-if="primaryAuxiliaryLabelId && !isLoading && rendererBootComplete && !mainStageBootCardVisible"
+      :label-id="primaryAuxiliaryLabelId"
+    />
     <div
       v-show="showChatOpeningOverlay"
       :class="[
@@ -781,28 +795,12 @@ const cursorPosition = computed(() => ({
       </p>
     </div>
     <!-- Loading overlay sits on top, does not hide the stage -->
-    <div v-show="isLoading" class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden">
-      <div
-        :class="[
-          'absolute h-24 w-full overflow-hidden rounded-xl',
-          'flex items-center justify-center',
-          'bg-white/80 dark:bg-neutral-950/80',
-          'backdrop-blur-md',
-        ]"
-      >
-        <div
-          :class="[
-            'drag-region',
-            'absolute left-0 top-0',
-            'h-full w-full flex items-center justify-center',
-            'text-1.5rem text-primary-600 dark:text-primary-400 font-normal',
-            'select-none',
-            'animate-flash animate-duration-5s animate-count-infinite',
-          ]"
-        >
-          Loading...
-        </div>
-      </div>
+    <div v-show="isLoading && rendererBootComplete" class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden">
+      <RendererWindowLoadingStatus
+        layout="stage"
+        draggable
+        :message="mainStageLoadingMessage"
+      />
     </div>
   </div>
   <Transition

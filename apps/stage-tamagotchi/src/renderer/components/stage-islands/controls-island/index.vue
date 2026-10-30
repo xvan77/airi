@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { defineInvoke } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke, useElectronMouseInElement } from '@proj-airi/electron-vueuse'
-import { IS_DEV } from '@proj-airi/stage-shared'
 import { HearingConfigDialog, InboxPanel } from '@proj-airi/stage-ui/components'
 import { useInboxStore } from '@proj-airi/stage-ui/stores/inbox'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
@@ -11,7 +10,6 @@ import { storeToRefs } from 'pinia'
 import { computed, nextTick, reactive, ref, useId, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import StatusIsland from '../status-island/index.vue'
 import ControlButtonTooltip from './control-button-tooltip.vue'
 import ControlButton from './control-button.vue'
 import ControlsIslandAuthButton from './controls-island-auth-button.vue'
@@ -310,9 +308,11 @@ const islandMotionClasses = computed(() => {
     isHidden && !isTop.value ? 'translate-y-2' : '',
   ]
 })
+// Main bar order is always Settings → … → drag on screen (top to bottom). Do not
+// mirror flex-col-reverse when the island docks to a top corner — that flipped
+// the stack when the window crossed the display midline.
 const mainControlsLayoutClasses = computed(() => [
-  'flex gap-1',
-  isTop.value ? 'flex-col-reverse' : 'flex-col',
+  'flex gap-1 flex-col',
 ])
 const panelPositionClasses = computed(() => {
   if (dock.value === 'top-left')
@@ -458,20 +458,6 @@ function resetMainWindowPosition() {
 
                   <div :class="['grid grid-cols-3 gap-2']">
                     <ControlButtonTooltip disable-hoverable-content>
-                      <ControlButton
-                        v-track-button="{ name: 'controls_island_action', action: 'toggle_settings' }"
-                        :button-style="adjustStyleClasses.button"
-                        :aria-label="t('tamagotchi.stage.controls-island.open-settings')"
-                        @click="openSettings({ route: '/settings' })"
-                      >
-                        <div :class="['i-solar:settings-minimalistic-outline text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-                      </ControlButton>
-                      <template #tooltip>
-                        {{ t('tamagotchi.stage.controls-island.open-settings') }}
-                      </template>
-                    </ControlButtonTooltip>
-
-                    <ControlButtonTooltip disable-hoverable-content>
                       <ControlsIslandProfilePicker
                         v-model:open="profileOpen"
                         v-model:creating="profileCreationActive"
@@ -519,25 +505,6 @@ function resetMainWindowPosition() {
                       </ControlButton>
                       <template #tooltip>
                         {{ t('tamagotchi.stage.controls-island.center-main-window') }}
-                      </template>
-                    </ControlButtonTooltip>
-
-                    <ControlButtonTooltip disable-hoverable-content>
-                      <ControlButton
-                        v-track-button="{
-                          name: 'controls_island_action',
-                          action: themeActions[themeMode],
-                        }"
-                        :button-style="adjustStyleClasses.button"
-                        :aria-label="themeLabel"
-                        @click="switchToNextTheme"
-                      >
-                        <Transition name="fade" mode="out-in">
-                          <div :key="themeMode" :class="[themeIcons[themeMode], 'text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-                        </Transition>
-                      </ControlButton>
-                      <template #tooltip>
-                        {{ themeLabel }}
                       </template>
                     </ControlButtonTooltip>
 
@@ -601,6 +568,71 @@ function resetMainWindowPosition() {
         <div ref="mainControls" data-testid="main-controls" :class="['shrink-0', mainControlsLayoutClasses]">
           <ControlButtonTooltip side="inward">
             <ControlButton
+              v-track-button="{ name: 'controls_island_action', action: 'toggle_settings' }"
+              data-testid="controls-island-settings"
+              :button-style="adjustStyleClasses.button"
+              :aria-label="t('tamagotchi.stage.controls-island.open-settings')"
+              @click="openSettings({ route: '/settings' })"
+            >
+              <div :class="['i-solar:settings-minimalistic-outline text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+            </ControlButton>
+            <template #tooltip>
+              {{ t('tamagotchi.stage.controls-island.open-settings') }}
+            </template>
+          </ControlButtonTooltip>
+
+          <ControlButtonTooltip side="inward">
+            <ControlButton
+              v-track-button="{ name: 'controls_island_action', action: 'open_consciousness_settings' }"
+              data-testid="controls-island-consciousness"
+              :button-style="adjustStyleClasses.button"
+              :aria-label="t('tamagotchi.stage.controls-island.open-consciousness')"
+              @click="openSettings({ route: '/settings/modules/consciousness' })"
+            >
+              <div :class="['i-solar:ghost-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+            </ControlButton>
+            <template #tooltip>
+              {{ t('tamagotchi.stage.controls-island.open-consciousness') }}
+            </template>
+          </ControlButtonTooltip>
+
+          <ControlButtonTooltip side="inward">
+            <ControlButton
+              v-track-button="{ name: 'controls_island_action', action: 'open_speech_settings' }"
+              data-testid="controls-island-speech-module"
+              :button-style="adjustStyleClasses.button"
+              :aria-label="t('tamagotchi.stage.controls-island.open-speech')"
+              @click="openSettings({ route: '/settings/modules/speech' })"
+            >
+              <div :class="['i-solar:user-speak-rounded-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+            </ControlButton>
+            <template #tooltip>
+              {{ t('tamagotchi.stage.controls-island.open-speech') }}
+            </template>
+          </ControlButtonTooltip>
+
+          <ControlButtonTooltip side="inward">
+            <ControlButton
+              v-track-button="{
+                name: 'controls_island_action',
+                action: themeActions[themeMode],
+              }"
+              data-testid="controls-island-theme"
+              :button-style="adjustStyleClasses.button"
+              :aria-label="themeLabel"
+              @click="switchToNextTheme"
+            >
+              <Transition name="fade" mode="out-in">
+                <div :key="themeMode" :class="[themeIcons[themeMode], 'text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </Transition>
+            </ControlButton>
+            <template #tooltip>
+              {{ themeLabel }}
+            </template>
+          </ControlButtonTooltip>
+
+          <ControlButtonTooltip side="inward">
+            <ControlButton
               v-track-button="{
                 name: 'controls_island_action',
                 action: expanded ? 'collapse_controls' : 'expand_controls',
@@ -628,12 +660,6 @@ function resetMainWindowPosition() {
               {{ expanded ? t('tamagotchi.stage.controls-island.collapse') : t('tamagotchi.stage.controls-island.expand') }}
             </template>
           </ControlButtonTooltip>
-
-          <StatusIsland
-            v-if="IS_DEV"
-            :button-style="adjustStyleClasses.button"
-            :icon-class="adjustStyleClasses.icon"
-          />
 
           <ControlsIslandChatButton :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
 

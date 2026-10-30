@@ -13,6 +13,7 @@ import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
 import { createAppService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
 import { createNativeTtsService } from '../../services/electron/native-tts'
+import { getRendererWindowLoadIndicatorService } from '../../services/electron/renderer-window-load-indicator'
 import { WindowBackdropService } from '../../services/electron/window-backdrop'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
@@ -190,4 +191,10 @@ export async function setupBaseWindowElectronInvokes(params: {
   await createI18nService({ context: params.context, window: params.window, i18n: params.i18n })
 
   createServerChannelService({ serverChannel: params.serverChannel })
+
+  const loadIndicator = getRendererWindowLoadIndicatorService()
+  if (loadIndicator) {
+    loadIndicator.registerContext(params.context)
+    params.window.once('closed', () => loadIndicator.unregisterContext(params.context))
+  }
 }

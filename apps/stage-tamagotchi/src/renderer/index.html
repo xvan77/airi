@@ -3,22 +3,91 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, viewport-fit=cover" />
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <!-- <meta
-      http-equiv="Content-Security-Policy"
-      content="
-      default-src 'self';
-      script-src-elem 'self' 'unsafe-eval' https://cdn.jsdelivr.net/;
-      script-src 'self' 'unsafe-eval';
-      style-src 'self' 'unsafe-inline';
-      img-src 'self' data: blob:;
-      font-src 'self' https://fonts.gstatic.com/;
-      connect-src 'self' https://cdn.jsdelivr.net/ blob: https://openrouter.ai/ https://huggingface.co/ https://*.cdn.hf.co/"
-    /> -->
     <script src="/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js"></script>
   </head>
 
   <body class="font-sans">
+    <div
+      id="window-boot-splash"
+      class="window-boot-splash"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div class="window-boot-splash-card">
+        <span class="window-boot-splash-spinner" aria-hidden="true" />
+        <span id="window-boot-splash-text">Loading Main window…</span>
+      </div>
+    </div>
+    <style>
+      .window-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        pointer-events: none;
+      }
+
+      .window-boot-splash-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 8.75rem;
+        height: 8.75rem;
+        padding: 0.75rem;
+        border-radius: 1rem;
+        background: rgba(255, 255, 255, 0.95);
+        color: #171717;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        line-height: 1.25;
+        text-align: center;
+        padding: 0 0.25rem;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .window-boot-splash-card {
+          background: rgba(23, 23, 23, 0.95);
+          color: #fafafa;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+        }
+
+        .window-boot-splash-spinner {
+          border-color: rgba(45, 212, 191, 0.25);
+          border-top-color: #2dd4bf;
+        }
+      }
+
+      .window-boot-splash-spinner {
+        display: inline-block;
+        width: 1.75rem;
+        height: 1.75rem;
+        border: 2px solid rgba(20, 184, 166, 0.25);
+        border-top-color: #14b8a6;
+        border-radius: 9999px;
+        animation: window-boot-spin 2.75s linear infinite;
+      }
+
+      @keyframes window-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        var hash = (location.hash || '#/').slice(1).split('?')[0] || '/'
+        if (hash !== '/') {
+          document.getElementById('window-boot-splash')?.remove()
+        }
+      })()
+    </script>
     <div id="app"></div>
     <script type="module" src="/main.ts"></script>
   </body>

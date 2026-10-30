@@ -20,6 +20,7 @@ import { electronSettingsNavigate } from '../../../shared/eventa'
 import { SETTINGS_WINDOW_WIDTH } from '../../../shared/settings-window'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createReusableWindow } from '../../libs/electron/window-manager'
+import { getRendererWindowLoadIndicatorService } from '../../services/electron/renderer-window-load-indicator'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
 import { setupSettingsWindowInvokes } from './rpc/index.electron'
 
@@ -108,6 +109,7 @@ export function setupSettingsWindowReusableFunc(params: {
     const window = await reusable.getWindow()
 
     if (route && settingsContext) {
+      getRendererWindowLoadIndicatorService()?.syncWindowRoute(window, route)
       settingsContext.emit(electronSettingsNavigate, { route })
     }
 

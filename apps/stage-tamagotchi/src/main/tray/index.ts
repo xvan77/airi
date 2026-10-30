@@ -6,6 +6,7 @@ import type { Config } from '../libs/electron/persistence'
 import type { I18n } from '../libs/i18n'
 import type { ServerChannel } from '../services/airi/channel-server'
 import type { setupBeatSync } from '../windows/beat-sync'
+import type { LazyBeatSyncWindowHandle } from '../windows/beat-sync/lazy-beat-sync'
 import type { setupCaptionWindowManager } from '../windows/caption'
 import type { SettingsWindowManager } from '../windows/settings'
 import type { WidgetsWindowManager } from '../windows/widgets'
@@ -106,7 +107,7 @@ interface SetupTrayParams {
   settingsWindow: SettingsWindowManager
   captionWindow: ReturnType<typeof setupCaptionWindowManager>
   widgetsWindow: WidgetsWindowManager
-  beatSyncBgWindow: Awaited<ReturnType<typeof setupBeatSync>>
+  beatSyncBgWindow: Awaited<ReturnType<typeof setupBeatSync>> | LazyBeatSyncWindowHandle
   aboutWindow: () => Promise<BrowserWindow>
   inlayWindow: () => Promise<BrowserWindow>
   serverChannel: ServerChannel
@@ -242,7 +243,14 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
       ...shouldOpenDevTools()
         ? [
             { type: 'header', label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.devtools') },
-            { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.troubleshoot_beatsync'), click: () => params.beatSyncBgWindow.webContents.openDevTools({ mode: 'detach' }) },
+            { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.troubleshoot_beatsync'), click: () => {
+              void (async () => {
+                const window = 'ensure' in params.beatSyncBgWindow
+                  ? await params.beatSyncBgWindow.ensure()
+                  : params.beatSyncBgWindow
+                window.webContents.openDevTools({ mode: 'detach' })
+              })()
+            } },
             { type: 'separator' },
           ] as const
         : [],

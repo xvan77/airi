@@ -6,7 +6,7 @@ import type { ChatRequestOptions, ModelInfo, ProviderDefinition, ProviderInstanc
 
 import { errorMessageFrom } from '@moeru/std'
 import { getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
-import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { isAggressiveOfflineStartup, isCustomProvidersDisabled } from '@proj-airi/stage-shared'
 import { computedAsync, useAsyncState, useIntervalFn } from '@vueuse/core'
 import { listModels } from '@xsai/model'
 import { uniqBy } from 'es-toolkit'
@@ -998,10 +998,12 @@ export const useProviderStore = defineStore('provider', () => {
   // Load models for configured providers and credential-free speech providers on Speech.
   async function loadModelsForConfiguredProviders() {
     const providerIds = new Set(availableProviders.value)
-    for (const metadata of allAudioSpeechProvidersMetadata.value) {
-      const definition = findProviderDefinition(metadata.id)
-      if (definition?.requiresCredentials === false)
-        providerIds.add(metadata.id)
+    if (!isAggressiveOfflineStartup()) {
+      for (const metadata of allAudioSpeechProvidersMetadata.value) {
+        const definition = findProviderDefinition(metadata.id)
+        if (definition?.requiresCredentials === false)
+          providerIds.add(metadata.id)
+      }
     }
 
     for (const providerId of providerIds) {

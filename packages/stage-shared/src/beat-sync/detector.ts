@@ -9,10 +9,12 @@ import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { startAnalyser as startTemporaAnalyser } from '@nekopaw/tempora'
 import { setupElectronScreenCapture } from '@proj-airi/electron-screen-capture/renderer'
 
+import { isAggressiveOfflineStartup } from '../aggressive-offline-startup'
 import { isStageCapacitor, isStageTamagotchi, isStageWeb, StageEnvironment } from '../environment'
 import { isElectronWindow } from '../window'
 import {
   beatSyncBeatSignaledInvokeEventa,
+  beatSyncEnsureBackgroundWindowInvokeEventa,
   beatSyncGetInputByteFrequencyDataInvokeEventa,
   beatSyncGetStateInvokeEventa,
   beatSyncStateChangedInvokeEventa,
@@ -280,6 +282,13 @@ export function isBeatSyncSupported() {
   return isStageWeb() || isStageTamagotchi()
 }
 
+async function ensureBeatSyncBackgroundWindow() {
+  if (!isStageTamagotchi() || !isAggressiveOfflineStartup())
+    return
+
+  await defineInvoke(getContext(), beatSyncEnsureBackgroundWindowInvokeEventa)()
+}
+
 export function toggleBeatSync(enabled: boolean) {
   if (isStageWeb()) {
     if (enabled) {
@@ -291,8 +300,10 @@ export function toggleBeatSync(enabled: boolean) {
   }
 
   if (isStageTamagotchi() || isStageCapacitor()) {
-    const toggleFn = defineInvoke(getContext(), beatSyncToggleInvokeEventa)
-    return toggleFn(enabled)
+    return ensureBeatSyncBackgroundWindow().then(() => {
+      const toggleFn = defineInvoke(getContext(), beatSyncToggleInvokeEventa)
+      return toggleFn(enabled)
+    })
   }
 
   throw new Error('Unknown environment for beatSyncToggle()')
@@ -304,6 +315,7 @@ export async function getBeatSyncState() {
   }
 
   if (isStageTamagotchi() || isStageCapacitor()) {
+    await ensureBeatSyncBackgroundWindow()
     return defineInvoke(getContext(), beatSyncGetStateInvokeEventa)()
   }
 

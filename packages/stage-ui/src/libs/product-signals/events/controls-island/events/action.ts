@@ -7,6 +7,8 @@ export type ControlsIslandAction
   = | 'expand_controls'
     | 'collapse_controls'
     | 'toggle_settings'
+    | 'open_consciousness_settings'
+    | 'open_speech_settings'
     | 'toggle_profile_picker'
     | 'toggle_chat'
     | 'refresh_window'

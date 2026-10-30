@@ -1,5 +1,6 @@
 import type {} from 'pinia-plugin-synced'
 
+import { isAggressiveOfflineStartup } from '@proj-airi/stage-shared'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { refManualReset } from '@vueuse/core'
 import { defineStore } from 'pinia'
@@ -18,9 +19,10 @@ export const useVisionStore = defineStore('vision', () => {
   const activeModel = useLocalStorageManualReset('settings/vision/active-model', '', persistenceOptions)
   const activeCustomModelName = useLocalStorageManualReset('settings/vision/active-custom-model', '', persistenceOptions)
   const ollamaThinkingEnabled = useLocalStorageManualReset('settings/vision/ollama-thinking-enabled', false, persistenceOptions)
-  const useForChat = useLocalStorageManualReset('settings/vision/use-for-chat', true, persistenceOptions)
+  const visionEnabledByDefault = !isAggressiveOfflineStartup()
+  const useForChat = useLocalStorageManualReset('settings/vision/use-for-chat', visionEnabledByDefault, persistenceOptions)
   /** Whether the vision model reads the images that tools return, such as computer-use screenshots. */
-  const useForToolImages = useLocalStorageManualReset('settings/vision/use-for-tool-images', true, persistenceOptions)
+  const useForToolImages = useLocalStorageManualReset('settings/vision/use-for-tool-images', visionEnabledByDefault, persistenceOptions)
   const modelSearchQuery = refManualReset('')
 
   const supportsModelListing = computed(() => {

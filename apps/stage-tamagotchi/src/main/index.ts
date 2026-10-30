@@ -15,6 +15,7 @@ import messages from '@proj-airi/i18n/locales'
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { Format, LogLevel, setGlobalFormat, setGlobalHookPostLog, setGlobalLogLevel, useLogg } from '@guiiai/logg'
+import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { hasSelectedScreenCaptureSource, initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
 import { app, ipcMain, protocol, session } from 'electron'
@@ -24,6 +25,8 @@ import { isLinux } from 'std-env'
 
 import devIcon from '../../resources/icon-dev.png?asset'
 
+import { electronBeatSyncEnsureBackgroundWindow } from '../shared/eventa'
+import { TAMAGOTCHI_AGGRESSIVE_STARTUP } from '../shared/startup-profile'
 import { openDebugger, setupDebugger } from './app/debugger'
 import { nullFileLoggerHandle, setupFileLogger } from './app/file-logger'
 import { resolveIsWayland } from './app/ozone'
@@ -50,10 +53,12 @@ import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-she
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupLocalLlmService } from './services/electron/local-llm'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
+import { setupRendererWindowLoadIndicatorService } from './services/electron/renderer-window-load-indicator'
 import { setupSherpawModelAssets } from './services/electron/sherpaw-model-assets'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
 import { setupBeatSync } from './windows/beat-sync'
+import { createLazyBeatSyncWindowHandle } from './windows/beat-sync/lazy-beat-sync'
 import { setupCaptionWindowManager } from './windows/caption'
 import { setupChatWindowManager } from './windows/chat'
 import { isDesktopOverlayEnabled, setupDesktopOverlayWindow } from './windows/desktop-overlay'
@@ -246,6 +251,8 @@ app.whenReady().then(async () => {
 
   injeca.setLogger(createLoggLogger(useLogg('injeca').useGlobalConfig()))
 
+  setupRendererWindowLoadIndicatorService()
+
   const appConfig = injeca.provide('configs:app', () => createGlobalAppConfig())
   const artistryConfig = injeca.provide('configs:artistry', () => createArtistryConfig())
   const ioTraceRecordingConfig = injeca.provide('configs:io-trace-recording', () => createIOTraceRecordingConfig())
@@ -336,6 +343,7 @@ app.whenReady().then(async () => {
   const globalShortcut = injeca.provide('services:global-shortcut', () => setupGlobalShortcutService())
 
   // Beat Sync uses a background renderer because Web Audio processing needs a DOM runtime.
+  const lazyBeatSyncHandle = createLazyBeatSyncWindowHandle()
   const beatSync = injeca.provide('windows:beat-sync', () => setupBeatSync())
 
   const devtoolsMarkdownStressWindow = injeca.provide('windows:devtools:markdown-stress', () => setupDevtoolsWindow())
@@ -385,7 +393,19 @@ app.whenReady().then(async () => {
   })
 
   const settingsWindow = injeca.provide('windows:settings', {
-    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording },
+    dependsOn: {
+      widgetsManager,
+      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP ? {} : { beatSync }),
+      autoUpdater,
+      devtoolsWindow: devtoolsMarkdownStressWindow,
+      serverChannel,
+      godotStageManager,
+      mcpManager,
+      i18n,
+      globalShortcut,
+      spotlightWindow,
+      ioTraceRecording,
+    },
     build: async ({ dependsOn }) => {
       settingsWindowManager = setupSettingsWindowReusableFunc({
         ...dependsOn,
@@ -414,7 +434,28 @@ app.whenReady().then(async () => {
   })
 
   const mainWindow = injeca.provide('windows:main', {
-    dependsOn: { editorWindow, settingsWindow, workspaceWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, globalShortcut, spotlightWindow, devtoolsWindow: devtoolsMarkdownStressWindow },
+    dependsOn: {
+      editorWindow,
+      settingsWindow,
+      workspaceWindow,
+      chatWindow,
+      widgetsManager,
+      noticeWindow,
+      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP ? {} : { beatSync }),
+      autoUpdater,
+      serverChannel,
+      godotStageManager,
+      mcpManager,
+      i18n,
+      onboardingWindowManager,
+      inlayWindow,
+      appleSpeechTranscription,
+      appleVision,
+      ioTraceRecording,
+      globalShortcut,
+      spotlightWindow,
+      devtoolsWindow: devtoolsMarkdownStressWindow,
+    },
     build: async ({ dependsOn }) => setupMainWindow({
       ...dependsOn,
       onWindowCreated: (window) => {
@@ -455,8 +496,24 @@ app.whenReady().then(async () => {
   })
 
   const tray = injeca.provide('app:tray', {
-    dependsOn: { mainWindow, settingsWindow, captionWindow, widgetsWindow: widgetsManager, serverChannel, beatSyncBgWindow: beatSync, aboutWindow, inlayWindow, i18n, appConfig },
-    build: async ({ dependsOn }) => setupTray(dependsOn),
+    dependsOn: {
+      mainWindow,
+      settingsWindow,
+      captionWindow,
+      widgetsWindow: widgetsManager,
+      serverChannel,
+      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP ? {} : { beatSyncBgWindow: beatSync }),
+      aboutWindow,
+      inlayWindow,
+      i18n,
+      appConfig,
+    },
+    build: async ({ dependsOn }) => setupTray({
+      ...dependsOn,
+      beatSyncBgWindow: TAMAGOTCHI_AGGRESSIVE_STARTUP
+        ? lazyBeatSyncHandle
+        : dependsOn.beatSyncBgWindow,
+    }),
   })
 
   // Desktop grounding overlay — gated by AIRI_DESKTOP_OVERLAY=1
@@ -476,9 +533,25 @@ app.whenReady().then(async () => {
   }
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig },
+    dependsOn: {
+      mainWindow,
+      tray,
+      serverChannel,
+      airiHttpServer,
+      onboardingWindow: onboardingWindowManager,
+      widgetsWindow: widgetsManager,
+      spotlightWindow,
+      artistryConfig,
+      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP ? {} : { godotStageManager, pluginHost, mcpManager }),
+    },
     callback: async (deps) => {
       const { context } = createContext(ipcMain)
+      if (TAMAGOTCHI_AGGRESSIVE_STARTUP) {
+        defineInvokeHandler(context, electronBeatSyncEnsureBackgroundWindow, async () => {
+          await lazyBeatSyncHandle.ensure()
+        })
+      }
+
       setupComputerUse(context)
       setupHomeAssistant(context)
       await setupArtistryBridge({

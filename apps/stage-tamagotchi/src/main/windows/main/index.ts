@@ -43,7 +43,7 @@ import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs
 import { createConfig } from '../../libs/electron/persistence'
 import { setupSettingsPageInvokes } from '../settings/rpc/index.electron'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared'
-import { centerWindowOnDisplay, computeCenteredWindowBounds } from '../shared/display'
+import { centerWindowOnDisplay, clampWindowToDominantWorkArea, computeCenteredWindowBounds } from '../shared/display'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
 
 const appConfigSchema = object({
@@ -201,8 +201,14 @@ export async function setupMainWindow(params: {
     updateConfig(config)
   }
 
-  window.on('resize', () => handleNewBounds(window.getBounds()))
-  window.on('move', () => handleNewBounds(window.getBounds()))
+  function syncMainWindowBounds() {
+    if (!boundsBeforeFullscreen)
+      clampWindowToDominantWorkArea(window)
+    handleNewBounds(window.getBounds())
+  }
+
+  window.on('resize', syncMainWindowBounds)
+  window.on('move', syncMainWindowBounds)
   window.on('close', (event) => {
     if (allowClose) {
       return
@@ -239,7 +245,11 @@ export async function setupMainWindow(params: {
   }
   applyPin()
 
-  window.on('ready-to-show', () => window!.show())
+  window.on('ready-to-show', () => {
+    if (!boundsBeforeFullscreen)
+      clampWindowToDominantWorkArea(window)
+    window.show()
+  })
   protectPrivilegedWindowNavigation(window)
 
   await setupMainWindowElectronInvokes({
@@ -338,6 +348,7 @@ export async function setupMainWindow(params: {
     const bounds = boundsBeforeFullscreen
     boundsBeforeFullscreen = undefined
     window.setBounds(bounds)
+    clampWindowToDominantWorkArea(window)
     applyPin()
     params.chatWindow.setMainWindowCovered(false)
     params.onFullscreenChange?.(false)

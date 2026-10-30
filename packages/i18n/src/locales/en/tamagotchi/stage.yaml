@@ -3,6 +3,28 @@ operations:
   load-models-status:
     loading: Loading
     ready: Ready
+window-loading:
+  label: Loading {name}…
+  names:
+    main: Main window
+    model: Display model
+    settings: Settings
+    consciousness: Consciousness
+    speech: Speech
+    chat: Chat
+    workspace: Workspace
+    onboarding: Onboarding
+    about: About
+    caption: Captions
+    spotlight: Spotlight
+    widgets: Widgets
+    editor: Editor
+    inlay: Speech overlay
+    notice: Notice
+    devtools: Developer tools
+    dashboard: Dashboard
+    desktop-overlay: Desktop overlay
+    other: window
 'resource-island':
   loading: Preparing resources...
   ready: Resources ready
@@ -27,6 +49,8 @@ docs:
     enable: Auto hide
     disable: Always show
   'open-settings': Open settings
+  'open-consciousness': Open Consciousness
+  'open-speech': Open Speech
   'open-chat': Open Chat
   'hide-chat': Hide Chat
   'refresh': Refresh

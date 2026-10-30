@@ -4,7 +4,7 @@ import type { DisplayArea } from '../../../shared/utils/electron/display'
 
 import { screen } from 'electron'
 
-import { findDominantDisplayArea } from '../../../shared/utils/electron/display'
+import { clampBoundsWithinRect, findDominantDisplayArea } from '../../../shared/utils/electron/display'
 
 export function currentDisplayBounds(window: BrowserWindow) {
   const bounds = window.getBounds()
@@ -67,6 +67,43 @@ export function centerWindowOnDisplay(window: Pick<BrowserWindow, 'getBounds' | 
   window.show()
 
   return centeredBounds
+}
+
+type WindowBoundsTarget = Pick<BrowserWindow, 'getBounds' | 'isDestroyed' | 'setBounds'>
+
+/**
+ * Keeps an Electron window inside the work area of its dominant display.
+ *
+ * Use when:
+ * - The user drags the main stage window and the controls bar must stay reachable
+ * - Saved window coordinates are restored after a monitor layout change
+ *
+ * Returns:
+ * - The bounds applied to the window, or undefined when the window is destroyed
+ */
+export function clampWindowToDominantWorkArea(
+  window: WindowBoundsTarget | undefined,
+  displays: readonly DisplayArea[] = screen.getAllDisplays(),
+): Rectangle | undefined {
+  if (!window || window.isDestroyed())
+    return undefined
+
+  const bounds = window.getBounds()
+  const display = findDominantDisplayArea(bounds, displays)
+    ?? screen.getDisplayMatching(bounds)
+  const clamped = clampBoundsWithinRect(bounds, display.workArea)
+
+  if (
+    clamped.x === bounds.x
+    && clamped.y === bounds.y
+    && clamped.width === bounds.width
+    && clamped.height === bounds.height
+  ) {
+    return bounds
+  }
+
+  window.setBounds(clamped)
+  return clamped
 }
 
 export interface DominantDisplayResizeOptions {

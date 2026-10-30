@@ -35,6 +35,7 @@ import { onMounted, onUnmounted, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { toast, Toaster } from 'vue-sonner'
 
+import RendererWindowBootOverlay from './components/renderer-window-boot-overlay.vue'
 import ResizeHandler from './components/ResizeHandler.vue'
 
 import {
@@ -430,6 +431,7 @@ onUnmounted(() => {
   <ToasterRoot @close="id => toast.dismiss(id)">
     <Toaster />
   </ToasterRoot>
+  <RendererWindowBootOverlay />
   <ResizeHandler v-if="!isSpotlightWindow && !isFloatingChatWindow && !mainWindowFullscreen" />
   <RouterView />
 </template>
