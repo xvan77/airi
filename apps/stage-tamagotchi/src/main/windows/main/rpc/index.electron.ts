@@ -27,6 +27,7 @@ import {
   electronOpenInlay,
   electronOpenMainDevtools,
   electronOpenSettings,
+  electronShowChatWindow,
   noticeWindowEventa,
 } from '../../../../shared/eventa'
 import { createAuthService } from '../../../services/airi/auth'
@@ -89,6 +90,7 @@ export async function setupMainWindowElectronInvokes(params: {
   })
   defineInvokeHandler(context, electronOpenSettings, payload => params.settingsWindow.openWindow(payload?.route))
   defineInvokeHandler(context, electronOpenChat, () => params.chatWindow.toggle())
+  defineInvokeHandler(context, electronShowChatWindow, () => params.chatWindow.open())
   defineInvokeHandler(context, electronGetChatButtonState, () => params.chatWindow.getButtonState())
   const stopChatButtonState = params.chatWindow.onButtonStateChange(state => context.emit(electronChatButtonStateChanged, state))
   params.window.once('closed', stopChatButtonState)

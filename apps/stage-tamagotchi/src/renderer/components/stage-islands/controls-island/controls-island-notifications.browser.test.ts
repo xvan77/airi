@@ -47,13 +47,11 @@ vi.mock('@proj-airi/stage-ui/stores/auth', async () => {
   authState.user = ref(null)
   authState.userId = ref('local')
 
-  // Pinia unwraps store refs. The inbox store reads `auth.token`, not `auth.token.value`.
   const store = reactive(authState)
   return { useAuthStore: () => store }
 })
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
-const label = (key: string) => i18n.global.t(`tamagotchi.stage.controls-island.${key}`)
 
 function mountIsland() {
   const dock = ref<'bottom-right'>('bottom-right')
@@ -73,29 +71,9 @@ function mountIsland() {
   })
 }
 
-let unreadCount = 2
-
 describe('controls Island notifications', () => {
   beforeEach(async () => {
-    unreadCount = 2
     await page.viewport(900, 640)
-    // Cloud is the HTTP boundary of the notifications row.
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-      const request = input instanceof Request ? input : new Request(input)
-      const { pathname } = new URL(request.url)
-      if (pathname === '/v1/inbox/unread-count')
-        return Promise.resolve(Response.json({ unread: unreadCount }))
-      if (pathname === '/v1/inbox') {
-        return Promise.resolve(Response.json({
-          messages: [
-            { id: 'm1', kind: 'flux.granted', params: { amount: 500, reason: '感谢参与 AIRI 测试。' }, readAt: '', createdAt: '2026-10-18T08:00:00Z' },
-            { id: 'm2', kind: 'subscription.payment_failed', params: { plan: 'Pro', retryAt: '2026-10-20T00:00:00Z' }, readAt: '', createdAt: '2026-10-17T08:00:00Z' },
-          ],
-          nextCursor: '',
-        }))
-      }
-      return Promise.resolve(Response.json({}))
-    })
   })
 
   afterEach(() => {
@@ -105,62 +83,14 @@ describe('controls Island notifications', () => {
     authState.user.value = null
   })
 
-  it('hides the Notifications row and the dot while signed out', async () => {
-    const screen = mountIsland()
+  it('does not expose the overflow menu or notifications entry', async () => {
+    authState.token.value = 'user-1-token'
+    authState.user.value = { id: 'user-1', name: 'Neko', email: 'neko@example.test', emailVerified: true, createdAt: new Date(), updatedAt: new Date() }
+    authState.isAuthenticated.value = true
+    mountIsland()
 
-    await screen.getByLabelText(label('expand'), { exact: true }).click()
-    await expect.element(screen.getByTestId('controls-menu')).toBeVisible()
+    expect(document.querySelector('[data-testid="controls-menu"]')).toBeNull()
     expect(document.querySelector('[data-testid="controls-island-notifications"]')).toBeNull()
     expect(document.querySelector('[data-testid="controls-island-notifications-dot"]')).toBeNull()
-  })
-
-  it('switches the menu to the list in place and back', async () => {
-    authState.token.value = 'user-1-token'
-    authState.user.value = { id: 'user-1', name: 'Neko', email: 'neko@example.test', emailVerified: true, createdAt: new Date(), updatedAt: new Date() }
-    authState.isAuthenticated.value = true
-    const screen = mountIsland()
-
-    await expect.element(screen.getByTestId('controls-island-notifications-dot')).toBeInTheDocument()
-
-    await screen.getByLabelText(label('expand'), { exact: true }).click()
-    const row = screen.getByRole('button', { name: 'Open notifications, 2 unread' })
-    await expect.element(row).toBeVisible()
-    await expect.element(row).toHaveTextContent('Notifications')
-
-    await row.click()
-    const menu = screen.getByTestId('controls-menu').element()
-    const list = screen.getByTestId('controls-island-notifications-view')
-    await expect.element(list).toBeVisible()
-    // The list replaces the controls inside the same menu card. No new floating card opens.
-    expect(menu.contains(list.element())).toBe(true)
-    expect(document.querySelectorAll('[data-reka-popper-content-wrapper]').length).toBe(0)
-    await expect.element(screen.getByRole('button', { name: /You received 500 Flux/ })).toBeVisible()
-    await expect.element(screen.getByLabelText(label('open-settings'), { exact: true })).toBeVisible()
-
-    await screen.getByRole('button', { name: 'Back' }).click()
-    await expect.element(screen.getByRole('button', { name: 'Open notifications, 2 unread' })).toBeVisible()
-    expect(document.querySelector('[data-testid="controls-island-notifications-view"]')).toBeNull()
-  })
-
-  it('shows a dot on the expand button and a capped count in the row', async () => {
-    unreadCount = 12345
-    authState.token.value = 'user-1-token'
-    authState.user.value = { id: 'user-1', name: 'Neko', email: 'neko@example.test', emailVerified: true, createdAt: new Date(), updatedAt: new Date() }
-    authState.isAuthenticated.value = true
-    const screen = mountIsland()
-
-    const expandDot = screen.getByTestId('controls-island-notifications-dot')
-    await expect.element(expandDot).toBeInTheDocument()
-    expect(expandDot.element().textContent).toBe('')
-
-    await screen.getByLabelText(label('expand'), { exact: true }).click()
-    const row = screen.getByRole('button', { name: 'Open notifications, 12345 unread' })
-    await expect.element(row).toBeVisible()
-    // The row is a menu row, so it shows the count. Badge caps it, so the menu card keeps its width.
-    await expect.element(screen.getByTestId('controls-island-notifications-count')).toHaveTextContent('99+')
-
-    await row.click()
-    const heading = screen.getByRole('heading', { name: /Notifications/ })
-    await expect.element(heading).toHaveTextContent('99+')
   })
 })

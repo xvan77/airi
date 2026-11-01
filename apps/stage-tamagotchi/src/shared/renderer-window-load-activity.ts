@@ -1,21 +1,52 @@
 import type { RendererWindowLoadLabelId } from './renderer-window-load-label'
 
+export interface RendererWindowLoadActivityEntry {
+  labelId: RendererWindowLoadLabelId
+  routePath: string
+}
+
 export interface RendererWindowLoadActivity {
-  /** Label ids for renderer windows that are loading their main frame. */
   activeLabelIds: RendererWindowLoadLabelId[]
+  activeEntries: RendererWindowLoadActivityEntry[]
+}
+
+interface BootPendingEntry {
+  count: number
+  routePath: string
 }
 
 export function mergeRendererWindowLoadActivity(
-  frameLoads: Array<{ labelId: RendererWindowLoadLabelId, loadCount: number }>,
-  bootPending: Map<RendererWindowLoadLabelId, number>,
+  frameLoads: Array<{ labelId: RendererWindowLoadLabelId, loadCount: number, routePath: string }>,
+  bootPending: Map<RendererWindowLoadLabelId, BootPendingEntry>,
 ): RendererWindowLoadActivity {
-  const bootIds = [...bootPending.keys()]
-  if (bootIds.length > 0)
-    return { activeLabelIds: bootIds }
+  const bootEntries: RendererWindowLoadActivityEntry[] = []
+  for (const [labelId, pending] of bootPending) {
+    if (pending.count > 0)
+      bootEntries.push({ labelId, routePath: pending.routePath })
+  }
 
-  const loadingIds = frameLoads
+  if (bootEntries.length > 0) {
+    return {
+      activeEntries: bootEntries,
+      activeLabelIds: bootEntries.map(entry => entry.labelId),
+    }
+  }
+
+  const frameEntries = frameLoads
     .filter(entry => entry.loadCount > 0)
-    .map(entry => entry.labelId)
+    .map(entry => ({ labelId: entry.labelId, routePath: entry.routePath }))
 
-  return { activeLabelIds: [...new Set(loadingIds)] }
+  const seen = new Set<string>()
+  const activeEntries = frameEntries.filter((entry) => {
+    const key = `${entry.labelId}:${entry.routePath}`
+    if (seen.has(key))
+      return false
+    seen.add(key)
+    return true
+  })
+
+  return {
+    activeEntries,
+    activeLabelIds: activeEntries.map(entry => entry.labelId),
+  }
 }

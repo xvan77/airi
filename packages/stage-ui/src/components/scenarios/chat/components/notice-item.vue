@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import HitPill from './hit-pill.vue'
+import LocalLlmStatusNotice from './local-llm-status-notice.vue'
 
 import { extractMessageText } from '../../../../libs/chat-sync'
 
@@ -22,10 +23,12 @@ const { t } = useI18n()
 // A background task names itself `recipe:<name>`. Other sources show as they are.
 const sourceName = computed(() => props.message.notice?.source.replace(/^recipe:/, '') ?? '')
 const text = computed(() => extractMessageText(props.message))
+const isLocalLlmStatus = computed(() => props.message.notice?.source === 'status:local-llm')
 </script>
 
 <template>
-  <HitPill :class="['py-1']" align="center" :icons="['i-mingcute:notification-fill']" :surface="props.surface">
+  <LocalLlmStatusNotice v-if="isLocalLlmStatus" :text="text" />
+  <HitPill v-else :class="['py-1']" align="center" :icons="['i-mingcute:notification-fill']" :surface="props.surface">
     <template #label>
       {{ t('stage.chat.notice.label', { name: sourceName }) }}
     </template>

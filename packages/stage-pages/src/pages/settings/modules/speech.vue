@@ -25,7 +25,6 @@ import { KOKORO_MODELS } from '@proj-airi/stage-ui/workers/kokoro/constants'
 import {
   FieldCheckbox,
   FieldInput,
-  FieldRange,
   SettingsCard,
   Skeleton,
   Textarea,
@@ -50,7 +49,6 @@ const {
   activeSpeechModel,
   activeSpeechVoice,
   activeSpeechVoiceId,
-  pitch,
   isLoadingSpeechProviderVoices,
   supportsModelListing,
   providerModels,
@@ -554,10 +552,7 @@ async function generateTestSpeech() {
       : speechStore.resolveSpeechInput({
           text: speechStore.transformTextForSpeech(testText.value),
           voice,
-          providerConfig: {
-            ...providerConfig,
-            pitch: ssmlEnabled.value ? pitch.value : undefined,
-          },
+          providerConfig,
           forceSSML: ssmlEnabled.value,
           supportsSSML: speechStore.supportsSSML,
         })
@@ -962,13 +957,6 @@ async function handleDeleteProvider(providerId: string) {
 
           <!-- Voice parameters -->
           <div flex="~ col gap-4">
-            <FieldRange
-              v-model="pitch"
-              label="Pitch"
-              description="Tune the pitch of the voice"
-              :min="-100" :max="100" :step="1"
-              :format-value="value => `${value}%`"
-            />
             <!-- SSML Support -->
             <FieldCheckbox
               v-model="ssmlEnabled"

@@ -135,7 +135,9 @@ beforeEach(() => {
   authState.user.value = null
 })
 
-describe('controls Island overflow', () => {
+// The overflow drawer was removed from the Tamagotchi controls island. Keep these
+// cases skipped until they are rewritten for the main bar only.
+describe.skip('controls Island overflow', () => {
   for (const dock of docks) {
     for (const size of sizes) {
       // ROOT CAUSE:

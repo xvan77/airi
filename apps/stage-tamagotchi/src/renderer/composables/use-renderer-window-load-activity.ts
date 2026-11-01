@@ -1,3 +1,4 @@
+import type { RendererWindowLoadActivityEntry } from '../../shared/renderer-window-load-activity'
 import type { RendererWindowLoadLabelId } from '../../shared/renderer-window-load-label'
 
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
@@ -8,19 +9,37 @@ import {
   electronRendererWindowLoadActivityChanged,
 } from '../../shared/eventa'
 
-function normalizeLabelIds(ids: string[]): RendererWindowLoadLabelId[] {
-  return ids as RendererWindowLoadLabelId[]
+function normalizeEntries(
+  entries: Array<{ labelId: string, routePath: string }> | undefined,
+): RendererWindowLoadActivityEntry[] {
+  if (!entries?.length)
+    return []
+  return entries.map(entry => ({
+    labelId: entry.labelId as RendererWindowLoadLabelId,
+    routePath: entry.routePath,
+  }))
 }
 
 export function useRendererWindowLoadActivity() {
-  const activeLabelIds = ref<RendererWindowLoadLabelId[]>([])
+  const activeEntries = ref<RendererWindowLoadActivityEntry[]>([])
   const context = useElectronEventaContext()
   const getActivity = useElectronEventaInvoke(electronGetRendererWindowLoadActivity)
+
+  function applyActivity(body: { activeLabelIds?: string[], activeEntries?: Array<{ labelId: string, routePath: string }> }) {
+    if (body.activeEntries?.length) {
+      activeEntries.value = normalizeEntries(body.activeEntries)
+      return
+    }
+    activeEntries.value = (body.activeLabelIds ?? []).map(labelId => ({
+      labelId: labelId as RendererWindowLoadLabelId,
+      routePath: '/',
+    }))
+  }
 
   const stopListener = context.value.on(electronRendererWindowLoadActivityChanged, (event) => {
     if (!event?.body)
       return
-    activeLabelIds.value = normalizeLabelIds(event.body.activeLabelIds)
+    applyActivity(event.body)
   })
 
   onScopeDispose(() => {
@@ -29,16 +48,20 @@ export function useRendererWindowLoadActivity() {
 
   void getActivity()
     .then((activity) => {
-      activeLabelIds.value = normalizeLabelIds(activity.activeLabelIds)
+      applyActivity(activity)
     })
     .catch(() => {
       // The main process may not have registered the service yet during tests.
     })
 
-  const auxiliaryLabelIds = computed(() => activeLabelIds.value.filter(id => id !== 'main'))
+  const activeLabelIds = computed(() => activeEntries.value.map(entry => entry.labelId))
+
+  const auxiliaryEntries = computed(() => activeEntries.value.filter(entry => entry.labelId !== 'main'))
 
   return {
+    activeEntries,
     activeLabelIds,
-    auxiliaryLabelIds,
+    auxiliaryEntries,
+    auxiliaryLabelIds: computed(() => auxiliaryEntries.value.map(entry => entry.labelId)),
   }
 }

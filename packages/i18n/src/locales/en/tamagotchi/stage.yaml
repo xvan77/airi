@@ -4,6 +4,9 @@ operations:
     loading: Loading
     ready: Ready
 window-loading:
+  module: Loading module…
+  main-window: Loading window…
+  starting-model: Starting model…
   label: Loading {name}…
   names:
     main: Main window
@@ -25,6 +28,8 @@ window-loading:
     dashboard: Dashboard
     desktop-overlay: Desktop overlay
     other: window
+chat:
+  starting-local-llm-server: Starting local LLM server…
 'resource-island':
   loading: Preparing resources...
   ready: Resources ready
@@ -51,6 +56,8 @@ docs:
   'open-settings': Open settings
   'open-consciousness': Open Consciousness
   'open-speech': Open Speech
+  'open-models': Open models
+  'open-airi-card': Open AIRI card
   'open-chat': Open Chat
   'hide-chat': Hide Chat
   'refresh': Refresh

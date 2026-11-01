@@ -17,14 +17,16 @@ const router = useRouter()
 const route = useRoute()
 const routeLoading = ref(false)
 const pendingRouteBootLabel = shallowRef<RendererWindowLoadLabelId | null>(null)
+const pendingRoutePath = shallowRef<string | null>(null)
 const setRendererBootLoading = useElectronEventaInvoke(electronSetRendererWindowBootLoading)
 
 const labelId = computed(() => resolveRendererWindowLoadLabelId(
   resolveInitialRendererRoutePath(route.path),
 ))
+const displayRoutePath = computed(() => pendingRoutePath.value ?? route.path)
 const displayLabelId = computed(() => pendingRouteBootLabel.value ?? labelId.value)
 const tracksBootOnMainStage = computed(() => labelId.value !== 'main')
-const { loadingMessage } = useRendererWindowLoadingCopy(displayLabelId)
+const { loadingMessage } = useRendererWindowLoadingCopy(displayLabelId, displayRoutePath)
 
 const showBootCard = computed(() => {
   if (routeLoading.value)
@@ -38,18 +40,24 @@ function removeHtmlBootSplash() {
   document.getElementById('window-boot-splash')?.remove()
 }
 
-async function pushBootLoading(label: RendererWindowLoadLabelId, active: boolean) {
+async function pushBootLoading(label: RendererWindowLoadLabelId, active: boolean, routePath?: string) {
   if (label === 'main')
     return
-  await setRendererBootLoading({ labelId: label, active })
+  await setRendererBootLoading({
+    labelId: label,
+    active,
+    routePath: routePath ?? resolveInitialRendererRoutePath(route.path),
+  })
 }
 
 function clearPendingRouteBootSync() {
   const pending = pendingRouteBootLabel.value
+  const pendingPath = pendingRoutePath.value
   if (!pending)
     return
   pendingRouteBootLabel.value = null
-  void pushBootLoading(pending, false)
+  pendingRoutePath.value = null
+  void pushBootLoading(pending, false, pendingPath ?? undefined)
 }
 
 async function finishRouteBoot() {
@@ -66,11 +74,11 @@ onMounted(async () => {
       if (to.fullPath !== from.fullPath) {
         clearPendingRouteBootSync()
         routeLoading.value = true
-        const nextLabel = resolveRendererWindowLoadLabelId(
-          resolveInitialRendererRoutePath(to.path),
-        )
+        const nextPath = resolveInitialRendererRoutePath(to.path)
+        const nextLabel = resolveRendererWindowLoadLabelId(nextPath)
         pendingRouteBootLabel.value = nextLabel
-        void pushBootLoading(nextLabel, true)
+        pendingRoutePath.value = nextPath
+        void pushBootLoading(nextLabel, true, nextPath)
       }
       next()
     })
@@ -83,11 +91,11 @@ onMounted(async () => {
     })
   }
 
-  await pushBootLoading(labelId.value, true)
+  await pushBootLoading(labelId.value, true, resolveInitialRendererRoutePath(route.path))
   await router.isReady()
   rendererBootComplete.value = true
   routeLoading.value = false
-  await pushBootLoading(labelId.value, false)
+  await pushBootLoading(labelId.value, false, resolveInitialRendererRoutePath(route.path))
 })
 
 onUnmounted(() => {

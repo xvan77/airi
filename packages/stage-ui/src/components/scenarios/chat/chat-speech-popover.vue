@@ -144,26 +144,29 @@ watch(newProvider, async (provider) => {
   }
 }, { immediate: true })
 
-function handleAddFavorite() {
+async function handleAddFavorite() {
   if (!newVoiceId.value)
     return
 
   const fallbackName = `${newModel.value ? `${newModel.value.split('/').pop() || newModel.value} - ` : ''}${newVoiceId.value}`
   const displayName = newName.value.trim() || fallbackName
 
-  favorites.value.push({
+  const favorite: FavoriteSpeechModel = {
     id: String(Date.now()),
     name: displayName,
     provider: newProvider.value,
     model: newModel.value,
     voiceId: newVoiceId.value,
-  })
+  }
+  favorites.value.push(favorite)
 
   // Reset inputs & hide form
   newName.value = ''
   newModel.value = ''
   newVoiceId.value = ''
   showAddForm.value = false
+
+  await handleSelectFavorite(favorite)
 }
 
 function handleDeleteFavorite(fav: FavoriteSpeechModel) {

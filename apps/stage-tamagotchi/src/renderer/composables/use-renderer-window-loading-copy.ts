@@ -2,19 +2,30 @@ import type { ComputedRef } from 'vue'
 
 import type { RendererWindowLoadLabelId } from '../../shared/renderer-window-load-label'
 
-import { computed } from 'vue'
+import { computed, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-export function useRendererWindowLoadingCopy(labelId: ComputedRef<RendererWindowLoadLabelId> | RendererWindowLoadLabelId) {
-  const { t, te } = useI18n()
+function resolveLabelId(
+  labelId?: ComputedRef<RendererWindowLoadLabelId> | RendererWindowLoadLabelId,
+): RendererWindowLoadLabelId {
+  if (labelId === undefined)
+    return 'other'
+  return unref(labelId)
+}
+
+export function useRendererWindowLoadingCopy(
+  labelId?: ComputedRef<RendererWindowLoadLabelId> | RendererWindowLoadLabelId,
+  _routePath?: ComputedRef<string | undefined> | string,
+) {
+  const { t } = useI18n()
 
   const loadingMessage = computed(() => {
-    const id = typeof labelId === 'object' && 'value' in labelId ? labelId.value : labelId
-    const nameKey = `tamagotchi.stage.window-loading.names.${id}`
-    const name = te(nameKey)
-      ? t(nameKey)
-      : t('tamagotchi.stage.window-loading.names.other')
-    return t('tamagotchi.stage.window-loading.label', { name })
+    const id = resolveLabelId(labelId)
+    if (id === 'main')
+      return t('tamagotchi.stage.window-loading.main-window')
+    if (id === 'model')
+      return t('tamagotchi.stage.window-loading.starting-model')
+    return t('tamagotchi.stage.window-loading.module')
   })
 
   return { loadingMessage }

@@ -27,6 +27,7 @@ import { useChatDraftHandover } from '../composables/use-chat-draft-handover'
 import { dismissOverlays, useChatFloatingClickThrough } from '../composables/use-chat-floating-click-through'
 import { useChatOpeningOverlay } from '../composables/use-chat-opening-overlay'
 import { useDanmakuFeedExpiry } from '../composables/use-danmaku-feed-expiry'
+import { useLocalLlmStartupChatNotice } from '../composables/use-local-llm-startup-chat-notice'
 import { useWindowBackdrop } from '../composables/use-window-backdrop'
 import { useControlsIslandStore } from '../stores/controls-island'
 
@@ -38,6 +39,7 @@ const sessionsDrawerOpen = shallowRef(false)
 const interactiveArea = useTemplateRef<InstanceType<typeof InteractiveArea>>('interactive-area')
 const { t } = useI18n()
 const { showChatOpeningOverlay } = useChatOpeningOverlay()
+useLocalLlmStartupChatNotice()
 
 // Folded until the main process answers, so the first unfold plays the same
 // animation as every later one.

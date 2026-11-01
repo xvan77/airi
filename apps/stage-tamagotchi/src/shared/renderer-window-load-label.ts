@@ -27,6 +27,10 @@ function normalizeRoutePath(routePath: string) {
   return path.endsWith('/') ? path.slice(0, -1) : path
 }
 
+export function normalizeRendererRoutePath(routePath: string) {
+  return normalizeRoutePath(routePath)
+}
+
 /**
  * Maps a renderer hash route to the loading label id for that window.
  *

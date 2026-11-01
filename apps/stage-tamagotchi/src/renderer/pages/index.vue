@@ -48,6 +48,7 @@ import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runt
 import { useMainStageBootCardVisible, useRendererBootComplete } from '../composables/renderer-boot-complete'
 import { useFullscreenHost } from '../composables/use-fullscreen-host'
 import { provideFullscreenLayout } from '../composables/use-fullscreen-layout'
+import { useLogic2SectionAOtherStartup } from '../composables/use-logic-2-section-a-other-startup'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useRendererWindowLoadActivity } from '../composables/use-renderer-window-load-activity'
 import { useRendererWindowLoadingCopy } from '../composables/use-renderer-window-loading-copy'
@@ -78,8 +79,8 @@ const stageMounted = computed(() => componentStateStage.value === 'mounted')
 // keep covering the error surface. The error event ends the wait instead.
 const stageError = shallowRef<Error>()
 const isLoading = computed(() => !stageMounted.value && !stageError.value)
-const { auxiliaryLabelIds } = useRendererWindowLoadActivity()
-const primaryAuxiliaryLabelId = computed(() => auxiliaryLabelIds.value[0])
+const { auxiliaryEntries } = useRendererWindowLoadActivity()
+const primaryAuxiliaryEntry = computed(() => auxiliaryEntries.value[0])
 const { loadingMessage: mainStageLoadingMessage } = useRendererWindowLoadingCopy('model')
 const rendererBootComplete = useRendererBootComplete()
 const mainStageBootCardVisible = useMainStageBootCardVisible()
@@ -703,6 +704,8 @@ watch(
   { immediate: true },
 )
 
+useLogic2SectionAOtherStartup(stageMounted)
+
 const cursorPosition = computed(() => ({
   x: relativeMouseX.value,
   y: relativeMouseY.value,
@@ -779,8 +782,9 @@ const cursorPosition = computed(() => ({
       </div>
     </div>
     <StageAuxiliaryWindowLoadingHint
-      v-if="primaryAuxiliaryLabelId && !isLoading && rendererBootComplete && !mainStageBootCardVisible"
-      :label-id="primaryAuxiliaryLabelId"
+      v-if="primaryAuxiliaryEntry && !isLoading && rendererBootComplete && !mainStageBootCardVisible"
+      :label-id="primaryAuxiliaryEntry.labelId"
+      :route-path="primaryAuxiliaryEntry.routePath"
     />
     <div
       v-show="showChatOpeningOverlay"

@@ -14,6 +14,7 @@ import ChatPageShell from './chat-page-shell.vue'
 
 import { useChatDraftHandover } from '../composables/use-chat-draft-handover'
 import { useChatOpeningOverlay } from '../composables/use-chat-opening-overlay'
+import { useLocalLlmStartupChatNotice } from '../composables/use-local-llm-startup-chat-notice'
 
 const { activeCard } = storeToRefs(useAiriCardStore())
 const hasNativeControls = isElectronWindow(window) && window.platform === 'darwin'
@@ -22,6 +23,7 @@ const interactiveArea = useTemplateRef<InstanceType<typeof InteractiveArea>>('in
 
 useChatDraftHandover(interactiveArea)
 const { showChatOpeningOverlay } = useChatOpeningOverlay()
+useLocalLlmStartupChatNotice()
 </script>
 
 <template>

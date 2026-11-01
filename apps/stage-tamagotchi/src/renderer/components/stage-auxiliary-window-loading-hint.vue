@@ -9,10 +9,12 @@ import { useRendererWindowLoadingCopy } from '../composables/use-renderer-window
 
 const props = defineProps<{
   labelId: RendererWindowLoadLabelId
+  routePath?: string
 }>()
 
 const labelRef = computed(() => props.labelId)
-const { loadingMessage } = useRendererWindowLoadingCopy(labelRef)
+const routeRef = computed(() => props.routePath)
+const { loadingMessage } = useRendererWindowLoadingCopy(labelRef, routeRef)
 </script>
 
 <template>

@@ -9,6 +9,8 @@ export type ControlsIslandAction
     | 'toggle_settings'
     | 'open_consciousness_settings'
     | 'open_speech_settings'
+    | 'open_models_settings'
+    | 'open_airi_card_settings'
     | 'toggle_profile_picker'
     | 'toggle_chat'
     | 'refresh_window'

@@ -249,17 +249,20 @@ function handleAddFavorite() {
   const fallbackName = newModel.value.split('/').pop() || newModel.value
   const displayName = newName.value.trim() || fallbackName
 
-  favorites.value.push({
+  const favorite: FavoriteModel = {
     id: String(Date.now()),
     name: displayName,
     provider: newProvider.value,
     model: newModel.value,
-  })
+  }
+  favorites.value.push(favorite)
 
   // Reset inputs & hide form
   newName.value = ''
   newModel.value = ''
   showAddForm.value = false
+
+  handleSelectFavorite(favorite)
 }
 
 function handleDeleteFavorite(fav: FavoriteModel) {

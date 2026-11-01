@@ -18,7 +18,13 @@ export type { RendererWindowLoadActivity } from '../../../shared/renderer-window
 
 interface TrackedWindow {
   labelId: RendererWindowLoadLabelId
+  routePath: string
   loadCount: number
+}
+
+interface BootPendingEntry {
+  count: number
+  routePath: string
 }
 
 let serviceInstance: RendererWindowLoadIndicatorService | undefined
@@ -46,20 +52,31 @@ export interface RendererWindowLoadIndicatorService {
 function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicatorService {
   const contexts = new Set<EventaContext>()
   const tracked = new Map<number, TrackedWindow>()
-  const bootPending = new Map<RendererWindowLoadLabelId, number>()
+  const bootPending = new Map<RendererWindowLoadLabelId, BootPendingEntry>()
   const attached = new WeakSet<BrowserWindow>()
   const invokeRegistered = new WeakSet<EventaContext>()
 
-  function setBootPending(labelId: RendererWindowLoadLabelId, active: boolean) {
+  function setBootPending(
+    labelId: RendererWindowLoadLabelId,
+    active: boolean,
+    routePath?: string,
+  ) {
     if (active) {
-      bootPending.set(labelId, (bootPending.get(labelId) ?? 0) + 1)
+      const previous = bootPending.get(labelId)
+      bootPending.set(labelId, {
+        count: (previous?.count ?? 0) + 1,
+        routePath: routePath ?? previous?.routePath ?? '/',
+      })
     }
     else {
-      const next = Math.max(0, (bootPending.get(labelId) ?? 0) - 1)
+      const previous = bootPending.get(labelId)
+      if (!previous)
+        return
+      const next = Math.max(0, previous.count - 1)
       if (next === 0)
         bootPending.delete(labelId)
       else
-        bootPending.set(labelId, next)
+        bootPending.set(labelId, { count: next, routePath: previous.routePath })
     }
     broadcast()
   }
@@ -89,7 +106,11 @@ function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicator
     defineInvokeHandler(context, electronSetRendererWindowBootLoading, (payload) => {
       if (!payload?.labelId)
         return
-      setBootPending(payload.labelId as RendererWindowLoadLabelId, payload.active)
+      setBootPending(
+        payload.labelId as RendererWindowLoadLabelId,
+        payload.active,
+        payload.routePath,
+      )
     })
   }
 
@@ -102,6 +123,7 @@ function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicator
     if (!entry)
       return
     entry.labelId = resolveRendererWindowLoadLabelId(routePath)
+    entry.routePath = routePath
     broadcast()
   }
 
@@ -128,7 +150,7 @@ function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicator
     const labelId = resolveRendererWindowLoadLabelId(route)
     const windowId = window.id
 
-    tracked.set(windowId, { labelId, loadCount: 0 })
+    tracked.set(windowId, { labelId, routePath: route, loadCount: 0 })
 
     const onStart = () => {
       const entry = tracked.get(windowId)

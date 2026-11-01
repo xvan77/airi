@@ -459,7 +459,7 @@ mmdDialog.onChange(handleAddMMDModel)
             </DropdownMenuRoot>
           </div>
           <div
-            class="h-full min-w-80 w-full lg:min-h-60 md:min-w-70 sm:min-w-65"
+            class="h-full min-w-48 w-full lg:min-h-44 md:min-w-56 sm:min-w-52"
             aspect="12/16"
             px-1 py-2
           >

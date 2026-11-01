@@ -140,6 +140,8 @@ export const electronOpenInlay = defineInvokeEventa<void>('eventa:invoke:electro
 export const electronInlayReturnHome = defineInvokeEventa<void>('eventa:invoke:electron:windows:inlay:return-home')
 export const electronSettingsNavigate = defineEventa<{ route: string }>('eventa:event:electron:windows:settings:navigate')
 export const electronOpenChat = defineInvokeEventa('eventa:invoke:electron:windows:chat:open')
+/** Shows the chat for the saved mode without toggling fold state off. */
+export const electronShowChatWindow = defineInvokeEventa('eventa:invoke:electron:windows:chat:show')
 
 export const ioTraceRecordingChanged = defineEventa<IOTraceRecordingState>('eventa:event:electron:io-trace-recording:changed')
 export const ioTraceRecordingGet = defineInvokeEventa<IOTraceRecordingState>('eventa:invoke:electron:io-trace-recording:get')
@@ -612,12 +614,17 @@ export interface ElectronWindowLifecycleState {
 
 export const electronWindowLifecycleChanged = defineEventa<ElectronWindowLifecycleState>('eventa:event:electron:window:lifecycle-changed')
 export const electronGetWindowLifecycleState = defineInvokeEventa<ElectronWindowLifecycleState>('eventa:invoke:electron:window:get-lifecycle-state')
+export interface ElectronRendererWindowLoadActivityEntry {
+  labelId: string
+  routePath: string
+}
 export interface ElectronRendererWindowLoadActivity {
   activeLabelIds: string[]
+  activeEntries: ElectronRendererWindowLoadActivityEntry[]
 }
 export const electronRendererWindowLoadActivityChanged = defineEventa<ElectronRendererWindowLoadActivity>('eventa:event:electron:renderer-window-load-activity-changed')
 export const electronGetRendererWindowLoadActivity = defineInvokeEventa<ElectronRendererWindowLoadActivity>('eventa:invoke:electron:renderer-window-load-activity:get')
-export const electronSetRendererWindowBootLoading = defineInvokeEventa<void, { labelId: string, active: boolean }>('eventa:invoke:electron:renderer-window-boot-loading:set')
+export const electronSetRendererWindowBootLoading = defineInvokeEventa<void, { labelId: string, active: boolean, routePath?: string }>('eventa:invoke:electron:renderer-window-boot-loading:set')
 export const electronWindowSetAlwaysOnTop = defineInvokeEventa<void, boolean>('eventa:invoke:electron:window:set-always-on-top')
 export const electronAppOpenUserDataFolder = defineInvokeEventa<{ path: string }>('eventa:invoke:electron:app:open-user-data-folder')
 export const electronAppQuit = defineInvokeEventa<void>('eventa:invoke:electron:app:quit')
