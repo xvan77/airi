@@ -18,12 +18,20 @@ const { t } = useI18n()
 
 const consciousnessStore = useConsciousnessStore()
 const {
+  activeProvider,
   activeModel,
   modelSearchQuery,
   providerModels,
   isLoadingActiveProviderModels,
   activeProviderModelError,
 } = storeToRefs(consciousnessStore)
+
+async function saveModelAndContinue() {
+  if (!activeProvider.value || !activeModel.value)
+    return
+  consciousnessStore.commitChatSelection(activeProvider.value, activeModel.value)
+  await props.onNext()
+}
 </script>
 
 <template>
@@ -95,7 +103,7 @@ const {
         :disabled="!activeModel"
         :loading="isLoadingActiveProviderModels"
         :label="t('settings.dialogs.onboarding.saveAndContinue')"
-        @click="props.onNext"
+        @click="saveModelAndContinue"
       />
     </div>
   </div>

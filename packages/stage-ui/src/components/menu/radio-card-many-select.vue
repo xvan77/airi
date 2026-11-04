@@ -10,6 +10,7 @@ interface Item {
   description?: string
   deprecated?: boolean
   customizable?: boolean
+  badges?: { label: string, title: string }[]
 }
 
 interface Props {
@@ -28,6 +29,10 @@ interface Props {
   allowCustom?: boolean
   customOptionDescription?: string
   expandedClass?: string
+  descriptionCollapsedByDefault?: boolean
+  descriptionToggleLabel?: string
+  descriptionCollapseLabel?: string
+  providerId?: string
   /**
    * When true, root fills a flex parent (`flex-1 min-h-0`) and only the model grid scrolls;
    * expand/collapse stays visible above the grid scroll area (e.g. onboarding modal).
@@ -50,6 +55,9 @@ const props = withDefaults(defineProps<Props>(), {
   allowCustom: false,
   customOptionDescription: 'Custom Value',
   fillAvailableHeight: false,
+  descriptionCollapsedByDefault: false,
+  descriptionToggleLabel: 'Info',
+  descriptionCollapseLabel: 'Hide',
 })
 
 const emit = defineEmits<{
@@ -198,7 +206,7 @@ function updateCustomValue(value: string) {
       <!-- Items grid -->
       <div class="relative" :class="layout.gridArea">
         <!-- Scroll container wraps the grid to avoid display:grid + flex-1 overflow rendering bugs -->
-        <div :class="layout.scrollContainer">
+        <div :class="[layout.scrollContainer, 'overflow-x-visible overflow-y-auto']">
           <div
             :class="layout.grid"
             class="transition-all duration-200 ease-in-out"
@@ -212,12 +220,17 @@ function updateCustomValue(value: string) {
               :value="item.id"
               :title="item.name"
               :description="item.description"
+              :badges="item.badges"
               :deprecated="item.deprecated"
               :show-expand-collapse="showMore"
               :expand-collapse-threshold="100"
               :show-custom-input="item.customizable"
               :custom-input-value="customValue"
               :custom-input-placeholder="customInputPlaceholder"
+              :description-collapsed-by-default="props.descriptionCollapsedByDefault"
+              :description-toggle-label="props.descriptionToggleLabel"
+              :description-collapse-label="props.descriptionCollapseLabel"
+              :provider-id="props.providerId"
               name="radio-card-detail-many-select"
               :class="layout.gridItem"
               @update:custom-input-value="updateCustomValue($event)"

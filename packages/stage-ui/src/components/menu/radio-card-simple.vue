@@ -1,11 +1,19 @@
 <script setup lang="ts">
-defineProps<{
+import CatalogMoreInfo from './catalog-more-info.vue'
+
+withDefaults(defineProps<{
   id: string
   name: string
   value: string
   title: string
   description?: string
-}>()
+  /** Wide, short provider cards for Consciousness. */
+  dense?: boolean
+  moreInfoLabel?: string
+}>(), {
+  dense: false,
+  moreInfoLabel: 'More info',
+})
 
 defineSlots<{
   topRight?: any
@@ -28,9 +36,10 @@ const modelValue = defineModel<string>({ required: true })
       modelValue === value
         ? 'form_radio-card-simple-active'
         : '',
+      dense ? 'h-12 w-80 p-1.5' : 'p-4',
     ]"
     flex="~ col"
-    block min-w-50 w-fit cursor-pointer items-start rounded-xl p-4 text-left
+    block flex-shrink-0 cursor-pointer items-stretch rounded-xl text-left
   >
     <input
       v-model="modelValue"
@@ -41,17 +50,46 @@ const modelValue = defineModel<string>({ required: true })
       class="absolute opacity-0 [&:checked+div]:border-primary-500 [&:checked+div_.radio-dot]:opacity-100 dark:[&:checked+div]:border-primary-400"
     >
     <div
-      class="radio-circle absolute left-2 top-2 size-5 rounded-full"
+      class="radio-circle absolute left-2 top-1/2 size-4 rounded-full -translate-y-1/2"
       border="2 solid neutral-300 dark:neutral-600"
       transition="all duration-200 ease-in-out"
     >
       <div
-        class="radio-dot absolute left-1/2 top-1/2 size-3 rounded-full opacity-0 -translate-x-1/2 -translate-y-1/2"
+        class="radio-dot absolute left-1/2 top-1/2 size-2.5 rounded-full opacity-0 -translate-x-1/2 -translate-y-1/2"
         transition="all duration-200 ease-in-out"
         bg="primary-500 dark:primary-400"
       />
     </div>
-    <div flex="~ col" min-h-16 w-full items-start justify-center pb-2 pl-5 pr-4 pt-2>
+
+    <div
+      v-if="dense"
+      class="relative z-10 min-h-0 min-w-0 flex flex-1 flex-row items-center gap-1 pl-6 pr-8"
+    >
+      <span
+        class="radio-item-name min-w-0 flex-1 truncate text-sm font-normal leading-tight"
+        :class="[
+          modelValue === value
+            ? 'text-neutral-700 dark:text-neutral-300'
+            : 'text-neutral-500 dark:text-neutral-500',
+        ]"
+      >
+        {{ title }}
+      </span>
+      <span
+        v-if="description"
+        class="shrink-0"
+        @click.stop.prevent
+      >
+        <CatalogMoreInfo :text="description" :label="moreInfoLabel" />
+      </span>
+    </div>
+
+    <div
+      v-else
+      flex="~ col"
+      min-w-0 w-full items-start justify-center
+      class="min-h-16 pb-2 pl-5 pr-4 pt-2"
+    >
       <span
         class="radio-item-name font-normal"
         text="md"
@@ -79,17 +117,18 @@ const modelValue = defineModel<string>({ required: true })
         {{ description }}
       </span>
     </div>
+
     <div
       class="bg-dotted-neutral-200/80 dark:bg-dotted-neutral-700/50 [input:checked~&]:bg-dotted-primary-300/50 dark:[input:checked~&]:bg-dotted-primary-200/20"
       absolute inset-0 z--1
       style="background-size: 10px 10px; mask-image: linear-gradient(165deg, white 30%, transparent 50%);"
     />
 
-    <div v-if="$slots.topRight" class="absolute right-2 top-2 z-10">
+    <div v-if="$slots.topRight" class="absolute right-1 top-1 z-10">
       <slot name="topRight" />
     </div>
 
-    <div v-if="$slots.bottomRight" class="absolute bottom-2 right-2 z-10">
+    <div v-if="$slots.bottomRight" class="absolute bottom-1 right-1 z-10">
       <slot name="bottomRight" />
     </div>
   </label>
@@ -98,7 +137,7 @@ const modelValue = defineModel<string>({ required: true })
 <style scoped>
 .form_radio-card-simple {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .form_radio-card-simple::before {

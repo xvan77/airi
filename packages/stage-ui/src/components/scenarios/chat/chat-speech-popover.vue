@@ -326,11 +326,11 @@ function handleGoToSettings() {
           <div :class="['mt-3 flex justify-center']">
             <button
               type="button"
-              :class="['inline-flex w-fit items-center justify-center gap-2 rounded-full border border-neutral-300/80 bg-neutral-200/70 px-4 py-2 text-[11px] font-semibold transition-all active:scale-[0.98] hover:bg-neutral-300/60 dark:border-neutral-600/70 dark:bg-neutral-800/55 hover:dark:bg-neutral-700/50']"
+              :class="['inline-flex w-fit items-center justify-center gap-2 rounded-full border border-primary-200/50 bg-primary-50/50 px-4 py-2 text-[11px] font-semibold transition-all active:scale-[0.98] dark:border-primary-800/50 dark:bg-primary-950/20 hover:bg-primary-100/60 dark:hover:bg-primary-950/35']"
               @click="handleGoToSettings"
             >
-              <div class="i-solar:settings-bold-duotone text-base text-neutral-800 dark:text-white" />
-              <span class="text-neutral-500 dark:text-neutral-400">Open Speech settings</span>
+              <div class="i-solar:settings-bold-duotone text-base text-primary-600 dark:text-primary-400" />
+              <span class="text-primary-700 dark:text-primary-300">Open Speech settings</span>
             </button>
           </div>
         </div>

@@ -193,6 +193,29 @@ async function handleStopServer() {
   }
 }
 
+async function stopLocalLlmServerIfRunning() {
+  if (!isStageTamagotchi())
+    return
+  const session = openTamagotchiEventaSession()
+  if (!session)
+    return
+  try {
+    const getStatus = defineInvoke(session.context, electronLocalLlmGetStatus)
+    const stopServer = defineInvoke(session.context, electronLocalLlmStopServer)
+    const status = await getStatus()
+    if (status.state !== 'running' && status.state !== 'starting')
+      return
+    await stopServer()
+    await updateLocalLlmStatus()
+  }
+  catch (err) {
+    console.error('[ChatBrainPopover] Failed to stop local LLM server:', err)
+  }
+  finally {
+    session.dispose()
+  }
+}
+
 watch(activeProvider, (provider) => {
   if (provider === 'local-llm') {
     updateLocalLlmStatus()
@@ -276,8 +299,10 @@ function handleDeleteFavorite(fav: FavoriteModel) {
 }
 
 function handleSelectFavorite(fav: FavoriteModel) {
-  activeProvider.value = fav.provider
-  activeModel.value = fav.model
+  consciousnessStore.commitChatSelection(fav.provider, fav.model)
+
+  if (fav.provider !== 'local-llm' && fav.model)
+    void stopLocalLlmServerIfRunning()
 
   // Update active card extensions to keep character state synced
   if (activeCard.value) {
@@ -488,11 +513,11 @@ function handleGoToSettings() {
           <div class="mt-3 flex justify-center">
             <button
               type="button"
-              class="w-fit inline-flex items-center justify-center gap-2 border border-neutral-300/80 rounded-full bg-neutral-200/70 px-4 py-2 text-[11px] font-semibold transition-all active:scale-[0.98] dark:border-neutral-600/70 dark:bg-neutral-800/55 hover:bg-neutral-300/60 hover:dark:bg-neutral-700/50"
+              class="w-fit inline-flex items-center justify-center gap-2 border border-primary-200/50 rounded-full bg-primary-50/50 px-4 py-2 text-[11px] font-semibold transition-all active:scale-[0.98] dark:border-primary-800/50 dark:bg-primary-950/20 hover:bg-primary-100/60 dark:hover:bg-primary-950/35"
               @click="handleGoToSettings"
             >
-              <div class="i-solar:settings-bold-duotone text-base text-neutral-800 dark:text-white" />
-              <span class="text-neutral-500 dark:text-neutral-400">Open Consciousness settings</span>
+              <div class="i-solar:settings-bold-duotone text-base text-primary-600 dark:text-primary-400" />
+              <span class="text-primary-700 dark:text-primary-300">Open Consciousness settings</span>
             </button>
           </div>
         </div>

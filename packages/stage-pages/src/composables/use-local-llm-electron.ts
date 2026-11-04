@@ -120,6 +120,15 @@ export function useLocalLlmElectron() {
     await refresh()
   }
 
+  /** Stops the llama.cpp process when the user commits to a non-local chat provider. */
+  async function stopServerIfRunning() {
+    await refresh()
+    const state = status.value?.state
+    if (state !== 'running' && state !== 'starting')
+      return
+    await stopServer()
+  }
+
   function resolveModelToRun(preferredModel: string) {
     const downloaded = downloadedModels.value
     if (preferredModel && downloaded.includes(preferredModel))
@@ -141,6 +150,7 @@ export function useLocalLlmElectron() {
     downloadModel,
     startServer,
     stopServer,
+    stopServerIfRunning,
     resolveModelToRun,
   }
 }

@@ -2,6 +2,9 @@ import type { AIChatModelCard } from 'model-bank/types'
 
 import type { ModelInfo, ProviderModelCatalog } from './types'
 
+import openRouterModels from 'model-bank/openrouter'
+
+import { pickBestCatalogDescription } from '@proj-airi/stage-shared/catalog-description'
 import { listModels } from '@xsai/model'
 import { array, boolean, number, object, optional, parse, string } from 'valibot'
 
@@ -16,7 +19,66 @@ const discoveredModelSchema = object({
   context_length: optional(number()),
   contextLength: optional(number()),
   deprecated: optional(boolean()),
+  pricing: optional(object({
+    prompt: optional(string()),
+    completion: optional(string()),
+  })),
 })
+
+function metadataFromOpenRouterPricing(pricing?: { prompt?: string, completion?: string }): ModelInfo['metadata'] | undefined {
+  if (!pricing?.prompt)
+    return undefined
+
+  const perToken = Number.parseFloat(pricing.prompt)
+  if (!Number.isFinite(perToken))
+    return undefined
+
+  return {
+    pricing: {
+      units: [{
+        name: 'textInput',
+        rate: perToken * 1_000_000,
+        strategy: 'fixed',
+        unit: 'millionTokens',
+      }],
+    },
+  }
+}
+
+const openRouterChatModelBank = openRouterModels.filter(model => model.type === 'chat')
+
+/** Re-applies model-bank descriptions when a cached row still carries a truncated preview. */
+export function enrichOpenRouterCatalogModels(models: readonly ModelInfo[]): ModelInfo[] {
+  return enrichCatalogModelsWithModelBank(models, openRouterChatModelBank)
+}
+
+export function enrichCatalogModelsWithModelBank(
+  models: readonly ModelInfo[],
+  bank: readonly AIChatModelCard[],
+): ModelInfo[] {
+  const metadata = new Map(bank.map(model => [model.id, model]))
+  return models.map((model) => {
+    const details = metadata.get(model.id)
+    if (!details)
+      return model
+
+    const description = pickBestCatalogDescription(model.description, details.description)
+    if (!description || description === model.description)
+      return model
+
+    return {
+      ...model,
+      description,
+      contextLength: model.contextLength ?? details.contextWindowTokens,
+      metadata: model.metadata ?? {
+        abilities: details.abilities,
+        maxOutput: details.maxOutput,
+        pricing: details.pricing,
+        settings: details.settings,
+      },
+    }
+  })
+}
 
 /**
  * Lists endpoint models, then adds exact-ID metadata from the route's model-bank catalog.
@@ -39,6 +101,7 @@ export async function listModelCatalog(
       contextLength: model.contextLength ?? model.context_length,
       deprecated: model.deprecated,
       reasoning: model.reasoning,
+      metadata: metadataFromOpenRouterPricing(model.pricing),
     }
   })
   const endpoint = new URL(config.baseURL)
@@ -55,12 +118,12 @@ export async function listModelCatalog(
       return {
         ...model,
         name: details.displayName ?? model.name,
-        description: details.description ?? model.description,
+        description: pickBestCatalogDescription(model.description, details.description),
         contextLength: details.contextWindowTokens ?? model.contextLength,
         metadata: {
           abilities: details.abilities,
           maxOutput: details.maxOutput,
-          pricing: details.pricing,
+          pricing: details.pricing ?? model.metadata?.pricing,
           settings: details.settings,
         },
       }

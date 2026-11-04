@@ -10,16 +10,13 @@ import {
   ProviderSettingsLayout,
 } from '@proj-airi/stage-ui/components'
 import { useProviderValidation } from '@proj-airi/stage-ui/composables/use-provider-validation'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 
 const providerId = 'amazon-bedrock'
 const providerStore = useProviderConfigStore()
-const consciousnessStore = useConsciousnessStore()
 const { configs: providers } = storeToRefs(providerStore) as { configs: RemovableRef<Record<string, any>> }
-const { activeProvider } = storeToRefs(consciousnessStore)
 
 const apiKey = computed({
   get: () => providers.value[providerId]?.apiKey || '',
@@ -51,8 +48,7 @@ const {
 } = useProviderValidation(providerId)
 
 function goToModelSelection() {
-  activeProvider.value = providerId
-  router.push('/settings/modules/consciousness')
+  router.push({ path: '/settings/modules/consciousness', query: { browse: providerId } })
 }
 </script>
 

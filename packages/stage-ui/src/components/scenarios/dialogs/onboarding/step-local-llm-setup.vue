@@ -140,8 +140,7 @@ function syncConsciousnessFromRunner() {
   if (runnerStatus.value?.state !== 'running' || !runnerStatus.value.activeModel)
     return
 
-  consciousnessStore.activeProvider = providerId
-  consciousnessStore.activeModel = runnerStatus.value.activeModel
+  consciousnessStore.commitChatSelection(providerId, runnerStatus.value.activeModel)
 }
 
 async function refreshState() {

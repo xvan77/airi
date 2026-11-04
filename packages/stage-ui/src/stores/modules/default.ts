@@ -56,13 +56,18 @@ export async function configureAsDefaultsIfEmpty(): Promise<boolean> {
 
   if (needsConsciousnessDefault) {
     consciousnessStore.customModelName = ''
-    consciousnessStore.activeProvider = officialModuleDefaults.consciousness.provider
-    consciousnessStore.activeModel = officialModuleDefaults.consciousness.model
+    consciousnessStore.commitChatSelection(
+      officialModuleDefaults.consciousness.provider,
+      officialModuleDefaults.consciousness.model,
+    )
     changed = true
   }
   else if (usesOfficialConsciousness && !consciousnessStore.activeModel) {
     consciousnessStore.customModelName = ''
-    consciousnessStore.activeModel = officialModuleDefaults.consciousness.model
+    consciousnessStore.commitChatSelection(
+      officialModuleDefaults.consciousness.provider,
+      officialModuleDefaults.consciousness.model,
+    )
     changed = true
   }
 
@@ -124,8 +129,7 @@ export async function unconfigureAuthenticationProviders(): Promise<boolean> {
   let changed = false
 
   if (providerConfigStore.providers[consciousnessStore.activeProvider]?.configuredBy === 'authentication') {
-    consciousnessStore.activeProvider = ''
-    consciousnessStore.activeModel = ''
+    consciousnessStore.commitChatSelection('', '')
     consciousnessStore.customModelName = ''
     changed = true
   }

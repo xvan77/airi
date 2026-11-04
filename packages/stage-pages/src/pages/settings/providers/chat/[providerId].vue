@@ -13,7 +13,6 @@ import {
 } from '@proj-airi/stage-ui/components'
 import { useProviderValidation } from '@proj-airi/stage-ui/composables/use-provider-validation'
 import { getDefinedProvider } from '@proj-airi/stage-ui/libs'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { FieldCombobox } from '@proj-airi/ui'
@@ -29,9 +28,7 @@ if (typeof routeProviderId !== 'string')
 const providerId = routeProviderId
 const providerConfigStore = useProviderConfigStore()
 const providersStore = useProviderStore()
-const consciousnessStore = useConsciousnessStore()
 const { configs: providers } = storeToRefs(providerConfigStore) as { configs: RemovableRef<Record<string, any>> }
-const { activeProvider } = storeToRefs(consciousnessStore)
 const providerDefinition = computed(() => providersStore.findProviderDefinition(providerId))
 
 // Define computed properties for credentials
@@ -97,8 +94,7 @@ const apiKeyPlaceholder = computedAsync(async () => {
 }, 'sk-...')
 
 function goToModelSelection() {
-  activeProvider.value = providerId
-  router.push('/settings/modules/consciousness')
+  router.push({ path: '/settings/modules/consciousness', query: { browse: providerId } })
 }
 </script>
 

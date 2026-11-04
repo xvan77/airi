@@ -50,6 +50,8 @@ import { setupExtensionHost } from './services/airi/plugins'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
+import { setupCatalogCachePersistence } from './services/electron/catalog-cache-persistence'
+import { setupCatalogUrlFetch } from './services/electron/catalog-url-fetch'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupLocalLlmService } from './services/electron/local-llm'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
@@ -553,6 +555,8 @@ app.whenReady().then(async () => {
       }
 
       setupComputerUse(context)
+      setupCatalogUrlFetch(context)
+      setupCatalogCachePersistence(context)
       setupHomeAssistant(context)
       await setupArtistryBridge({
         widgetsManager: deps.widgetsWindow,

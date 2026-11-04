@@ -240,10 +240,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   /** Applies card speech through the leader command so catalog invalidation precedes its saved voice. */
   async function writeRuntimeModules(modules: CardModuleDefaults) {
     const { consciousness, vision, speech } = useRuntimeModuleStores()
-    // Provider changes synchronously clear dependent selections. Assign the
-    // resolved model and voice afterwards, including empty values.
-    consciousness.activeProvider = modules.consciousness.provider
-    consciousness.activeModel = modules.consciousness.model
+    consciousness.commitChatSelection(modules.consciousness.provider, modules.consciousness.model)
     vision.activeProvider = modules.vision.provider
     vision.activeModel = modules.vision.model
     await speech.selectProviderModel(modules.speech.provider, modules.speech.model, modules.speech.voice_id)

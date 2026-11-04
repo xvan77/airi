@@ -6,6 +6,7 @@ import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
 import { IconStatusItem, RippleGrid } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useRippleGridState } from '@proj-airi/stage-ui/composables/use-ripple-grid-state'
+import { compareProviderCatalogOrder } from '@proj-airi/stage-ui/libs/model-catalog'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
@@ -184,6 +185,7 @@ const providerBlocks = computed(() => {
             return false
           return true
         })
+        .sort(compareProviderCatalogOrder)
         .map(provider => ({
           ...provider,
           renderIndex: globalIndex++,

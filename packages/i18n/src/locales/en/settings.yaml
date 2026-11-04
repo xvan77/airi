@@ -839,6 +839,20 @@ pages:
       artistry: Artistry
     consciousness:
       description: Personality, desired model, etc.
+      model_catalog:
+        description_show: More info
+        description_hide: Hide
+        filters:
+          pricing: Price
+          deployment: Source
+          sort: Sort
+        sort:
+          default: Recommended
+          params: Params
+          context: Context
+          disk: Disk
+          quant: Quant
+          price: '$/token'
       sections:
         section:
           provider-model-selection:
@@ -2282,7 +2296,7 @@ pages:
         description: openpaths.io
         title: OpenPaths
       openrouter:
-        description: openrouter.ai
+        description: One API key for many cloud chat models. Pay per use on openrouter.ai.
         title: OpenRouter
       openrouter-audio-speech:
         description: openrouter.ai

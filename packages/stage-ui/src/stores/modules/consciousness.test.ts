@@ -207,29 +207,33 @@ describe('consciousness store provider selection', () => {
   // state it protects.
   //
   // https://github.com/moeru-ai/airi/issues/1761
-  it('clears the model selection when the provider changes (Issue #1761)', () => {
+  it('does not keep the previous provider model id after commitChatSelection (Issue #1761)', () => {
     const store = useConsciousnessStore()
 
-    store.activeProvider = 'cerebras'
-    store.activeModel = 'gpt-oss-120b'
-    store.customModelName = 'custom-name'
+    store.commitChatSelection('cerebras', 'gpt-oss-120b')
+    store.commitChatSelection('openai', 'gpt-4o-mini')
 
-    store.activeProvider = 'openai'
-
-    expect(store.activeModel).toBe('')
+    expect(store.activeProvider).toBe('openai')
+    expect(store.activeModel).toBe('gpt-4o-mini')
     expect(store.customModelName).toBe('')
+  })
+
+  it('remembers each provider model without changing chat until commit', () => {
+    const store = useConsciousnessStore()
+
+    store.commitChatSelection('local-llm', 'gemma-3-270m-it-F16.gguf')
+    store.commitChatSelection('openrouter-ai', 'anthropic/claude-3.5-sonnet')
+
+    expect(store.lastModelForProvider('local-llm')).toBe('gemma-3-270m-it-F16.gguf')
+    expect(store.activeProvider).toBe('openrouter-ai')
+    expect(store.activeModel).toBe('anthropic/claude-3.5-sonnet')
   })
 
   it('clears the model synchronously so callers can set a new one right after', () => {
     const store = useConsciousnessStore()
 
-    store.activeProvider = 'cerebras'
-    store.activeModel = 'gpt-oss-120b'
-
-    // The set-provider-then-set-model sequence used by auth provider sync and
-    // character cards must keep the newly assigned model.
-    store.activeProvider = 'official-provider'
-    store.activeModel = 'auto'
+    store.commitChatSelection('cerebras', 'gpt-oss-120b')
+    store.commitChatSelection('official-provider', 'auto')
 
     expect(store.activeModel).toBe('auto')
   })
@@ -237,9 +241,7 @@ describe('consciousness store provider selection', () => {
   it('keeps the persisted model when the provider stays the same', () => {
     const store = useConsciousnessStore()
 
-    store.activeProvider = 'openai'
-    store.activeModel = 'gpt-4o-mini'
-
+    store.commitChatSelection('openai', 'gpt-4o-mini')
     store.activeProvider = 'openai'
 
     expect(store.activeModel).toBe('gpt-4o-mini')
@@ -257,8 +259,7 @@ describe('consciousness store provider selection', () => {
   it('does not apply storage events as a second cross-window state channel', async () => {
     const store = useConsciousnessStore()
 
-    store.activeProvider = 'official-provider'
-    store.activeModel = 'auto'
+    store.commitChatSelection('official-provider', 'auto')
     await nextTick()
 
     window.dispatchEvent(new StorageEvent('storage', {

@@ -1,12 +1,21 @@
 import type { GenerationProvider } from '@proj-airi/provider-inference'
+import type { CloudModelCatalogCachedModel } from '@proj-airi/stage-shared/cloud-model-catalog-cache'
 import type {} from 'pinia-plugin-synced'
 
 import type { ProviderMetadata, ProviderValidationPlan } from '../../libs/providers'
 import type { ChatRequestOptions, ModelInfo, ProviderDefinition, ProviderInstance, VoiceInfo } from '../../libs/providers/types'
 
 import { errorMessageFrom } from '@moeru/std'
-import { getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
+import { enrichOpenRouterCatalogModels, getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
 import { isAggressiveOfflineStartup, isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import {
+
+  cloudModelCatalogConfigurationFingerprint,
+  createCloudModelCatalogCacheDocument,
+  isCloudModelCatalogCacheableProvider,
+  isCloudModelCatalogCacheStale,
+  modelsFromCloudModelCatalogCache,
+} from '@proj-airi/stage-shared/cloud-model-catalog-cache'
 import { computedAsync, useAsyncState, useIntervalFn } from '@vueuse/core'
 import { listModels } from '@xsai/model'
 import { uniqBy } from 'es-toolkit'
@@ -14,6 +23,10 @@ import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import {
+  readPersistedCloudModelCatalog,
+  writePersistedCloudModelCatalog,
+} from '../../libs/model-catalog/cloud-cache-storage'
 import {
   CHAT_COMPLETIONS_VALIDATOR_ID,
   getProviderValidationIntervalMs,
@@ -722,8 +735,108 @@ export const useProviderStore = defineStore('provider', () => {
     }
   }
 
+  function normalizeFetchedProviderModels(providerId: string, models: Array<{
+    metadata?: ModelInfo['metadata']
+    reasoning?: ModelInfo['reasoning']
+    inputModalities?: string[]
+    id: string
+    name?: string
+    description?: string
+    contextLength?: number
+    deprecated?: boolean
+    provider?: string
+  }>) {
+    const normalized = uniqBy(models.filter(model => !!model.id), m => m.id)
+      .map(model => ({
+        metadata: model.metadata,
+        reasoning: model.reasoning,
+        inputModalities: model.inputModalities,
+        id: model.id,
+        name: model.name ?? model.id,
+        description: model.description ?? '',
+        contextLength: model.contextLength ?? 0,
+        deprecated: model.deprecated ?? false,
+        provider: providerId,
+      }))
+
+    if (providerId === 'openrouter-ai')
+      return enrichOpenRouterCatalogModels(normalized)
+
+    return normalized
+  }
+
+  function commitProviderModelCatalog(
+    providerId: string,
+    normalizedModels: ModelInfo[],
+    catalog: { available?: boolean, defaultModel?: string | null },
+  ) {
+    const currentRuntimeState = providerRuntimeState.value[providerId]
+    if (!currentRuntimeState)
+      return null
+
+    providerRuntimeState.value = {
+      ...providerRuntimeState.value,
+      [providerId]: {
+        ...currentRuntimeState,
+        models: normalizedModels,
+        defaultModel: catalog.defaultModel ?? null,
+        modelStatus: 'ready',
+        modelError: null,
+      },
+    }
+
+    return {
+      ...catalog,
+      models: normalizedModels,
+    }
+  }
+
+  async function readCloudModelCatalogSnapshot(providerId: string, config: Record<string, unknown>) {
+    if (!isCloudModelCatalogCacheableProvider(providerId))
+      return null
+
+    const fingerprint = await cloudModelCatalogConfigurationFingerprint(providerId, config)
+    const cached = await readPersistedCloudModelCatalog(providerId, fingerprint)
+    if (!cached)
+      return null
+
+    return { fingerprint, cached }
+  }
+
+  async function persistCloudModelCatalogSnapshot(
+    providerId: string,
+    configurationFingerprint: string,
+    normalizedModels: ModelInfo[],
+    defaultModel?: string | null,
+  ) {
+    if (!isCloudModelCatalogCacheableProvider(providerId))
+      return
+
+    await writePersistedCloudModelCatalog(createCloudModelCatalogCacheDocument({
+      providerId,
+      configurationFingerprint,
+      defaultModel: defaultModel ?? null,
+      models: JSON.parse(JSON.stringify(normalizedModels.map(model => ({
+        id: model.id,
+        name: model.name,
+        provider: providerId,
+        description: model.description,
+        contextLength: model.contextLength,
+        deprecated: model.deprecated,
+        inputModalities: model.inputModalities,
+        reasoning: model.reasoning,
+        metadata: model.metadata,
+      })))) as CloudModelCatalogCachedModel[],
+    }))
+  }
+
   // Function to fetch models for a specific provider
-  async function fetchModelsForProvider(providerId: string) {
+  async function fetchModelsForProvider(providerId: string): Promise<{
+    models: ModelInfo[]
+    defaultModel?: string | null
+    available?: boolean
+    lastKnownAvailable?: boolean
+  }> {
     const definition = findProviderDefinition(providerId)
     if (!definition)
       return { models: [] }
@@ -742,48 +855,69 @@ export const useProviderStore = defineStore('provider', () => {
       },
     }
 
-    try {
-      const catalog = await listProviderModels(providerId, config || {})
-      const normalizedModels = uniqBy(catalog.models.filter(model => !!model.id), m => m.id)
-        .map(model => ({
-          metadata: model.metadata,
-          reasoning: model.reasoning,
-          inputModalities: model.inputModalities,
-          id: model.id,
-          name: model.name,
-          description: model.description,
-          contextLength: model.contextLength,
-          deprecated: model.deprecated,
-          provider: providerId,
-        }))
+    const configRecord = config || {}
+    const cachedSnapshot = await readCloudModelCatalogSnapshot(providerId, configRecord)
+    const cacheIsFresh = cachedSnapshot
+      ? !isCloudModelCatalogCacheStale(cachedSnapshot.cached.fetchedAt)
+      : false
 
-      // Transform and store the models
-      // A synced snapshot can replace this provider entry while the request is
-      // pending. Read the current entry after await instead of updating the
-      // detached object that entered the request.
-      const currentRuntimeState = providerRuntimeState.value[providerId]
-      if (currentRuntimeState) {
-        providerRuntimeState.value = {
-          ...providerRuntimeState.value,
-          [providerId]: {
-            ...currentRuntimeState,
-            models: normalizedModels,
-            defaultModel: catalog.defaultModel ?? null,
-            modelStatus: 'ready',
-            modelError: null,
-          },
-        }
-        // Synced action results pass through structuredClone. Return local
-        // catalog values because reading models back from state returns a Vue
-        // proxy. Catalog metadata contains only serializable data.
-        return {
-          ...catalog,
-          models: normalizedModels,
-        }
+    if (cachedSnapshot?.cached.models.length) {
+      const cachedModels = normalizeFetchedProviderModels(
+        providerId,
+        modelsFromCloudModelCatalogCache(cachedSnapshot.cached).map(model => ({
+          ...model,
+          metadata: model.metadata as ModelInfo['metadata'],
+        })),
+      )
+      commitProviderModelCatalog(providerId, cachedModels, {
+        defaultModel: cachedSnapshot.cached.defaultModel ?? null,
+      })
+    }
+
+    if (cacheIsFresh && cachedSnapshot) {
+      return {
+        models: providerRuntimeState.value[providerId]?.models ?? [],
+        defaultModel: cachedSnapshot.cached.defaultModel ?? null,
       }
+    }
+
+    try {
+      const catalog = await listProviderModels(providerId, configRecord)
+      const normalizedModels = normalizeFetchedProviderModels(providerId, catalog.models)
+
+      if (cachedSnapshot) {
+        await persistCloudModelCatalogSnapshot(
+          providerId,
+          cachedSnapshot.fingerprint,
+          normalizedModels,
+          catalog.defaultModel ?? null,
+        )
+      }
+      else if (isCloudModelCatalogCacheableProvider(providerId)) {
+        const fingerprint = await cloudModelCatalogConfigurationFingerprint(providerId, configRecord)
+        await persistCloudModelCatalogSnapshot(
+          providerId,
+          fingerprint,
+          normalizedModels,
+          catalog.defaultModel ?? null,
+        )
+      }
+
+      const result = commitProviderModelCatalog(providerId, normalizedModels, catalog)
+      if (result)
+        return result
+
       return { models: [] }
     }
     catch (error) {
+      if (cachedSnapshot?.cached.models.length) {
+        console.warn(`Using cached model catalog for ${providerId} after refresh failed`, error)
+        return {
+          models: providerRuntimeState.value[providerId]?.models ?? [],
+          defaultModel: cachedSnapshot.cached.defaultModel ?? null,
+        }
+      }
+
       console.error(`Error fetching models for ${providerId}:`, error)
       const currentRuntimeState = providerRuntimeState.value[providerId]
       if (currentRuntimeState) {
@@ -805,6 +939,27 @@ export const useProviderStore = defineStore('provider', () => {
   // Get models for a specific provider
   function getModelsForProvider(providerId: string) {
     return providerRuntimeState.value[providerId]?.models ?? emptyProviderModels
+  }
+
+  function patchProviderModelDescriptions(
+    providerId: string,
+    updates: ReadonlyMap<string, string> | Record<string, string>,
+  ) {
+    const state = providerRuntimeState.value[providerId]
+    if (!state?.models.length)
+      return
+
+    const map = updates instanceof Map ? updates : new Map(Object.entries(updates))
+    providerRuntimeState.value = {
+      ...providerRuntimeState.value,
+      [providerId]: {
+        ...state,
+        models: state.models.map((model) => {
+          const description = map.get(model.id)
+          return description ? { ...model, description } : model
+        }),
+      },
+    }
   }
 
   const getDefaultModelForProvider = computed(() => (providerId: string) => {
@@ -1148,6 +1303,7 @@ export const useProviderStore = defineStore('provider', () => {
     modelLoadError,
     fetchModelsForProvider,
     getModelsForProvider,
+    patchProviderModelDescriptions,
     getDefaultModelForProvider,
     listProviderVoices,
     getVoiceCatalogConfiguration,

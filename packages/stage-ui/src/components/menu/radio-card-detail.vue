@@ -2,18 +2,32 @@
 import { Input, TransitionVertical } from '@proj-airi/ui'
 import { ref } from 'vue'
 
+import CatalogMoreInfo from './catalog-more-info.vue'
+import CatalogStatChip from './catalog-stat-chip.vue'
+
+export interface RadioCardDetailBadge {
+  label: string
+  title: string
+}
+
 withDefaults(defineProps<{
   id: string
   name: string
   value: string
   title: string
   description?: string
+  badges?: readonly RadioCardDetailBadge[]
   deprecated?: boolean
   showExpandCollapse?: boolean
   expandCollapseThreshold?: number
   customInputValue?: string
   customInputPlaceholder?: string
   showCustomInput?: boolean
+  /** When true, description shows in a hover popover only. */
+  descriptionCollapsedByDefault?: boolean
+  descriptionToggleLabel?: string
+  descriptionCollapseLabel?: string
+  providerId?: string
 }>(), {
   deprecated: false,
   showExpandCollapse: true,
@@ -21,14 +35,15 @@ withDefaults(defineProps<{
   customInputValue: '',
   customInputPlaceholder: '',
   showCustomInput: false,
+  descriptionCollapsedByDefault: false,
+  descriptionToggleLabel: 'More info',
+  descriptionCollapseLabel: 'Hide',
 })
 
 const modelValue = defineModel<string>({ required: true })
 
-// Track if description is expanded
 const isExpanded = ref(false)
 
-// Toggle description expansion
 function toggleExpansion() {
   isExpanded.value = !isExpanded.value
 }
@@ -37,7 +52,7 @@ function toggleExpansion() {
 <template>
   <label
     :key="id"
-    class="form_radio-card-detail relative flex cursor-pointer items-start rounded-xl p-3 pr-[20px]"
+    class="form_radio-card-detail relative flex cursor-pointer items-start rounded-lg p-2.5 pr-3"
     transition="all duration-200 ease-in-out"
     border="2 solid"
     :class="[
@@ -77,10 +92,10 @@ function toggleExpansion() {
         />
       </div>
     </div>
-    <div class="w-full flex flex-col gap-2">
-      <div class="flex items-center">
+    <div class="min-w-0 w-full flex flex-col gap-1.5">
+      <div class="flex items-start gap-2">
         <span
-          class="line-clamp-1 font-normal"
+          class="line-clamp-2 min-w-0 flex-1 text-sm font-normal leading-snug"
           :class="[
             modelValue === value
               ? 'text-neutral-700 dark:text-neutral-300'
@@ -89,11 +104,30 @@ function toggleExpansion() {
         >
           {{ title }}
         </span>
+        <span
+          v-if="description && descriptionCollapsedByDefault"
+          class="relative z-10 shrink-0"
+          @click.stop.prevent
+        >
+          <CatalogMoreInfo
+            :text="description"
+            :label="descriptionToggleLabel"
+            :model-id="value"
+            :provider-id="providerId"
+          />
+        </span>
       </div>
 
-      <!-- Truncated description with expand/collapse functionality -->
-      <div v-if="description" class="relative">
-        <!-- Description with ellipsis (limited to 2 lines) -->
+      <div v-if="badges?.length" class="relative z-10 flex flex-wrap gap-1">
+        <CatalogStatChip
+          v-for="badge in badges"
+          :key="`${badge.label}-${badge.title}`"
+          :label="badge.label"
+          :title="badge.title"
+        />
+      </div>
+
+      <div v-if="description && !descriptionCollapsedByDefault" class="relative">
         <TransitionVertical>
           <div
             v-if="!isExpanded || !showExpandCollapse"
@@ -109,7 +143,6 @@ function toggleExpansion() {
             {{ description }}
           </div>
 
-          <!-- Expanded description -->
           <div
             v-else
             class="cursor-pointer text-xs"
@@ -124,7 +157,6 @@ function toggleExpansion() {
           </div>
         </TransitionVertical>
 
-        <!-- Expand/collapse button for long descriptions -->
         <button
           v-if="showExpandCollapse && description.length > expandCollapseThreshold"
           class="mt-0.5 inline-flex items-center text-xs text-primary-500 dark:text-primary-600"
@@ -140,7 +172,6 @@ function toggleExpansion() {
         </button>
       </div>
 
-      <!-- Custom model input field -->
       <div v-if="showCustomInput && modelValue === value" class="mt-2">
         <Input
           v-model="modelValue"
@@ -156,7 +187,7 @@ function toggleExpansion() {
 <style scoped>
 .form_radio-card-detail {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .form_radio-card-detail::before {

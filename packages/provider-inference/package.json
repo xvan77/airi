@@ -44,6 +44,7 @@
     "@google/genai": "catalog:",
     "@moeru/std": "catalog:",
     "@proj-airi/audio": "workspace:^",
+    "@proj-airi/stage-shared": "workspace:^",
     "@sherpaw/asr": "catalog:",
     "@sherpaw/xsai-transcription": "catalog:",
     "@xsai-ext/providers": "catalog:",
