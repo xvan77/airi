@@ -51,17 +51,18 @@ export function updateInferenceStatus(
   update: Partial<Omit<InferenceModelStatus, 'modelId'>>,
 ): void {
   const existing = statusMap.get(modelId)
-  if (existing) {
-    Object.assign(existing, update)
-  }
-  else {
-    statusMap.set(modelId, {
-      modelId,
-      state: 'idle',
-      device: 'unknown',
-      ...update,
-    })
-  }
+  const progress = update.progress
+    ? { ...update.progress }
+    : existing?.progress
+
+  statusMap.set(modelId, {
+    modelId,
+    state: 'idle',
+    device: 'unknown',
+    ...existing,
+    ...update,
+    ...(progress ? { progress } : {}),
+  })
 }
 
 /**

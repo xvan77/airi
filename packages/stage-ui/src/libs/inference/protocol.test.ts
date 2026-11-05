@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { classifyDeviceLossReason, classifyError, InferenceAbortError, isRecoverable, throwIfAborted } from './protocol'
+import { classifyDeviceLossReason, classifyError, formatDownloadSpeed, InferenceAbortError, isRecoverable, resolveProgressPercent, smoothDownloadSpeed, throwIfAborted } from './protocol'
 
 describe('classifyError', () => {
   it('should classify OOM errors', () => {
@@ -82,6 +82,45 @@ describe('isRecoverable', () => {
 
   it('should mark CANCELLED as not recoverable', () => {
     expect(isRecoverable('CANCELLED')).toBe(false)
+  })
+})
+
+describe('resolveProgressPercent', () => {
+  it('returns percent when already normalized', () => {
+    expect(resolveProgressPercent({ percent: 42, loaded: 0, total: 0 })).toBe(42)
+  })
+
+  it('derives percent from loaded and total bytes', () => {
+    expect(resolveProgressPercent({ percent: -1, loaded: 25, total: 100 })).toBe(25)
+  })
+
+  it('scales fractional progress values from transformers', () => {
+    expect(resolveProgressPercent({ percent: 0.42 })).toBe(42)
+  })
+
+  it('returns -1 when progress is indeterminate', () => {
+    expect(resolveProgressPercent({ percent: -1 })).toBe(-1)
+  })
+})
+
+describe('formatDownloadSpeed', () => {
+  it('formats megabytes per second', () => {
+    expect(formatDownloadSpeed(2.5 * 1024 * 1024)).toBe('2.5 MB/s')
+  })
+
+  it('formats kilobytes per second', () => {
+    expect(formatDownloadSpeed(384 * 1024)).toBe('384 KB/s')
+  })
+})
+
+describe('smoothDownloadSpeed', () => {
+  it('returns a smoothed estimate from byte deltas', () => {
+    const speed = smoothDownloadSpeed(
+      { loaded: 0, recordedAt: 1000 },
+      { loaded: 1024 * 1024, recordedAt: 3000 },
+      0,
+    )
+    expect(speed).toBeGreaterThan(500 * 1024)
   })
 })
 

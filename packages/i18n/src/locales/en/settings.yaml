@@ -1198,6 +1198,34 @@ pages:
       configured: Discord is properly configured!
     speech:
       description: Speech synthesis
+      model_catalog:
+        description_show: More info
+        description_hide: Hide
+        filters:
+          sort: Sort
+        clear_downloads: Clear downloads
+        downloaded_chip: Downloaded
+        sort:
+          disk: Download size
+          quant: Quantization
+          backend: CPU / GPU
+        kokoro_help: >-
+          {note} {quantization} is how much the model is compressed. Lower numbers usually mean a smaller
+          download and less memory usage. {wasm} runs on the CPU. {webgpu} uses your graphics card when supported.
+        kokoro_disclaimer: >-
+          {label}: when you choose a Kokoro quantization level, a download starts. Wait until it finishes before you
+          choose a voice.
+        progress:
+          preparing_download: Preparing download...
+          downloading: Downloading model...
+          downloading_percent: 'Downloading model… {progress}%'
+          downloading_file: 'Downloading model ({file}): {percent}%'
+          downloading_model: Downloading model...
+          compiling: Compiling shaders...
+          warming_up: Warming up audio engine...
+          loading_voices: Loading voices...
+          cancel_download: Cancel
+          cancelling_download: Cancelling download...
       sections:
         section:
           playground:
@@ -2200,20 +2228,20 @@ pages:
               label: Model Selection
               description: Smaller models load faster but may have slightly lower quality.
         models:
+          fp16-webgpu:
+            description: Best quality on a supported GPU. Larger download.
           fp32-webgpu:
-            description: >-
-              Full precision model using WebGPU - Recommended for supported
-              devices
+            description: Highest quality on a supported GPU. Largest download.
           fp32:
-            description: Full precision model
+            description: Highest quality on CPU. Large download and slow on weak PCs.
           fp16:
-            description: Half precision
+            description: Balanced quality on CPU. Medium download.
           q8:
-            description: 8-bit quantized
+            description: Smaller download. Good for most PCs.
           q4:
-            description: 4-bit quantized
+            description: Smallest download. Fastest load. Quality may drop slightly.
           q4f16:
-            description: 4-bit with FP16
+            description: Very small download with mixed precision. Good for low-end PCs.
         playground:
           default-text: Hello! This is a test of the Kokoro text-to-speech system.
           title: Voice Playground
@@ -2680,6 +2708,8 @@ theme:
   auto: System
   light: Light
   dark: Dark
+split_pane:
+  resize: Drag to resize panels
 title: Settings
 voices: Voice
 vrm:

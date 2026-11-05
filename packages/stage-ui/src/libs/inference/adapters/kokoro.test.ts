@@ -156,7 +156,7 @@ describe('kokoro adapter - device loss resilience', () => {
       'kokoro-q4',
       expect.any(Number),
       expect.any(Function),
-      { signal: controller.signal },
+      { signal: expect.any(AbortSignal) },
     )
     const worker = MockWorker.instances.at(-1)!
     expect(worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'load-model' }))

@@ -11,6 +11,7 @@ interface Item {
   deprecated?: boolean
   customizable?: boolean
   badges?: { label: string, title: string }[]
+  statusChip?: { label: string, active: boolean }
 }
 
 interface Props {
@@ -221,6 +222,7 @@ function updateCustomValue(value: string) {
               :title="item.name"
               :description="item.description"
               :badges="item.badges"
+              :status-chip="item.statusChip"
               :deprecated="item.deprecated"
               :show-expand-collapse="showMore"
               :expand-collapse-threshold="100"

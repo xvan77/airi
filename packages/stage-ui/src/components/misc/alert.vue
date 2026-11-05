@@ -63,14 +63,29 @@ const titleClass = computed(() => {
 
 <template>
   <div class="flex flex-col gap-3 rounded-xl p-2" :class="containerClass">
-    <div class="flex items-center gap-1.5 font-medium">
+    <div v-if="slots.title" class="flex items-center gap-1.5 font-medium">
       <div class="text-2xl" :class="iconClass" />
       <div :class="titleClass">
         <slot name="title" />
       </div>
     </div>
-    <div v-if="slots.content" class="px-1 text-sm">
-      <slot name="content" />
+    <div
+      v-if="slots.content"
+      :class="[
+        'text-sm',
+        slots.title ? 'px-1' : 'flex items-start gap-2 px-1',
+      ]"
+    >
+      <div
+        v-if="!slots.title"
+        :class="[
+          'shrink-0 text-lg leading-snug',
+          iconClass,
+        ]"
+      />
+      <div class="min-w-0 flex-1">
+        <slot name="content" />
+      </div>
     </div>
   </div>
 </template>

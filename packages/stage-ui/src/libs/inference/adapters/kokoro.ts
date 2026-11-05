@@ -16,8 +16,9 @@ import { Mutex } from 'async-mutex'
 import { removeInferenceStatus, updateInferenceStatus } from '../../../composables/use-inference-status'
 import { DEVICE_LOSS_WASM_THRESHOLD, MAX_RESTARTS, MODEL_NAMES, RESTART_DELAY_MS, TIMEOUTS } from '../constants'
 import { getGPUCoordinator, getLoadQueue, MODEL_VRAM_ESTIMATES } from '../coordinator'
+import { mirrorKokoroInferenceProgress, publishKokoroDownloadProgress } from '../kokoro-download-progress'
 import { LOAD_PRIORITY } from '../load-queue'
-import { classifyDeviceLossReason, classifyError, createRequestId, InferenceAbortError, throwIfAborted } from '../protocol'
+import { classifyDeviceLossReason, classifyError, createRequestId, InferenceAbortError, resolveProgressPercent, throwIfAborted } from '../protocol'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -163,6 +164,12 @@ interface KokoroManifest {
   device: string
 }
 
+// ---------------------------------------------------------------------------
+// Adapter factory
+// ---------------------------------------------------------------------------
+
+let activeLoadAbort: AbortController | null = null
+
 export function createKokoroAdapter(): KokoroAdapter {
   let worker: Worker | null = null
   let state: KokoroAdapter['state'] = 'idle'
@@ -285,82 +292,114 @@ export function createKokoroAdapter(): KokoroAdapter {
       )
       effectiveDevice = 'wasm'
     }
-    throwIfAborted(options?.signal)
-    await ensureStarted()
 
-    return defaultPerfTracer.withMeasure('inference', 'kokoro-load-model', () => operationMutex.runExclusive(async () => {
-      throwIfAborted(options?.signal)
-      state = 'loading'
-      const modelStatusId = `kokoro-${quantization}`
+    activeLoadAbort?.abort('superseded by new Kokoro load')
+    const loadAbort = new AbortController()
+    activeLoadAbort = loadAbort
+    const signal = options?.signal
+      ? AbortSignal.any([options.signal, loadAbort.signal])
+      : loadAbort.signal
 
-      // Clear previous model status when switching models
-      if (currentModelStatusId && currentModelStatusId !== modelStatusId)
-        removeInferenceStatus(currentModelStatusId)
-      currentModelStatusId = modelStatusId
+    try {
+      throwIfAborted(signal)
+      await ensureStarted()
 
-      updateInferenceStatus(modelStatusId, { state: 'downloading', device: effectiveDevice as any })
+      return await defaultPerfTracer.withMeasure('inference', 'kokoro-load-model', () => operationMutex.runExclusive(async () => {
+        throwIfAborted(signal)
+        state = 'loading'
+        const modelStatusId = `kokoro-${quantization}`
 
-      // Use the global load queue to serialize model loads across all adapters
-      return getLoadQueue().enqueue(modelStatusId, LOAD_PRIORITY.TTS, async () => {
-        throwIfAborted(options?.signal)
-        const requestId = createRequestId()
-        // Signal is also passed to the queue below for pending-entry removal
+        // Clear previous model status when switching models
+        if (currentModelStatusId && currentModelStatusId !== modelStatusId)
+          removeInferenceStatus(currentModelStatusId)
+        currentModelStatusId = modelStatusId
 
-        const readyPromise = waitForWorkerMessage<any>(worker!, requestId, 'model-ready', LOAD_MODEL_TIMEOUT, (data) => {
-          if (data.type === 'progress') {
-            const payload = data.payload
-            const progress: ProgressPayload = {
-              phase: payload.phase ?? 'download',
-              percent: payload.percent ?? -1,
-              message: payload.message,
-              file: payload.file,
-              loaded: payload.loaded,
-              total: payload.total,
-            }
-            // Update reactive inference status
-            updateInferenceStatus(modelStatusId, { progress })
-            options?.onProgress?.(progress)
+        updateInferenceStatus(modelStatusId, { state: 'downloading', device: effectiveDevice as any })
+
+        try {
+          // Use the global load queue to serialize model loads across all adapters
+          return await getLoadQueue().enqueue(modelStatusId, LOAD_PRIORITY.TTS, async () => {
+            throwIfAborted(signal)
+            const requestId = createRequestId()
+            // Signal is also passed to the queue below for pending-entry removal
+
+            const readyPromise = waitForWorkerMessage<any>(worker!, requestId, 'model-ready', LOAD_MODEL_TIMEOUT, (data) => {
+              if (data.type === 'progress') {
+                const payload = data.payload
+                const progress: ProgressPayload = {
+                  phase: payload.phase ?? 'download',
+                  percent: resolveProgressPercent({
+                    percent: payload.percent ?? -1,
+                    loaded: payload.loaded,
+                    total: payload.total,
+                  }),
+                  message: payload.message,
+                  file: payload.file,
+                  loaded: payload.loaded,
+                  total: payload.total,
+                }
+                // Update reactive inference status
+                updateInferenceStatus(modelStatusId, { progress })
+                mirrorKokoroInferenceProgress(modelStatusId, 'downloading', progress)
+                options?.onProgress?.(progress)
+              }
+            }, signal)
+
+            worker!.postMessage({
+              type: 'load-model',
+              requestId,
+              modelId: MODEL_NAMES.KOKORO,
+              device: effectiveDevice,
+              dtype: quantization,
+            })
+
+            const response = await readyPromise
+            voices = (response.metadata?.voices as Voices) ?? null
+
+            // Track GPU memory allocation
+            const coordinator = getGPUCoordinator()
+            if (allocationToken)
+              coordinator.release(allocationToken)
+            const estimateKey = `kokoro-${quantization}`
+            const estimated = MODEL_VRAM_ESTIMATES[estimateKey] ?? 165 * 1024 * 1024
+            allocationToken = coordinator.requestAllocation(`kokoro-${quantization}`, estimated)
+
+            // Record manifest so consumers can inspect how the adapter resolved
+            // device selection after fallback / WASM promotion.
+            lastManifest = { quantization, device: (response.device ?? effectiveDevice) as string }
+
+            state = 'ready'
+            updateInferenceStatus(modelStatusId, { state: 'ready', device: (response.device ?? effectiveDevice) as any })
+            mirrorKokoroInferenceProgress(modelStatusId, 'ready')
+            onSuccess()
+            if (!voices)
+              throw new Error('Kokoro worker did not return voice metadata')
+            return voices
+          }, { signal })
+        }
+        catch (error) {
+          if ((error as Error)?.name === 'AbortError') {
+            removeInferenceStatus(modelStatusId)
+            publishKokoroDownloadProgress(null)
+            if (currentModelStatusId === modelStatusId)
+              currentModelStatusId = null
+            state = 'idle'
           }
-        }, options?.signal)
-
-        worker!.postMessage({
-          type: 'load-model',
-          requestId,
-          modelId: MODEL_NAMES.KOKORO,
-          device: effectiveDevice,
-          dtype: quantization,
-        })
-
-        const response = await readyPromise
-        voices = (response.metadata?.voices as Voices) ?? null
-
-        // Track GPU memory allocation
-        const coordinator = getGPUCoordinator()
-        if (allocationToken)
-          coordinator.release(allocationToken)
-        const estimateKey = `kokoro-${quantization}`
-        const estimated = MODEL_VRAM_ESTIMATES[estimateKey] ?? 165 * 1024 * 1024
-        allocationToken = coordinator.requestAllocation(`kokoro-${quantization}`, estimated)
-
-        // Record manifest so consumers can inspect how the adapter resolved
-        // device selection after fallback / WASM promotion.
-        lastManifest = { quantization, device: (response.device ?? effectiveDevice) as string }
-
-        state = 'ready'
-        updateInferenceStatus(modelStatusId, { state: 'ready', device: (response.device ?? effectiveDevice) as any })
-        onSuccess()
-        if (!voices)
-          throw new Error('Kokoro worker did not return voice metadata')
-        return voices
-      }, { signal: options?.signal })
-    }), { quantization, device: effectiveDevice }).catch((error) => {
-      // Don't route AbortError through handleWorkerError — cancellation is
-      // not a worker failure and shouldn't trigger restart logic.
-      if ((error as Error)?.name === 'AbortError')
+          throw error
+        }
+      }), { quantization, device: effectiveDevice }).catch((error) => {
+        // Don't route AbortError through handleWorkerError — cancellation is
+        // not a worker failure and shouldn't trigger restart logic.
+        if ((error as Error)?.name === 'AbortError')
+          throw error
+        handleWorkerError(error instanceof Error ? error : new Error(String(error)))
         throw error
-      handleWorkerError(error instanceof Error ? error : new Error(String(error)))
-      throw error
-    })
+      })
+    }
+    finally {
+      if (activeLoadAbort === loadAbort)
+        activeLoadAbort = null
+    }
   }
 
   async function generate(
@@ -466,6 +505,11 @@ export function createKokoroAdapter(): KokoroAdapter {
 
 let globalAdapter: KokoroAdapter | null = null
 const singletonMutex = new Mutex()
+
+/** Aborts the in-flight Kokoro model load started by `loadModel`. */
+export function cancelKokoroModelLoad(reason?: string): void {
+  activeLoadAbort?.abort(reason ?? 'Download cancelled by user')
+}
 
 /**
  * Get the global Kokoro adapter instance.

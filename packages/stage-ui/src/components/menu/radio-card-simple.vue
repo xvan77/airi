@@ -36,7 +36,7 @@ const modelValue = defineModel<string>({ required: true })
       modelValue === value
         ? 'form_radio-card-simple-active'
         : '',
-      dense ? 'h-12 w-80 p-1.5' : 'p-4',
+      dense ? 'h-12 w-max max-w-[17rem] min-w-44 shrink-0 p-1.5' : 'p-4',
     ]"
     flex="~ col"
     block flex-shrink-0 cursor-pointer items-stretch rounded-xl text-left
@@ -63,10 +63,10 @@ const modelValue = defineModel<string>({ required: true })
 
     <div
       v-if="dense"
-      class="relative z-10 min-h-0 min-w-0 flex flex-1 flex-row items-center gap-1 pl-6 pr-8"
+      class="relative z-10 min-h-0 min-w-0 flex flex-1 flex-row items-center gap-1 pl-6 pr-7"
     >
       <span
-        class="radio-item-name min-w-0 flex-1 truncate text-sm font-normal leading-tight"
+        class="radio-item-name shrink-0 whitespace-nowrap text-sm font-normal leading-tight"
         :class="[
           modelValue === value
             ? 'text-neutral-700 dark:text-neutral-300'

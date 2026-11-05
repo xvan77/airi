@@ -58,7 +58,7 @@ export function useInferencePreload(options: UseInferencePreloadOptions = {}) {
 
       if (modelDef) {
         tasks.push({
-          modelId: `kokoro-${modelDef.id}`,
+          modelId: `kokoro-${modelDef.quantization}`,
           loader: async (signal) => {
             const adapter = await getKokoroAdapter()
             await adapter.loadModel(modelDef.quantization, modelDef.platform, { signal })

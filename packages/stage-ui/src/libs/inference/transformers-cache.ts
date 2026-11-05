@@ -78,3 +78,29 @@ export async function isModelCached(modelId: string): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Whether Kokoro ONNX files for a quantization level appear in the transformers cache.
+ */
+export async function isKokoroQuantCached(quantization: string): Promise<boolean> {
+  if (typeof caches === 'undefined')
+    return false
+
+  const normalizedQuant = quantization.toLowerCase()
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    return keys.some((request) => {
+      const url = request.url.toLowerCase()
+      if (!url.includes('kokoro-82m'))
+        return false
+      return url.includes(normalizedQuant)
+        || url.includes(`model_${normalizedQuant}`)
+        || url.includes(`_${normalizedQuant}.`)
+    })
+  }
+  catch {
+    return false
+  }
+}

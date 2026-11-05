@@ -171,14 +171,9 @@ export function createRequestId(): string {
   return `req_${Date.now().toString(36)}_${(counter++).toString(36)}`
 }
 
-// NOTICE: Patterns observed in WebGPU device loss errors across Chromium,
-// Firefox, Safari, and ONNX Runtime Web / transformers.js. Because we do not
-// own the GPUDevice (it is created internally by transformers.js / ORT-web),
-// we cannot attach a `device.lost` promise handler directly — string matching
-// on thrown errors is the only available detection signal.
-// References:
-//   - https://gpuweb.github.io/gpuweb/#gpudevicelostinfo
-//   - https://github.com/huggingface/transformers.js/issues/715
+// NOTICE: String-match GPU device-loss errors from ORT Web / transformers.js.
+// We do not own the GPUDevice, so we cannot use device.lost directly.
+// See https://gpuweb.github.io/gpuweb/#gpudevicelostinfo and transformers.js#715.
 const DEVICE_LOSS_PATTERNS = [
   'device was lost',
   'device lost',
@@ -250,6 +245,66 @@ export function classifyDeviceLossReason(error: unknown): DeviceLossReason {
  */
 export function isRecoverable(code: InferenceErrorCode): boolean {
   return code === 'TIMEOUT' || code === 'DEVICE_LOST'
+}
+
+/**
+ * Resolves a 0–100 progress value from adapter progress payloads.
+ * Returns -1 when progress is indeterminate.
+ */
+export function resolveProgressPercent(
+  progress: Pick<ProgressPayload, 'percent' | 'loaded' | 'total'>,
+): number {
+  if (
+    progress.total != null
+    && progress.total > 0
+    && progress.loaded != null
+    && progress.loaded >= 0
+  ) {
+    return Math.min(100, (progress.loaded / progress.total) * 100)
+  }
+
+  const raw = progress.percent
+  if (raw == null || raw < 0)
+    return -1
+  if (raw <= 1)
+    return Math.min(100, raw * 100)
+  return Math.min(100, raw)
+}
+
+/** Formats a byte rate for compact download UI labels. */
+export function formatDownloadSpeed(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond < 512)
+    return ''
+
+  if (bytesPerSecond >= 1024 * 1024)
+    return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`
+
+  return `${Math.round(bytesPerSecond / 1024)} KB/s`
+}
+
+/**
+ * Smooths byte deltas from successive progress snapshots.
+ * Returns 0 when the sample pair is unusable.
+ */
+export function smoothDownloadSpeed(
+  previous: { loaded: number, recordedAt: number } | null,
+  current: { loaded: number, recordedAt: number },
+  previousSpeed: number,
+): number {
+  if (!previous || current.loaded <= previous.loaded)
+    return previousSpeed
+
+  const elapsedSec = (current.recordedAt - previous.recordedAt) / 1000
+  if (elapsedSec < 0.25)
+    return previousSpeed
+
+  const instant = (current.loaded - previous.loaded) / elapsedSec
+  if (!Number.isFinite(instant) || instant <= 0)
+    return previousSpeed
+
+  return previousSpeed > 0
+    ? previousSpeed * 0.65 + instant * 0.35
+    : instant
 }
 
 /**

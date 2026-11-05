@@ -28,6 +28,10 @@ withDefaults(defineProps<{
   descriptionToggleLabel?: string
   descriptionCollapseLabel?: string
   providerId?: string
+  statusChip?: {
+    label: string
+    active: boolean
+  }
 }>(), {
   deprecated: false,
   showExpandCollapse: true,
@@ -93,9 +97,9 @@ function toggleExpansion() {
       </div>
     </div>
     <div class="min-w-0 w-full flex flex-col gap-1.5">
-      <div class="flex items-start gap-2">
+      <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1.5">
         <span
-          class="line-clamp-2 min-w-0 flex-1 text-sm font-normal leading-snug"
+          class="line-clamp-2 col-start-1 row-start-1 min-w-0 text-sm font-normal leading-snug"
           :class="[
             modelValue === value
               ? 'text-neutral-700 dark:text-neutral-300'
@@ -106,7 +110,7 @@ function toggleExpansion() {
         </span>
         <span
           v-if="description && descriptionCollapsedByDefault"
-          class="relative z-10 shrink-0"
+          class="relative z-10 col-start-2 row-start-1 shrink-0 self-start justify-self-end"
           @click.stop.prevent
         >
           <CatalogMoreInfo
@@ -116,15 +120,27 @@ function toggleExpansion() {
             :provider-id="providerId"
           />
         </span>
-      </div>
 
-      <div v-if="badges?.length" class="relative z-10 flex flex-wrap gap-1">
-        <CatalogStatChip
-          v-for="badge in badges"
-          :key="`${badge.label}-${badge.title}`"
-          :label="badge.label"
-          :title="badge.title"
-        />
+        <div
+          v-if="badges?.length"
+          class="relative z-10 col-start-1 row-start-2 flex flex-wrap gap-1"
+        >
+          <CatalogStatChip
+            v-for="badge in badges"
+            :key="`${badge.label}-${badge.title}`"
+            :label="badge.label"
+            :title="badge.title"
+          />
+        </div>
+        <div
+          v-if="statusChip?.active"
+          class="relative z-10 col-start-2 row-start-2 flex self-start justify-end"
+        >
+          <CatalogStatChip
+            :label="statusChip.label"
+            :title="statusChip.label"
+          />
+        </div>
       </div>
 
       <div v-if="description && !descriptionCollapsedByDefault" class="relative">

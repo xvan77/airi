@@ -204,13 +204,18 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
             dtype: attempt.dtype as 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16',
             device: attempt.device as 'wasm' | 'webgpu' | 'cpu',
             progress_callback: (progress: any) => {
+              const rawProgress = progress?.progress
+              const normalizedPercent = rawProgress == null || rawProgress < 0
+                ? -1
+                : rawProgress <= 1
+                  ? Math.min(100, rawProgress * 100)
+                  : Math.min(100, rawProgress)
               const msg: ProgressResponse = {
                 type: 'progress',
                 requestId,
                 payload: {
                   phase: 'download',
-                  // NOTICE: raw.progress from kokoro-js/@huggingface/transformers is already 0-100
-                  percent: progress?.progress ?? -1,
+                  percent: normalizedPercent,
                   message: progress?.status,
                   file: progress?.file,
                   loaded: progress?.loaded,

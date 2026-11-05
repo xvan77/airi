@@ -18,12 +18,16 @@ import { useI18n } from 'vue-i18n'
 import { toXml } from 'xast-util-to-xml'
 import { x } from 'xastscript'
 
+import { useInferenceStatus } from '../../composables/use-inference-status'
+import { cancelKokoroModelLoad } from '../../libs/inference/adapters/kokoro'
+import { publishKokoroDownloadProgress, registerKokoroDownloadProgressSetter } from '../../libs/inference/kokoro-download-progress'
+import { isKokoroSpeechModelDownloaded } from '../../libs/inference/kokoro-speech-model-download-state'
 import { injectKeyPiniaSynced } from '../../libs/pinia/synced-context'
 import { getDefinedProvider } from '../../libs/providers/providers'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, pickOfficialSpeechVoice } from '../../libs/providers/providers/official'
 import { streamSpeech } from '../../libs/speech/streaming-pipeline'
 import { createDefaultAudioConsoleSettings, VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '../../libs/speech/voice-profile'
-import { getDefaultKokoroModel } from '../../workers/kokoro/constants'
+import { getDefaultKokoroModel, kokoroInferenceStatusIdForSpeechModel } from '../../workers/kokoro/constants'
 import { stripPromptTimePrefix } from '../chat/datetime-prefix'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
@@ -80,18 +84,22 @@ const useSpeechCatalogRequests = defineStore('speech-catalog-requests', () => {
 
 // Only speech's leader actions write this store. Settings proposals cannot
 // replace catalogs or roll back the reset generation. A new leader inherits both.
-const useSpeechCatalog = defineStore('speech-catalog', () => {
+export const useSpeechCatalog = defineStore('speech-catalog', () => {
   const availableVoices = refManualReset<Record<string, VoiceInfo[]>>(() => ({}))
   const voiceCatalogIdentities = refManualReset<Record<string, VoiceCatalogIdentity>>(() => ({}))
   const resetGeneration = refManualReset(0)
-  return { availableVoices, voiceCatalogIdentities, resetGeneration }
+  const kokoroDownloadProgress = refManualReset<import('../../libs/inference/kokoro-download-progress').KokoroDownloadProgressSnapshot | null>(() => null)
+  return { availableVoices, voiceCatalogIdentities, resetGeneration, kokoroDownloadProgress }
 }, { synced: { state: true } })
 
 export const useSpeechStore = defineStore('speech', () => {
   const pinia = getActivePinia()
   const runtime = hasInjectionContext() ? inject(injectKeyPiniaSynced, undefined) : undefined
   const catalog = useSpeechCatalog()
-  const { availableVoices, voiceCatalogIdentities, resetGeneration } = storeToRefs(catalog)
+  const { availableVoices, voiceCatalogIdentities, resetGeneration, kokoroDownloadProgress } = storeToRefs(catalog)
+  registerKokoroDownloadProgressSetter((update) => {
+    kokoroDownloadProgress.value = update
+  })
   const catalogRequests = useSpeechCatalogRequests()
   const { status: voiceCatalogStatus } = storeToRefs(catalogRequests)
   const providersStore = useProviderStore()
@@ -289,6 +297,12 @@ export const useSpeechStore = defineStore('speech', () => {
     cancelCatalogRequests()
   })
 
+  async function cancelKokoroDownload() {
+    cancelKokoroModelLoad()
+    cancelCatalogRequests()
+    publishKokoroDownloadProgress(null)
+  }
+
   /** Executes a caller's immutable catalog request in the synchronization leader. */
   async function loadVoiceCatalog(provider: string, model: string | undefined, configuration: VoiceCatalogConfiguration, generation = resetGeneration.value): Promise<VoiceInfo[]> {
     // A queued caller request from before reset cannot start new leader work.
@@ -339,7 +353,19 @@ export const useSpeechStore = defineStore('speech', () => {
       discardVoiceCatalog(provider)
     }
 
-    const voices = await providersStore.listProviderVoices(provider, model, catalogConfiguration)
+    if (resolveProviderDefinitionId(provider) === 'kokoro-local' && model) {
+      if (await isKokoroSpeechModelDownloaded(model))
+        publishKokoroDownloadProgress(null)
+    }
+
+    let voices: VoiceInfo[] | undefined
+    try {
+      voices = await providersStore.listProviderVoices(provider, model, catalogConfiguration)
+    }
+    finally {
+      if (resolveProviderDefinitionId(provider) === 'kokoro-local')
+        publishKokoroDownloadProgress(null)
+    }
     // Undefined is an expired session. A cleared sequence also rejects work
     // from an outgoing leader or a reset, even if its network response arrives.
     if (latestVoiceLoads.get(provider) !== loadSequence || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
@@ -581,6 +607,76 @@ export const useSpeechStore = defineStore('speech', () => {
   }, {
     // REVIEW: should we always load voices on init? What will happen when network is not available?
     immediate: true,
+  })
+
+  const { models: inferenceModels } = useInferenceStatus()
+
+  let kokoroVoiceCatalogRetryModel = ''
+  let kokoroVoiceCatalogRetryCount = 0
+  let kokoroVoiceCatalogRetryAt = 0
+  const KOKORO_VOICE_CATALOG_MAX_RETRIES = 2
+  const KOKORO_VOICE_CATALOG_RETRY_COOLDOWN_MS = 5000
+
+  watch(activeSpeechModel, (model) => {
+    if (activeSpeechProvider.value !== 'kokoro-local')
+      return
+    if (model !== kokoroVoiceCatalogRetryModel) {
+      kokoroVoiceCatalogRetryModel = model ?? ''
+      kokoroVoiceCatalogRetryCount = 0
+      kokoroVoiceCatalogRetryAt = 0
+    }
+  })
+
+  async function retryKokoroVoiceCatalogIfEmpty() {
+    if (disposed || activeSpeechProvider.value !== 'kokoro-local')
+      return
+    const model = activeSpeechModel.value
+    if (!model || voiceCatalogStatus.value['kokoro-local']?.loading)
+      return
+    if ((availableVoices.value['kokoro-local'] ?? []).length > 0)
+      return
+
+    const statusId = kokoroInferenceStatusIdForSpeechModel(model)
+    const status = statusId
+      ? inferenceModels.value.find(entry => entry.modelId === statusId)
+      : undefined
+    if (status?.state === 'error')
+      return
+
+    if (kokoroVoiceCatalogRetryCount >= KOKORO_VOICE_CATALOG_MAX_RETRIES)
+      return
+
+    const now = Date.now()
+    if (now - kokoroVoiceCatalogRetryAt < KOKORO_VOICE_CATALOG_RETRY_COOLDOWN_MS)
+      return
+
+    kokoroVoiceCatalogRetryModel = model
+    kokoroVoiceCatalogRetryCount += 1
+    kokoroVoiceCatalogRetryAt = now
+    await loadVoicesForProvider('kokoro-local', model)
+  }
+
+  watch(
+    () => {
+      if (activeSpeechProvider.value !== 'kokoro-local')
+        return undefined
+      const model = activeSpeechModel.value
+      if (!model)
+        return undefined
+      const statusId = kokoroInferenceStatusIdForSpeechModel(model)
+      if (!statusId)
+        return undefined
+      return inferenceModels.value.find(entry => entry.modelId === statusId)?.state
+    },
+    (state, previous) => {
+      if (state === 'ready' && previous !== 'ready')
+        void retryKokoroVoiceCatalogIfEmpty()
+    },
+  )
+
+  watch(kokoroDownloadProgress, (current, previous) => {
+    if (previous && !current)
+      void retryKokoroVoiceCatalogIfEmpty()
   })
 
   if (!activeSpeechProvider.value) {
@@ -1010,6 +1106,7 @@ export const useSpeechStore = defineStore('speech', () => {
     speechProviderError,
     availableVoices: computed(() => availableVoices.value),
     voiceCatalogIdentities: computed(() => voiceCatalogIdentities.value),
+    kokoroDownloadProgress: computed(() => kokoroDownloadProgress.value),
     modelSearchQuery,
 
     // Computed
@@ -1025,6 +1122,8 @@ export const useSpeechStore = defineStore('speech', () => {
     speech,
     loadVoicesForProvider,
     loadVoiceCatalog,
+    cancelCatalogRequests,
+    cancelKokoroDownload,
     invalidateVoiceCatalogs,
     selectProviderModel,
     ensureActiveSpeechVoice,
@@ -1043,7 +1142,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 }, {
   synced: {
-    actions: ['loadVoiceCatalog', 'invalidateVoiceCatalogs', 'selectProviderModel', 'ensureActiveSpeechVoice', 'resetSettings'],
+    actions: ['loadVoiceCatalog', 'invalidateVoiceCatalogs', 'selectProviderModel', 'ensureActiveSpeechVoice', 'resetSettings', 'cancelKokoroDownload'],
     state: true,
   },
 })

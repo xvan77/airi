@@ -43,6 +43,7 @@
     "./libs/providers/types": "./src/libs/providers/types.ts",
     "./libs/local-llm-catalog": "./src/libs/local-llm-catalog.ts",
     "./libs/model-catalog": "./src/libs/model-catalog/index.ts",
+    "./libs/speech-catalog": "./src/libs/speech-catalog/index.ts",
     "./libs/*": "./src/libs/*.ts",
     "./libs": "./src/libs/index.ts",
     "./models/*": "./src/models/*.ts",

@@ -80,6 +80,17 @@ export const KOKORO_MODELS = [
 ] as const
 
 /**
+ * Inference status map key for a Kokoro speech model id (e.g. q4, fp16-webgpu).
+ * Uses quantization because the adapter tracks loads by dtype, not UI model id.
+ */
+export function kokoroInferenceStatusIdForSpeechModel(speechModelId: string): string | null {
+  const definition = KOKORO_MODELS.find(entry => entry.id === speechModelId)
+  if (!definition)
+    return null
+  return `kokoro-${definition.quantization}`
+}
+
+/**
  * Type for Kokoro quantization options
  */
 export type KokoroQuantization = typeof KOKORO_MODELS[number]['id']

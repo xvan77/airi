@@ -23,14 +23,20 @@ export type {
   GPUResourceUsage,
   MemoryPressureLevel,
 } from './gpu-resource-coordinator'
+// Cache utilities
+export {
+  cacheUrlMatchesKokoroQuantization,
+  isKokoroSpeechModelDownloaded,
+  listKokoroSpeechModelsDownloaded,
+} from './kokoro-speech-model-download-state'
 export {
   createLoadQueue,
   LOAD_PRIORITY,
 } from './load-queue'
+
 export type {
   LoadQueue,
 } from './load-queue'
-
 export {
   classifyError,
   createRequestId,
@@ -49,10 +55,10 @@ export type {
   WorkerInboundMessage,
   WorkerOutboundMessage,
 } from './protocol'
-// Cache utilities
 export {
   clearModelCache,
   getModelCacheSize,
+  isKokoroQuantCached,
   isModelCached,
 } from './transformers-cache'
 export {
