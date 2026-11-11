@@ -49,6 +49,8 @@ describe('createOpenAICompatibleValidators', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    generateTextMock.mockReset()
+    listModelsMock.mockReset()
     fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
   })
@@ -246,5 +248,114 @@ describe('createOpenAICompatibleValidators', () => {
       max_completion_tokens: 16,
     }))
     expect(generateTextMock.mock.calls[0][0]).not.toHaveProperty('max_tokens')
+  })
+
+  it('pings the lightest preferred model first even when the preferred list is heavy-first', async () => {
+    listModelsMock.mockResolvedValue([
+      { id: 'gemini-3.8-flash' },
+      { id: 'gemini-3.1-flash-lite' },
+    ])
+    generateTextMock.mockResolvedValue({ text: 'pong' })
+
+    const [chatValidator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+      preferredValidationModelIds: ['gemini-3.8-flash', 'gemini-3.1-flash-lite'],
+    })
+
+    const result = await chatValidator.validator(config, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledTimes(1)
+    expect(generateTextMock.mock.calls[0]![0]).toMatchObject({ model: 'gemini-3.1-flash-lite' })
+  })
+
+  it('retries Ping when Groq requires model terms acceptance', async () => {
+    listModelsMock.mockResolvedValue([
+      { id: 'groq/model-terms-gated' },
+      { id: 'llama-3.1-8b-instant' },
+    ])
+    generateTextMock
+      .mockRejectedValueOnce(new Error(`Remote sent 400 response: {"error":{"code":"model_terms_required","message":"terms"}}`))
+      .mockResolvedValueOnce({ text: 'pong' })
+
+    const [chatValidator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+    })
+
+    const result = await chatValidator.validator(config, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledTimes(2)
+    expect(generateTextMock.mock.calls[0]![0]).toMatchObject({ model: 'groq/model-terms-gated' })
+    expect(generateTextMock.mock.calls[1]![0]).toMatchObject({ model: 'llama-3.1-8b-instant' })
+  })
+
+  it('does not ping Orpheus or PlayAI TTS models during catalog validation', async () => {
+    listModelsMock.mockResolvedValue([
+      { id: 'canopylabs/orpheus-arabic-saudi' },
+      { id: 'playai-tts-voice' },
+      { id: 'llama-3.1-8b-instant' },
+    ])
+    generateTextMock.mockResolvedValue({ text: 'pong' })
+
+    const [chatValidator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+    })
+
+    const result = await chatValidator.validator(config, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledTimes(1)
+    expect(generateTextMock.mock.calls[0]![0]).toMatchObject({ model: 'llama-3.1-8b-instant' })
+  })
+
+  it('skips models AIRI does not treat as usable chat when catalogProviderId is set', async () => {
+    listModelsMock.mockResolvedValue([
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
+    ])
+    generateTextMock.mockResolvedValue({ text: 'pong' })
+
+    const [chatValidator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+      catalogProviderId: 'google-generative-ai',
+      preferredValidationModelIds: ['gemini-2.5-flash', 'gemini-3.8-flash'],
+    })
+
+    const result = await chatValidator.validator(config, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledTimes(1)
+    expect(generateTextMock.mock.calls[0]![0]).toMatchObject({ model: 'gemini-3.8-flash' })
+  })
+
+  it('retries Ping when a model returns high demand (503)', async () => {
+    listModelsMock.mockResolvedValue([
+      { id: 'gemini-2.5-flash', name: 'Retired' },
+      { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
+      { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
+    ])
+    generateTextMock
+      .mockRejectedValueOnce(new Error('Remote sent 503 response: high demand'))
+      .mockResolvedValueOnce({ text: 'pong' })
+
+    const progress: Array<{ phase: string, modelId?: string }> = []
+    const [chatValidator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+      catalogProviderId: 'google-generative-ai',
+      preferredValidationModelIds: ['gemini-3.6-flash', 'gemini-3.8-flash'],
+    })
+
+    const result = await chatValidator.validator(config, provider, providerExtra, {
+      t: mockT,
+      onChatPingProgress: event => progress.push({ phase: event.phase, modelId: event.modelId }),
+    })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledTimes(2)
+    expect(generateTextMock.mock.calls[0]![0]).toMatchObject({ model: 'gemini-3.6-flash' })
+    expect(generateTextMock.mock.calls[1]![0]).toMatchObject({ model: 'gemini-3.8-flash' })
+    expect(progress.some(entry => entry.phase === 'retry')).toBe(true)
+    expect(progress.some(entry => entry.phase === 'success')).toBe(true)
   })
 })

@@ -260,7 +260,7 @@ describe('createStreamingCategorizer', () => {
 
     // Stream in small chunks
     categorizer.consume('Hello ')
-    expect(categorizer.getCurrent()?.speech).toBe('Hello ')
+    expect(categorizer.getCurrent()?.speech).toBe('Hello')
 
     categorizer.consume('<reasoning>')
     categorizer.consume('thinking')

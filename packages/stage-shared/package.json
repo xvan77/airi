@@ -36,6 +36,7 @@
     "./catalog-cache-persistence": "./src/catalog-cache-persistence.ts",
     "./cloud-model-catalog-cache": "./src/cloud-model-catalog-cache.ts",
     "./catalog-description": "./src/catalog-description.ts",
+    "./chat-model-eligibility": "./src/chat-model-eligibility/index.ts",
     "./webgpu": "./src/webgpu/index.ts"
   },
   "scripts": {

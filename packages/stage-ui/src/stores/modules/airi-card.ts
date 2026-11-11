@@ -46,6 +46,7 @@ import { useProviderStore } from '../providers/provider'
 import { useSettingsStageModel } from '../settings/stage-model'
 import { useArtistryStore } from './artistry'
 import { useConsciousnessStore } from './consciousness'
+import { useConsciousnessSettingsStore } from './consciousness-settings'
 import { configureAsDefaultsIfEmpty, unconfigureAuthenticationProviders } from './default'
 import { useSpeechStore } from './speech'
 import { useVisionStore } from './vision'
@@ -105,6 +106,7 @@ function resolveSystemPrompt(
   card: AiriCard | undefined,
   expressions: readonly Live2DExpressionControl[],
   motions: readonly Live2DMotionControl[],
+  stageActEnabled: boolean,
 ): string {
   if (!card)
     return ''
@@ -117,7 +119,7 @@ function resolveSystemPrompt(
     card.personality,
     card.scenario,
     card.extensions.airi.modules.artistry?.widgetInstruction,
-    formatLive2DActPrompt(expressions, motions),
+    ...(stageActEnabled ? [formatLive2DActPrompt(expressions, motions)] : []),
   ].filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
 
   return systemPromptParts.join('\n\n')
@@ -130,6 +132,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   const { t } = useI18n()
   const { userId } = storeToRefs(useAuthStore())
   const featureFlagsStore = useFeatureFlagsStore()
+  const { stageActEnabled } = storeToRefs(useConsciousnessSettingsStore())
   /** Cloud sync is a device choice, off by default. Settings > System > Experimental Features owns it. */
   const cloudSyncEnabled = computed(() => featureFlagsStore.isEnabled(CHARACTER_CARD_SYNC_FLAG.key))
   const displayModels = useDisplayModelsStore()
@@ -1348,9 +1351,23 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // Live2D controls are inspected only for the active Avatar Model. Another
     // Character gets its prompt without ACT controls until it becomes active.
     if (characterId === activeCardId.value)
-      return resolveSystemPrompt(cards.value.get(characterId), enabledLive2DExpressions.value, enabledLive2DMotions.value)
+      return resolveSystemPrompt(cards.value.get(characterId), enabledLive2DExpressions.value, enabledLive2DMotions.value, stageActEnabled.value)
 
-    return resolveSystemPrompt(cards.value.get(characterId), emptyLive2DExpressions, emptyLive2DMotions)
+    return resolveSystemPrompt(cards.value.get(characterId), emptyLive2DExpressions, emptyLive2DMotions, stageActEnabled.value)
+  }
+
+  /** Minimal identity for compact chat requests. Omits description, scenario, and stage instructions. */
+  function getCompactChatPrompt(characterId: string) {
+    const card = cards.value.get(characterId)
+    if (!card)
+      return ''
+
+    const system = card.systemPrompt?.trim() ?? ''
+    if (system.length > 0)
+      return system
+
+    const name = card.name?.trim() ?? ''
+    return name.length > 0 ? `You are ${name}. Reply briefly and naturally.` : 'You are a helpful assistant. Reply briefly.'
   }
 
   async function applyActiveCardSettings(newCard = activeCard.value) {
@@ -1436,6 +1453,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     getCard,
     getModules,
     getSystemPrompt,
+    getCompactChatPrompt,
     resetState,
     selectAvatarModel,
     updateLive2DControlPolicy,
@@ -1472,6 +1490,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       activeCard.value,
       enabledLive2DExpressions.value,
       enabledLive2DMotions.value,
+      stageActEnabled.value,
     )),
   }
 }, {

@@ -29,7 +29,22 @@ dialogs:
     testGeneration: Ping API
     testGenerationRunning: Ping...
     testGenerationFailed: Ping test failed
+    pingFailedNoApiCredits: >-
+      Ping failed. This OpenAI account has no API credits left. Add billing on the OpenAI site or use another provider.
     retryPingCheck: Retry
+    cancelPingCheck: Cancel ping
+    tryAnotherPingModel: Try next model
+    chatPingStart: Testing chat with a short ping message.
+    chatPingTryingModel: 'Trying model {model} (attempt {attempt}).'
+    chatPingRetryNextModel: 'That model failed. Trying attempt {attempt}.'
+    chatPingRetryUserSkipped: 'Skipped {model}. Trying the next model.'
+    chatPingSuccess: 'Ping succeeded on model {model}.'
+    chatPingCanceled: Ping canceled.
+    chatPingPartialNoteLead: >-
+      NOTE: running ping API is a safety measurement to be sure your key works correctly,
+      however, it doesn´t disable the option to check the models that the provider offers.
+    chatPingPartialNoteSkip: >-
+      If you want to skip this process and just see your available models, press here:
     skipForNow: Skip for now
     saveAndContinue: Save and Continue
     next: Next
@@ -842,6 +857,8 @@ pages:
       model_catalog:
         description_show: More info
         description_hide: Hide
+        limited_tier_note: >-
+          Note: Limited is a tier where you can use the model for free until the provider quota for that model is reached. On Groq this matches the Free plan rate limits on each model.
         filters:
           pricing: Price
           deployment: Source
@@ -863,6 +880,11 @@ pages:
             description: Select the suitable LLM provider for consciousness
             error: Error loading models
             health_check_failed: Health check failed
+            open_provider_settings: Open provider settings
+            no_models_provider_shortcut: Configure this provider
+            browsing_last_model:
+              label: 'Last model on this provider:'
+              select: Select
             no_providers_configured_title: No Providers Configured
             no_providers_configured_description: Click here to set up your LLM providers
             expand: Expand
@@ -910,6 +932,21 @@ pages:
               label: Thinking
               required-description: This model requires Thinking.
               provider-default-description: AIRI has no reasoning settings for this model. OpenRouter applies its default.
+            stage-act:
+              label: Stage ACT
+              description: >-
+                Add ACT, DELAY, and emotion tags to chat requests. The avatar can
+                then play expressions and motions from the reply. Turn off to send
+                smaller requests to the model.
+            compact-requests:
+              label: Compact requests
+              description: >-
+                Send a minimal character prompt and only essential tools. Omits
+                format rules, recipes, MCP, spark, and idle memory tools. Use when
+                the provider limits request size (for example Groq Qwen 7k cap).
+              auto-description: >-
+                AIRI turned this on after the last request was too large for the
+                provider limit. Send again, or turn it off in Consciousness.
       title: Consciousness
     description: Thinking, vision, speech synthesis, gaming, etc.
     gaming-factorio:
@@ -1906,6 +1943,7 @@ pages:
       deployment: Deployment
       all: All
       free: Free
+      limited: Limited
       paid: Paid
       internal: Internal
       local: Local

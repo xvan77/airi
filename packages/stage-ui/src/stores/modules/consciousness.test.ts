@@ -247,6 +247,25 @@ describe('consciousness store provider selection', () => {
     expect(store.activeModel).toBe('gpt-4o-mini')
   })
 
+  it('blocks chat until a cloud provider is configured with credentials', async () => {
+    const store = useConsciousnessStore()
+    const configStore = useProviderConfigStore()
+    const providerStore = useProviderStore()
+
+    configStore.ensureProvider('openrouter-ai', 'openrouter-ai', {})
+    await providerStore.initializeProvider('openrouter-ai')
+
+    store.commitChatSelection('openrouter-ai', 'recursive/flint-v1.0:free')
+
+    expect(store.chatSetupBlocker).toBe('provider-credentials')
+    expect(store.chatReady).toBe(false)
+
+    await configStore.patchProviderConfig('openrouter-ai', { apiKey: 'sk-or-test' })
+
+    expect(store.chatSetupBlocker).toBe('none')
+    expect(store.chatReady).toBe(true)
+  })
+
   // ROOT CAUSE:
   //
   // The store used Pinia synchronization and storage event synchronization

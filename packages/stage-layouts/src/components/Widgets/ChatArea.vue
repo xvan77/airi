@@ -32,8 +32,9 @@ const router = useRouter()
 const imageInput = useTemplateRef<HTMLInputElement>('imageInput')
 const chatSession = useChatSessionStore()
 const { addFiles, selectFiles, error: imageError, pending: pendingImages } = useChatImages(props.composer, () => chatSession.activeSessionId)
-const { attachments, removeAttachment } = props.composer
+const { attachments, removeAttachment, replyTarget } = props.composer
 
+const { t } = useI18n()
 const messageInput = props.composer.draft
 const isComposing = props.composer.isComposing
 const DOUBLE_ENTER_INTERVAL_MS = 300
@@ -43,13 +44,19 @@ const sendMode = useLocalStorage<SendMode>('ui/chat/settings/send-mode', 'enter'
 const lastEnterTime = ref(0)
 
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
-const { chatReady } = storeToRefs(useConsciousnessStore())
+const { chatReady, chatSetupBlocker, activeProvider } = storeToRefs(useConsciousnessStore())
 
-const replyTarget = props.composer.replyTarget
-const { t } = useI18n()
+function openChatSetup() {
+  if (chatSetupBlocker.value === 'provider-credentials' && activeProvider.value) {
+    void router.push(`/settings/providers/chat/${activeProvider.value}`)
+    return
+  }
+
+  void router.push('/settings/modules/consciousness')
+}
 
 const hasSubmission = computed(() => !!messageInput.value.trim() || attachments.value.length > 0)
-const { showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
+const { showComposerSend, showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
   sessionId: computed(() => chatSession.activeSessionId),
   generating: computed(() => props.generating),
   hasSubmission,
@@ -150,12 +157,13 @@ watch(replyTarget, async (target) => {
   <VoiceDrafts />
   <ChatProviderSetupCallout
     v-if="!chatReady"
+    :blocker="chatSetupBlocker === 'none' ? 'select-model' : chatSetupBlocker"
     :class="[
       'mb-1',
       // The callout takes the panel width. Its content must not widen the panel.
       'w-0 min-w-full',
     ]"
-    @configure="router.push('/settings/providers')"
+    @configure="openChatSetup()"
   />
   <div ref="composer" :class="['flex gap-2 <md:h-full', 'ph-no-capture']">
     <div
@@ -228,19 +236,20 @@ watch(replyTarget, async (target) => {
           <button
             v-if="showStopAction"
             data-testid="stop-speaking-button"
+            type="button"
             :class="[
               composerActionButtonClass,
-              'bg-neutral-500/15 text-neutral-500 hover:bg-neutral-500/25 dark:bg-neutral-400/15 dark:text-neutral-300 dark:hover:bg-neutral-400/25',
+              'bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400',
             ]"
             :title="t('stage.chat.actions.stop')"
             :aria-label="t('stage.chat.actions.stop')"
             @click="stopActiveResponse"
           >
-            <div class="i-solar:stop-outline size-5" />
+            <span :class="['i-solar:close-bold size-5']" aria-hidden="true" />
           </button>
           <!-- Hover or right-click the send button to choose the send key. -->
           <ChatSendButton
-            v-else
+            v-if="showComposerSend"
             v-model:send-mode="sendMode"
             :disabled="voiceActive || !!pendingImages || (!messageInput.trim() && !attachments.length && !voicePending) || isComposing"
             :button-class="[composerActionButtonClass, 'bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-40']"

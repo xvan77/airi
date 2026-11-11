@@ -11,12 +11,14 @@ import { useAiriRuntimePrompt } from '../../../composables/use-airi-runtime-prom
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useConsciousnessStore } from '../../modules/consciousness'
+import { useConsciousnessSettingsStore } from '../../modules/consciousness-settings'
 
 export { sparkNotifyCommandSchema } from '@proj-airi/core-agent/agents/spark-notify'
 
 export const useCharacterOrchestratorStore = defineStore('character-orchestrator', () => {
   const { stream } = useLLM()
   const consciousnessStore = useConsciousnessStore()
+  const consciousnessSettingsStore = useConsciousnessSettingsStore()
   const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
   const characterStore = useCharacterStore()
   const notebookStore = useCharacterNotebookStore()
@@ -139,7 +141,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           provider,
         },
         systemPrompt: systemPrompt.value,
-        runtimePrompt: runtimePrompt.value,
+        runtimePrompt: consciousnessSettingsStore.stageActEnabled ? runtimePrompt.value : '',
         control,
       })
       if (!result.commands.length)

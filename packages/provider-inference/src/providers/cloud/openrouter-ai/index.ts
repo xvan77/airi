@@ -51,17 +51,35 @@ export const providerOpenRouterAI = defineProvider<OpenRouterConfig, 'openrouter
     }),
   }),
   createProvider(config) {
-    const base = createOpenRouter(config.apiKey, config.baseUrl)
+    const apiKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : ''
+    const base = createOpenRouter(apiKey, config.baseUrl)
     return {
       ...base,
       chat(model: string, options?: ChatRequestOptions) {
+        const chatConfig = base.chat(model)
+        const headers = new Headers(chatConfig.headers)
+        // NOTICE:
+        // xsai does not inject Authorization into init when chat replaces fetch.
+        // Model listing still sends the key through listModels config headers.
+        // Root cause: attribution-only fetch wrapper dropped Bearer auth on chat.
+        // Source: packages/provider-inference/src/providers/cloud/openrouter-ai/index.ts.
+        // Removal condition: upstream passes Authorization in init before custom fetch runs.
+        if (apiKey)
+          headers.set('Authorization', `Bearer ${apiKey}`)
+        for (const [k, v] of Object.entries(OPENROUTER_ATTRIBUTION_HEADERS))
+          headers.set(k, v)
+
         const request = {
-          ...base.chat(model),
+          ...chatConfig,
+          apiKey,
+          headers: Object.fromEntries(headers.entries()),
           fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-            const headers = new Headers(init?.headers)
+            const requestHeaders = new Headers(init?.headers)
+            if (apiKey)
+              requestHeaders.set('Authorization', `Bearer ${apiKey}`)
             for (const [k, v] of Object.entries(OPENROUTER_ATTRIBUTION_HEADERS))
-              headers.set(k, v)
-            return globalThis.fetch(input, { ...init, headers })
+              requestHeaders.set(k, v)
+            return globalThis.fetch(input, { ...init, headers: requestHeaders })
           },
         }
 
@@ -74,10 +92,13 @@ export const providerOpenRouterAI = defineProvider<OpenRouterConfig, 'openrouter
   },
 
   extraMethods: {
-    listModelCatalog: config => listModelCatalog(
-      { apiKey: config.apiKey, baseURL: config.baseUrl ?? 'https://openrouter.ai/api/v1/', headers: OPENROUTER_ATTRIBUTION_HEADERS },
-      { models: openRouterModels.filter(model => model.type === 'chat'), providerId: 'openrouter-ai', baseURL: 'https://openrouter.ai/api/v1/' },
-    ),
+    listModelCatalog: (config) => {
+      const apiKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : ''
+      return listModelCatalog(
+        { apiKey, baseURL: config.baseUrl ?? 'https://openrouter.ai/api/v1/', headers: { ...OPENROUTER_ATTRIBUTION_HEADERS, ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) } },
+        { models: openRouterModels.filter(model => model.type === 'chat'), providerId: 'openrouter-ai', baseURL: 'https://openrouter.ai/api/v1/' },
+      )
+    },
   },
 
   validationRequiredWhen(config) {

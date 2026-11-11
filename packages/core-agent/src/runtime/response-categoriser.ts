@@ -7,6 +7,14 @@ import rehypeStringify from 'rehype-stringify'
 import { unified } from 'unified'
 import { visit } from 'unist-util-visit'
 
+import {
+  mergeReasoningParts,
+  splitPlanningBeforeStageMarkers,
+  splitProsePlanningFromSpeech,
+} from './prose-reasoning-split'
+import { shieldStageMarkersForHtmlParse } from './stage-marker-shield'
+import { stripStreamingControlMarkersFromVisibleSpeech } from './streaming-control-visible-speech'
+
 export type ResponseCategory = 'speech' | 'reasoning' | 'unknown'
 
 export interface CategorizedSegment {
@@ -49,23 +57,24 @@ interface ExtractedTag {
  */
 function extractAllTags(response: string): ExtractedTag[] {
   const tags: ExtractedTag[] = []
+  const parseSource = shieldStageMarkersForHtmlParse(response)
 
   try {
-    const tree = unified().use(rehypeParse, { fragment: true }).parse(response) as Root
+    const tree = unified().use(rehypeParse, { fragment: true }).parse(parseSource) as Root
 
     visit(tree, 'element', (node: Element) => {
       const position = node.position
       if (!position?.start || !position?.end)
         return
 
-      const startIndex = getOffsetFromPosition(response, position.start)
-      const endIndex = getOffsetFromPosition(response, position.end)
+      const startIndex = getOffsetFromPosition(parseSource, position.start)
+      const endIndex = getOffsetFromPosition(parseSource, position.end)
 
       if (startIndex === -1 || endIndex === -1)
         return
 
       // Extract the actual tag content from source
-      const fullMatch = response.slice(startIndex, endIndex)
+      const fullMatch = parseSource.slice(startIndex, endIndex)
 
       // Only include tags that have a closing tag in the source (not auto-closed by rehype)
       // Check if the source actually contains the closing tag
@@ -75,10 +84,17 @@ function extractAllTags(response: string): ExtractedTag[] {
         return
       }
 
+      const fullMatchOriginal = response.slice(startIndex, endIndex)
+      const closeTag = `</${node.tagName}`
+      const closeIndex = fullMatchOriginal.lastIndexOf(closeTag)
+      const openEnd = fullMatchOriginal.indexOf('>')
+      const innerText = closeIndex > openEnd
+        ? fullMatchOriginal.slice(openEnd + 1, closeIndex)
+        : extractTextContent(node)
       tags.push({
         tagName: node.tagName,
-        content: extractTextContent(node),
-        fullMatch,
+        content: innerText.trim(),
+        fullMatch: fullMatchOriginal,
         startIndex,
         endIndex,
       })
@@ -141,15 +157,19 @@ export function categorizeResponse(
   response: string,
   _providerId?: string,
 ): CategorizedResponse {
+  const markerSplit = splitPlanningBeforeStageMarkers(response)
+  const tagSource = markerSplit.remainder
+
   // Extract all tags dynamically
-  const extractedTags = extractAllTags(response)
+  const extractedTags = extractAllTags(tagSource)
 
   if (extractedTags.length === 0) {
-    // No tags found, treat everything as speech
+    const prose = splitProsePlanningFromSpeech(tagSource)
+    const speech = stripStreamingControlMarkersFromVisibleSpeech(prose.speech).trim()
     return {
       segments: [],
-      speech: response,
-      reasoning: '',
+      speech,
+      reasoning: mergeReasoningParts(markerSplit.planning, prose.reasoning),
       raw: response,
     }
   }
@@ -174,7 +194,7 @@ export function categorizeResponse(
   for (const segment of segments) {
     // Add text before this segment
     if (segment.startIndex > lastEnd) {
-      const text = response.slice(lastEnd, segment.startIndex).trim()
+      const text = tagSource.slice(lastEnd, segment.startIndex).trim()
       if (text) {
         speechParts.push(text)
       }
@@ -183,8 +203,8 @@ export function categorizeResponse(
   }
 
   // Add remaining text after last segment
-  if (lastEnd < response.length) {
-    const text = response.slice(lastEnd).trim()
+  if (lastEnd < tagSource.length) {
+    const text = tagSource.slice(lastEnd).trim()
     if (text) {
       speechParts.push(text)
     }
@@ -196,13 +216,14 @@ export function categorizeResponse(
     .map(s => s.content)
     .join('\n\n')
 
-  // Speech is everything outside tags
-  const speech = speechParts.join(' ').trim()
+  let speech = speechParts.join(' ').trim()
+  const prose = splitProsePlanningFromSpeech(speech)
+  speech = stripStreamingControlMarkersFromVisibleSpeech(prose.speech).trim()
 
   return {
     segments,
     speech: speech || '',
-    reasoning,
+    reasoning: mergeReasoningParts(markerSplit.planning, reasoning, prose.reasoning),
     raw: response,
   }
 }
@@ -231,7 +252,8 @@ export function createStreamingCategorizer(
     try {
       // A `<` that does not start a tag, as in `a < b` or `<=>`, is text, and so is `&`. rehype writes them as references.
       // Write them so here too, or the source never equals the output and all later text counts as a tag.
-      const source = buffer.replaceAll('&', '&#x26;').replace(/<(?![a-z/!])/gi, '&#x3C;')
+      let source = shieldStageMarkersForHtmlParse(buffer)
+      source = source.replaceAll('&', '&#x26;').replace(/<(?![a-z/!])/gi, '&#x3C;')
       const tree = unified().use(rehypeParse, { fragment: true }).parse(source) as Root
       const stringified = unified().use(rehypeStringify).stringify(tree).toString()
 
@@ -260,6 +282,9 @@ export function createStreamingCategorizer(
       switch (tagState) {
         case 'outside': {
           if (char === '<') {
+            if (i + 1 < chunk.length && chunk[i + 1] === '|') {
+              break
+            }
             if (i + 1 < chunk.length && chunk[i + 1] === '/') {
               tagState = 'in-closing-tag'
               i++
@@ -281,6 +306,9 @@ export function createStreamingCategorizer(
 
         case 'in-content': {
           if (char === '<') {
+            if (i + 1 < chunk.length && chunk[i + 1] === '|') {
+              break
+            }
             if (i + 1 < chunk.length && chunk[i + 1] === '/') {
               tagState = 'in-closing-tag'
               i++
@@ -375,7 +403,7 @@ export function createStreamingCategorizer(
       // Check if we're currently inside an incomplete tag
       if (checkIncompleteTag()) {
         // Try to find where the tag closes in the combined buffer + text
-        const fullText = buffer + text
+        const fullText = shieldStageMarkersForHtmlParse(buffer + text)
         try {
           const tree = unified().use(rehypeParse, { fragment: true }).parse(fullText) as Root
           let closingOffset = -1

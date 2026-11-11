@@ -16,7 +16,7 @@ const sortDirection = defineModel<ModelCatalogSortDirection>('sortDirection', { 
 
 const { t } = useI18n()
 
-const pricingOptions = ['all', 'free', 'paid'] as const satisfies readonly ModelCatalogPricingFilter[]
+const pricingOptions = ['all', 'free', 'limited', 'paid'] as const satisfies readonly ModelCatalogPricingFilter[]
 const deploymentOptions = ['all', 'local', 'cloud'] as const satisfies readonly ModelCatalogDeploymentFilter[]
 const sortOptions = ['default', 'params', 'context', 'disk', 'quant', 'price'] as const satisfies readonly ModelCatalogSortKey[]
 
@@ -97,5 +97,8 @@ function selectSort(option: ModelCatalogSortKey) {
         </button>
       </div>
     </div>
+    <p class="max-w-3xl text-neutral-500 leading-snug dark:text-neutral-400">
+      {{ t('settings.pages.modules.consciousness.model_catalog.limited_tier_note') }}
+    </p>
   </div>
 </template>

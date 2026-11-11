@@ -151,7 +151,7 @@ const providerBlocksConfig: ProviderBlockConfig[] = [
 ]
 
 const activeTabId = ref(providerBlocksConfig[0].id)
-const filterPricing = ref<'all' | 'free' | 'paid'>('all')
+const filterPricing = ref<'all' | ProviderPricing>('all')
 const filterDeployment = ref<'all' | 'local' | 'cloud'>('all')
 
 onMounted(() => {
@@ -240,7 +240,7 @@ const providerBlocks = computed(() => {
         <span text="neutral-400 dark:neutral-500" font-medium>{{ $t('settings.pages.providers.filters.pricing') }}:</span>
         <div flex="~ row items-center gap-1" bg="neutral-100 dark:neutral-800" rounded-lg p-0.5>
           <button
-            v-for="opt in ['all', 'free', 'paid'] as const"
+            v-for="opt in ['all', 'free', 'limited', 'paid'] as const"
             :key="opt"
             rounded-md px-2 py-0.5 transition-all
             :class="filterPricing === opt ? 'bg-white dark:bg-neutral-700 shadow-sm text-primary-600 dark:text-primary-400 font-semibold' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'"

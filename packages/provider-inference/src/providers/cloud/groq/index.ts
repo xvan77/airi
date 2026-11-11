@@ -47,10 +47,10 @@ export const providerGroq = defineProvider<GroqConfig, 'groq'>({
       ...provider,
       chat(model: string, options?: ChatRequestOptions) {
         const request = provider.chat(model)
-        if (!options?.reasoning)
+        if (options?.reasoning !== 'enabled')
           return request
 
-        return { ...request, reasoningEffort: options.reasoning === 'enabled' ? 'medium' : 'none' }
+        return { ...request, reasoningEffort: 'medium' }
       },
     }
   },
@@ -61,6 +61,7 @@ export const providerGroq = defineProvider<GroqConfig, 'groq'>({
   validators: {
     ...createOpenAICompatibleValidators({
       checks: [ProviderValidationCheck.ModelList, ProviderValidationCheck.ChatCompletions],
+      catalogProviderId: 'groq',
     }),
   },
 })

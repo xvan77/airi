@@ -17,6 +17,28 @@ describe('consciousness settings store', () => {
     expect(store.reasoning).toBe(false)
   })
 
+  it('turns stage act off by default', () => {
+    const store = useConsciousnessSettingsStore()
+
+    expect(store.stageActEnabled).toBe(false)
+  })
+
+  it('turns compact requests off by default', () => {
+    const store = useConsciousnessSettingsStore()
+
+    expect(store.compactRequests).toBe(false)
+    expect(store.compactRequestsAuto).toBe(false)
+  })
+
+  it('enables compact requests from a limit error', async () => {
+    const store = useConsciousnessSettingsStore()
+    await store.enableCompactRequestsFromLimitError()
+
+    expect(store.compactRequests).toBe(true)
+    expect(store.compactRequestsAuto).toBe(true)
+    expect(localStorage.getItem('settings/consciousness/compact-requests')).toBe('true')
+  })
+
   it('loads the persisted value', () => {
     localStorage.setItem('settings/consciousness/reasoning', 'true')
     const store = useConsciousnessSettingsStore()

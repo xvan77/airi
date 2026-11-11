@@ -16,6 +16,7 @@ import { renderConversationPreview } from '../messages/preview'
 import { createChatHooks } from './agent-hooks'
 import { useLlmmarkerParser } from './llm-marker-parser'
 import { categorizeResponse, createStreamingCategorizer } from './response-categoriser'
+import { stripStreamingControlMarkersFromVisibleSpeech } from './streaming-control-visible-speech'
 
 const REASONING_UI_FLUSH_CHUNK_SIZE = 24
 
@@ -854,11 +855,25 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
           categorizer.consume(literal)
 
+          const categorized = categorizer.getCurrent()
+          const planningText = categorized?.reasoning?.trim()
+          if (planningText && planningText !== buildingMessage.categorization?.reasoning) {
+            buildingMessage.categorization = {
+              speech: typeof buildingMessage.content === 'string' ? buildingMessage.content : '',
+              reasoning: planningText,
+            }
+            updateStream(sessionId, buildingMessage)
+          }
+
           let speechOnly = categorizer.filterToSpeech(literal, streamPosition)
           streamPosition += literal.length
 
           if (speechOnly) {
             speechOnly = takeSpeechAfterPromptTimePrefixEcho(promptTimePrefixEchoStrip, speechOnly)
+            if (!speechOnly)
+              return
+
+            speechOnly = stripStreamingControlMarkersFromVisibleSpeech(speechOnly)
             if (!speechOnly)
               return
 
@@ -928,14 +943,18 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
               buildingMessage.slices.push({ type: 'text', text: heldSpeech })
           }
 
-          // Strip only sticker markers, including the escaped form accepted by the parser.
-          const speechText = fullText.replace(/<(?:\||\{'\|'\})STICKER\b[\s\S]*?(?:(?:\||\{'\|'\})>|$)/g, '')
-          const finalCategorization = categorizeResponse(speechText, activeProvider)
+          const categorizationInput = fullText.replace(/<(?:\||\{'\|'\})STICKER\b[\s\S]*?(?:(?:\||\{'\|'\})>|$)/g, '')
+          const finalCategorization = categorizeResponse(categorizationInput, activeProvider)
+          const speechText = stripStreamingControlMarkersFromVisibleSpeech(categorizationInput)
 
           const reasoningContentField = buildingMessage.categorization?.reasoning?.trim()
+          const mergedReasoning = [reasoningContentField, finalCategorization.reasoning]
+            .map(part => part?.trim())
+            .filter((part): part is string => !!part)
+            .join('\n\n')
           buildingMessage.categorization = {
             speech: finalCategorization.speech,
-            reasoning: reasoningContentField || finalCategorization.reasoning,
+            reasoning: mergedReasoning,
           }
           const visibleSpeech = finalCategorization.speech.trim()
           const fallbackSpeech = !visibleSpeech && activeProvider === 'local-llm'
@@ -944,8 +963,10 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           const displaySpeech = stripPromptTimePrefix(visibleSpeech || fallbackSpeech)
 
           for (const slice of buildingMessage.slices) {
-            if (slice.type === 'text')
+            if (slice.type === 'text') {
               slice.text = stripPromptTimePrefix(slice.text)
+              slice.text = stripStreamingControlMarkersFromVisibleSpeech(slice.text)
+            }
           }
           buildingMessage.slices = buildingMessage.slices.filter(slice =>
             slice.type !== 'text' || slice.text.trim().length > 0,
@@ -957,13 +978,21 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             buildingMessage.slices.push({ type: 'text', text: displaySpeech })
           }
 
-          buildingMessage.content = stripPromptTimePrefix(buildingMessage.content).trim()
-          if (!buildingMessage.slices.some(slice => slice.type === 'text') && buildingMessage.content) {
+          if (typeof buildingMessage.content === 'string') {
+            buildingMessage.content = stripStreamingControlMarkersFromVisibleSpeech(
+              stripPromptTimePrefix(buildingMessage.content),
+            )
+          }
+          if (typeof buildingMessage.content === 'string' && !buildingMessage.slices.some(slice => slice.type === 'text') && buildingMessage.content) {
             buildingMessage.slices.push({ type: 'text', text: buildingMessage.content })
           }
 
-          if (buildingMessage.categorization)
-            buildingMessage.categorization.speech = stripPromptTimePrefix(buildingMessage.categorization.speech)
+          if (buildingMessage.categorization) {
+            const speech = buildingMessage.categorization.speech ?? ''
+            buildingMessage.categorization.speech = stripPromptTimePrefix(
+              stripStreamingControlMarkersFromVisibleSpeech(speech),
+            )
+          }
 
           updateStream(sessionId, buildingMessage)
         },

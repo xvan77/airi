@@ -18,11 +18,17 @@ import {
   prepareModelCatalogRows,
   sortModelCatalogRows,
 } from '../../libs/model-catalog'
+import { useAuthStore } from '../auth'
+import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
 import { useConsciousnessSettingsStore } from './consciousness-settings'
 
+export type ChatSetupBlocker = 'none' | 'provider-credentials' | 'select-model'
+
 export const useConsciousnessStore = defineStore('consciousness', () => {
   const providersStore = useProviderStore()
+  const providerConfigStore = useProviderConfigStore()
+  const authStore = useAuthStore()
   const settingsStore = useConsciousnessSettingsStore()
 
   // Pinia synchronization owns live cross-window state. localStorage remains
@@ -217,6 +223,32 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
     return !!activeProvider.value && !!activeModel.value
   })
 
+  function isProviderReadyForChat(providerId: string) {
+    if (!providerId)
+      return false
+
+    const definition = providersStore.findProviderDefinition(providerId)
+    const stored = providerConfigStore.providers[providerId]
+
+    if (definition?.requiresCredentials === false)
+      return true
+
+    if (!stored)
+      return false
+
+    if (stored.configuredBy === 'authentication')
+      return stored.status === 'configured' && authStore.isAuthenticated
+
+    if (stored.status === 'configured')
+      return true
+
+    const config = stored.config ?? {}
+    if (definition?.validationRequiredWhen?.(config))
+      return definition.validationRequiredWhen(config)
+
+    return false
+  }
+
   // Warm OpenRouter catalog cache when consciousness is configured.
   watch(
     [configured, activeProvider],
@@ -230,10 +262,23 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
     { immediate: true },
   )
 
-  /** Whether chat can send. The `prompt-api` provider runs without a selected model. */
-  const chatReady = computed(() => {
-    return !!activeProvider.value && (!!activeModel.value || activeProvider.value === 'prompt-api')
+  /** Why chat cannot send yet. Hosts use this for the setup callout copy and route. */
+  const chatSetupBlocker = computed((): ChatSetupBlocker => {
+    const provider = activeProvider.value
+    if (!provider)
+      return 'select-model'
+
+    if (!activeModel.value && provider !== 'prompt-api')
+      return 'select-model'
+
+    if (!isProviderReadyForChat(provider))
+      return 'provider-credentials'
+
+    return 'none'
   })
+
+  /** Whether chat can send. The `prompt-api` provider runs without a selected model. */
+  const chatReady = computed(() => chatSetupBlocker.value === 'none')
 
   async function resetState() {
     activeProvider.reset()
@@ -248,6 +293,7 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   return {
     // State
     configured,
+    chatSetupBlocker,
     chatReady,
     activeProvider,
     activeModel,

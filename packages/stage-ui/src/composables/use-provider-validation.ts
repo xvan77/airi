@@ -1,3 +1,4 @@
+import type { ChatPingRunHandles, ProviderChatPingProgressEvent } from '@proj-airi/provider-inference'
 import type { RemovableRef } from '@vueuse/core'
 
 import type { ProviderMode } from './use-analytics'
@@ -10,6 +11,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
+import { formatProviderPingFailureReason } from '../libs/provider-connection-error-message'
 import { selectProviderMetadata } from '../libs/providers/metadata'
 import { useProviderConfigStore } from '../stores/providers/config'
 import { useProviderStore } from '../stores/providers/provider'
@@ -90,6 +92,47 @@ export function useProviderValidation(providerId: string) {
   const isManualTesting = ref(false)
   const manualTestPassed = ref(false)
   const manualTestMessage = ref('')
+  const manualTestProgressLines = ref<string[]>([])
+  const chatPingRunHandles = ref<ChatPingRunHandles | undefined>()
+
+  function formatChatPingProgressLine(event: ProviderChatPingProgressEvent): string {
+    switch (event.phase) {
+      case 'start':
+        return t('settings.dialogs.onboarding.chatPingStart')
+      case 'try':
+        return t('settings.dialogs.onboarding.chatPingTryingModel', {
+          attempt: event.attempt,
+          model: event.modelId ?? '',
+        })
+      case 'retry':
+        if (event.userSkippedModel) {
+          return t('settings.dialogs.onboarding.chatPingRetryUserSkipped', {
+            model: event.modelId ?? '',
+          })
+        }
+        return t('settings.dialogs.onboarding.chatPingRetryNextModel', {
+          attempt: event.attempt + 1,
+        })
+      case 'success':
+        return t('settings.dialogs.onboarding.chatPingSuccess', {
+          model: event.modelId ?? '',
+        })
+      default:
+        return ''
+    }
+  }
+
+  function handleChatPingProgress(event: ProviderChatPingProgressEvent) {
+    manualTestProgressLines.value = [...manualTestProgressLines.value, formatChatPingProgressLine(event)]
+  }
+
+  function cancelManualPing() {
+    chatPingRunHandles.value?.runAbortController.abort()
+  }
+
+  function skipToNextPingModel() {
+    chatPingRunHandles.value?.attemptAbortController.abort()
+  }
 
   function providerConnectionTestAnalyticsBase() {
     return {
@@ -131,18 +174,22 @@ export function useProviderValidation(providerId: string) {
         skipChatPingCheck: true,
       })
       isValid.value = validationResult.valid
-      providerStore.setProviderStatus(providerId, isValid.value ? 'configured' : 'invalid')
 
-      if (!isValid.value) {
-        finalValidationMessage = validationResult.reason
+      const needsManualPing = await providersStore.hasManualProviderValidators(providerId)
+      if (isValid.value && !needsManualPing) {
+        providerStore.setProviderStatus(providerId, 'configured')
+        providerStore.markProviderAdded(providerId)
+      }
+      else if (isValid.value && needsManualPing) {
+        // Auto checks skip chat ping. Do not mark configured until Ping API succeeds.
+        providerStore.setProviderStatus(providerId, 'invalid')
+      }
+      else {
+        providerStore.setProviderStatus(providerId, 'invalid')
       }
 
-      // When a provider validates successfully on its settings page,
-      // mark it as added so it appears in the model selector (e.g. Consciousness module).
-      // This fixes providers like LM Studio that use default config and may not
-      // need an API key, yet should be selectable after successful validation.
-      if (isValid.value) {
-        providerStore.markProviderAdded(providerId)
+      if (!isValid.value) {
+        finalValidationMessage = formatProviderPingFailureReason(validationResult.reason, t)
       }
     }
     catch (error) {
@@ -166,15 +213,25 @@ export function useProviderValidation(providerId: string) {
 
     isManualTesting.value = true
     manualTestMessage.value = ''
+    manualTestProgressLines.value = []
+    chatPingRunHandles.value = {
+      runAbortController: new AbortController(),
+      attemptAbortController: new AbortController(),
+    }
+    const handles = chatPingRunHandles.value
     const startedAt = performance.now()
     trackProviderConnectionTestStarted(providerConnectionTestAnalyticsBase())
 
     try {
-      const result = await providersStore.validateProviderConfig(providerId, configToValidate(), {
+      const result = await providersStore.validateProviderConfigLocal(providerId, configToValidate(), {
         onlyChatPingCheck: true,
+        onChatPingProgress: handleChatPingProgress,
+        chatPingRunHandles: handles,
       })
       manualTestPassed.value = result.valid
       if (result.valid) {
+        providerStore.setProviderStatus(providerId, 'configured')
+        providerStore.markProviderAdded(providerId)
         trackProviderConnectionTestCompleted({
           ...providerConnectionTestAnalyticsBase(),
           duration_ms: Math.round(performance.now() - startedAt),
@@ -182,27 +239,45 @@ export function useProviderValidation(providerId: string) {
         })
       }
       else {
-        manualTestMessage.value = result.reason
-        trackProviderConnectionTestCompleted({
-          ...providerConnectionTestAnalyticsBase(),
-          error_code: 'validation_failed',
-          duration_ms: Math.round(performance.now() - startedAt),
-          success: false,
-        })
+        if (handles.runAbortController.signal.aborted) {
+          manualTestMessage.value = t('settings.dialogs.onboarding.chatPingCanceled')
+          trackProviderConnectionTestCompleted({
+            ...providerConnectionTestAnalyticsBase(),
+            error_code: 'user_canceled',
+            duration_ms: Math.round(performance.now() - startedAt),
+            success: false,
+          })
+        }
+        else {
+          manualTestMessage.value = formatProviderPingFailureReason(result.reason, t)
+          trackProviderConnectionTestCompleted({
+            ...providerConnectionTestAnalyticsBase(),
+            error_code: 'validation_failed',
+            duration_ms: Math.round(performance.now() - startedAt),
+            success: false,
+          })
+        }
+        providerStore.setProviderStatus(providerId, 'invalid')
       }
     }
     catch (error) {
       manualTestPassed.value = false
-      manualTestMessage.value = errorMessageFrom(error) ?? 'Generic error (e56ae24f)'
+      if (handles.runAbortController.signal.aborted) {
+        manualTestMessage.value = t('settings.dialogs.onboarding.chatPingCanceled')
+      }
+      else {
+        manualTestMessage.value = errorMessageFrom(error) ?? 'Generic error (e56ae24f)'
+      }
       trackProviderConnectionTestCompleted({
         ...providerConnectionTestAnalyticsBase(),
-        error_code: 'provider_error',
+        error_code: handles.runAbortController.signal.aborted ? 'user_canceled' : 'provider_error',
         duration_ms: Math.round(performance.now() - startedAt),
         success: false,
       })
     }
     finally {
       isManualTesting.value = false
+      chatPingRunHandles.value = undefined
     }
   }
 
@@ -240,6 +315,7 @@ export function useProviderValidation(providerId: string) {
     // Reset manual test state when credentials actually change
     manualTestPassed.value = false
     manualTestMessage.value = ''
+    manualTestProgressLines.value = []
   })
 
   function handleResetSettings() {
@@ -253,10 +329,14 @@ export function useProviderValidation(providerId: string) {
   }
 
   function forceValid() {
+    if (hasManualValidators.value)
+      return
+
     isValid.value = true
     validationMessage.value = ''
     manualTestPassed.value = true
     manualTestMessage.value = ''
+    manualTestProgressLines.value = []
     providersStore.forceProviderConfigured(providerId)
   }
 
@@ -277,6 +357,9 @@ export function useProviderValidation(providerId: string) {
     isManualTesting,
     manualTestPassed,
     manualTestMessage,
+    manualTestProgressLines,
     runManualTest,
+    cancelManualPing,
+    skipToNextPingModel,
   }
 }

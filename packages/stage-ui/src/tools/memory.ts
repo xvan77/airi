@@ -30,7 +30,17 @@ const writeParameters = strictObject({
  * The memory part of a run's prompt: how to use memory, and the index of the run's persona.
  * The index changes only when an entry changes, so it stays in the cacheable prefix.
  */
-export function composeMemoryPrompt(index: string) {
+export function composeMemoryPrompt(index: string, options?: { compact?: boolean }) {
+  if (options?.compact) {
+    if (!index.trim())
+      return ''
+    return [
+      '',
+      '',
+      `Memory index:\n${index}`,
+      `Read with ${READ_MEMORY_TOOL_NAME} when needed. Save with ${WRITE_MEMORY_TOOL_NAME} only when asked.`,
+    ].join('\n')
+  }
   return [
     '',
     '',

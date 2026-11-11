@@ -1,5 +1,5 @@
 /** Pricing category used by provider catalogue filters. */
-export type ProviderPricing = 'free' | 'paid'
+export type ProviderPricing = 'free' | 'limited' | 'paid'
 
 /** Deployment category used by provider catalogue filters. */
 export type ProviderDeployment = 'local' | 'cloud'
@@ -65,8 +65,8 @@ const providerAttributesById = {
   'elevenlabs': paidCloud,
   'featherless-ai': paidCloud,
   'fireworks-ai': paidCloud,
-  'google-generative-ai': paidCloud,
-  'groq': paidCloud,
+  'google-generative-ai': { deployment: 'cloud' },
+  'groq': { deployment: 'cloud' },
   'index-tts-vllm': freeLocal,
   'kokoro-local': freeLocal,
   'local-llm': freeLocal,

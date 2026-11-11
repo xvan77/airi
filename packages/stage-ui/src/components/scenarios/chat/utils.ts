@@ -2,6 +2,19 @@ import type { ChatHistoryItem } from '../../../types/chat'
 
 import { stripPromptTimePrefix } from '../../../stores/chat/datetime-prefix'
 
+/** Formats end-to-end assistant generation time for the chat footer. */
+export function formatChatGenerationDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0)
+    return '0s'
+  if (durationMs < 10_000)
+    return `${(durationMs / 1000).toFixed(1)}s`
+  if (durationMs < 60_000)
+    return `${(durationMs / 1000).toFixed(1)}s`
+  const minutes = Math.floor(durationMs / 60_000)
+  const seconds = Math.round((durationMs % 60_000) / 1000)
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
 function isTextPart(part: unknown): part is { type: 'text', text?: string } {
   return typeof part === 'object'
     && part !== null

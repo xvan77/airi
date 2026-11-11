@@ -2,10 +2,10 @@
 import type { LocalLlmCatalogEntry } from '@proj-airi/stage-ui/libs/local-llm-catalog'
 import type { ModelInfo } from '@proj-airi/stage-ui/libs/providers/types'
 
-import { Alert, ErrorContainer, ModelCatalogFilters, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
+import { ErrorContainer, ModelCatalogFilters, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { LOCAL_LLM_BASE_CATALOG } from '@proj-airi/stage-ui/libs/local-llm-catalog'
-import { compareProviderCatalogOrder, parseDiskSizeBytes } from '@proj-airi/stage-ui/libs/model-catalog'
+import { compareProviderCatalogOrder, ensurePricingSourcesFresh, parseDiskSizeBytes } from '@proj-airi/stage-ui/libs/model-catalog'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useConsciousnessSettingsStore } from '@proj-airi/stage-ui/stores/modules/consciousness-settings'
@@ -17,6 +17,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, useRoute } from 'vue-router'
 
+import ConsciousnessBrowsingLastModelBanner from './consciousness-browsing-last-model-banner.vue'
 import ConsciousnessLocalLlmActions from './consciousness-local-llm-actions.vue'
 
 import { useLocalLlmElectron } from '../../../composables/use-local-llm-electron'
@@ -28,7 +29,7 @@ const consciousnessStore = useConsciousnessStore()
 const consciousnessSettingsStore = useConsciousnessSettingsStore()
 const { configuredProviders } = storeToRefs(providerStore)
 const { moduleChatProvidersMetadata } = storeToRefs(providersStore)
-const { reasoning, temperatureEnabled, topPEnabled } = storeToRefs(consciousnessSettingsStore)
+const { reasoning, stageActEnabled, compactRequests, compactRequestsAuto, temperatureEnabled, topPEnabled } = storeToRefs(consciousnessSettingsStore)
 const {
   activeProvider,
   activeModel,
@@ -60,6 +61,12 @@ const browsingSupportsModelListing = computed(() =>
   providersStore.supportsModelListing(browsingProvider.value),
 )
 
+const browsingProviderSettingsPath = computed(() => {
+  if (!browsingProvider.value)
+    return '/settings/providers'
+  return `/settings/providers/chat/${browsingProvider.value}`
+})
+
 const browsingProviderModels = computed(() =>
   providersStore.getModelsForProvider(browsingProvider.value),
 )
@@ -72,11 +79,37 @@ const browsingProviderModelError = computed(() =>
   providersStore.modelLoadError[browsingProvider.value] || null,
 )
 
-const browsingModelSelection = computed(() => {
+const isBrowsingActiveChatProvider = computed(() =>
+  browsingProvider.value === activeProvider.value,
+)
+
+/** Last model saved for the provider tab you browse now. */
+const lastModelOnBrowsingProvider = computed(() => {
+  const remembered = consciousnessStore.lastModelForProvider(browsingProvider.value)?.trim()
+  if (remembered)
+    return remembered
   if (browsingProvider.value === activeProvider.value)
-    return activeModel.value
-  return consciousnessStore.lastModelForProvider(browsingProvider.value)
+    return activeModel.value?.trim() ?? ''
+  return ''
 })
+
+const browsingModelSelection = computed(() => {
+  if (isBrowsingActiveChatProvider.value)
+    return activeModel.value
+  return lastModelOnBrowsingProvider.value
+})
+
+/** Highlights the active model or the last model remembered for this provider tab (blue radio dot). */
+const catalogRadioSelection = computed(() => browsingModelSelection.value?.trim() ?? '')
+
+const showBrowsingLastModelBanner = computed(() => Boolean(lastModelOnBrowsingProvider.value?.trim()))
+
+async function selectLastModelOnBrowsingProvider() {
+  const modelId = lastModelOnBrowsingProvider.value?.trim()
+  if (!modelId)
+    return
+  await selectModel(modelId)
+}
 
 const browsingManualModelDraft = ref('')
 
@@ -329,6 +362,20 @@ async function updateReasoning(value: boolean) {
   await consciousnessSettingsStore.setReasoning(value)
 }
 
+async function updateStageActEnabled(value: boolean) {
+  await consciousnessSettingsStore.setStageActEnabled(value)
+}
+
+const compactRequestsDescription = computed(() =>
+  compactRequestsAuto.value
+    ? t('settings.pages.modules.consciousness.sections.section.model-options.compact-requests.auto-description')
+    : t('settings.pages.modules.consciousness.sections.section.model-options.compact-requests.description'),
+)
+
+async function updateCompactRequests(value: boolean) {
+  await consciousnessSettingsStore.setCompactRequests(value)
+}
+
 async function updateTemperatureEnabled(value: boolean) {
   await consciousnessSettingsStore.setTemperatureEnabled(value)
 }
@@ -338,6 +385,7 @@ async function updateTopPEnabled(value: boolean) {
 }
 
 onMounted(() => {
+  void ensurePricingSourcesFresh()
   const browse = route.query.browse
   if (typeof browse === 'string' && browse.length > 0)
     browsingProvider.value = browse
@@ -349,9 +397,23 @@ onMounted(() => {
     <div>
       <div flex="~ col gap-4">
         <div>
-          <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-500">
-            {{ t('settings.pages.providers.title') }}
-          </h2>
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-500">
+              {{ t('settings.pages.providers.title') }}
+            </h2>
+            <RouterLink
+              :to="browsingProviderSettingsPath"
+              :class="[
+                'inline-flex shrink-0 items-center gap-2',
+                'rounded-lg px-4 py-2.5',
+                'text-sm font-semibold text-white',
+                'bg-amber-500 transition hover:bg-amber-600',
+              ]"
+            >
+              <div class="i-solar:settings-line-duotone text-lg" />
+              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.open_provider_settings') }}
+            </RouterLink>
+          </div>
           <div text="neutral-400 dark:neutral-400">
             <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.description') }}</span>
           </div>
@@ -442,7 +504,10 @@ onMounted(() => {
           </h2>
           <div class="flex flex-col items-start gap-1 text-neutral-400 md:flex-row md:items-center md:justify-between dark:text-neutral-400">
             <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.subtitle') }}</span>
-            <div v-if="browsingModelSelection" class="flex flex-wrap items-center gap-2 text-sm text-neutral-400 font-medium dark:text-neutral-400">
+            <div
+              v-if="isBrowsingActiveChatProvider && browsingModelSelection"
+              class="flex flex-wrap items-center gap-2 text-sm text-neutral-400 font-medium dark:text-neutral-400"
+            >
               <span>{{ t(localLlmModelLabelKey) }} {{ browsingModelSelection }}</span>
               <span
                 v-if="browsingProvider === 'local-llm' && !localLlmActiveModelOnDisk"
@@ -537,16 +602,28 @@ onMounted(() => {
           >
             {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.switch_model_reloads') }}
           </p>
-          <ModelCatalogFilters
-            v-model:pricing="modelFilterPricing"
-            v-model:deployment="modelFilterDeployment"
-            v-model:sort-key="modelSortKey"
-            v-model:sort-direction="modelSortDirection"
-            class="mt-2"
-          />
+          <div
+            :class="[
+              'mt-2 flex flex-col gap-3',
+              'lg:flex-row lg:items-start lg:justify-between',
+            ]"
+          >
+            <ModelCatalogFilters
+              v-model:pricing="modelFilterPricing"
+              v-model:deployment="modelFilterDeployment"
+              v-model:sort-key="modelSortKey"
+              v-model:sort-direction="modelSortDirection"
+              :class="['min-w-0 flex-1']"
+            />
+            <ConsciousnessBrowsingLastModelBanner
+              v-if="showBrowsingLastModelBanner"
+              :model-id="lastModelOnBrowsingProvider"
+              @select="selectLastModelOnBrowsingProvider"
+            />
+          </div>
           <RadioCardManySelect
             v-model:search-query="modelSearchQuery"
-            :model-value="browsingModelSelection"
+            :model-value="catalogRadioSelection"
             :provider-id="browsingProvider"
             :items="consciousnessModelSelectItems"
             :searchable="true"
@@ -618,19 +695,38 @@ onMounted(() => {
             @stop-server="handleLocalLlmStopServer"
             @quick-download="handleLocalLlmQuickDownload"
           />
-          <Alert v-else type="warning">
-            <template #title>
-              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models') }}
-            </template>
-            <template #content>
-              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models_description') }}
-            </template>
-          </Alert>
+          <div
+            v-else
+            class="flex items-center justify-between gap-4 rounded-xl bg-amber-50/50 p-2 dark:bg-amber-900/20"
+          >
+            <div class="min-w-0 flex flex-1 items-start gap-2">
+              <div
+                class="i-solar:danger-circle-bold-duotone shrink-0 text-2xl text-amber-400 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <div class="min-w-0">
+                <div class="text-amber-600 font-medium dark:text-amber-400">
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models') }}
+                </div>
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models_description') }}
+                </p>
+              </div>
+            </div>
+            <RouterLink
+              :to="browsingProviderSettingsPath"
+              class="flex shrink-0 items-center gap-1.5 text-sm text-amber-700 font-medium transition-colors dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200"
+            >
+              <div i-solar:settings-bold-duotone class="text-lg" aria-hidden="true" />
+              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models_provider_shortcut') }}
+              <div i-solar:arrow-right-linear class="text-base opacity-70" aria-hidden="true" />
+            </RouterLink>
+          </div>
 
           <RadioCardManySelect
             v-if="browsingProvider !== 'local-llm'"
             v-model:search-query="modelSearchQuery"
-            :model-value="browsingModelSelection"
+            :model-value="catalogRadioSelection"
             :provider-id="browsingProvider"
             :items="[]"
             :searchable="true"
@@ -646,24 +742,6 @@ onMounted(() => {
             @update:custom-value="updateCustomModelName"
           />
         </template>
-
-        <div
-          v-if="browsingProvider === 'local-llm'"
-          class="flex justify-end"
-        >
-          <RouterLink
-            to="/settings/providers/chat/local-llm"
-            :class="[
-              'inline-flex items-center gap-2',
-              'rounded-lg px-4 py-2.5',
-              'text-sm font-semibold text-white',
-              'bg-amber-500 transition hover:bg-amber-600',
-            ]"
-          >
-            <div class="i-solar:settings-line-duotone text-lg" />
-            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.open_settings') }}
-          </RouterLink>
-        </div>
       </div>
     </div>
 
@@ -732,6 +810,18 @@ onMounted(() => {
         :description="activeModelRequiresReasoning ? t('settings.pages.modules.consciousness.sections.section.model-options.thinking.required-description') : undefined"
         :disabled="activeModelRequiresReasoning"
         @update:model-value="updateReasoning"
+      />
+      <FieldCheckbox
+        :model-value="stageActEnabled"
+        :label="t('settings.pages.modules.consciousness.sections.section.model-options.stage-act.label')"
+        :description="t('settings.pages.modules.consciousness.sections.section.model-options.stage-act.description')"
+        @update:model-value="updateStageActEnabled"
+      />
+      <FieldCheckbox
+        :model-value="compactRequests"
+        :label="t('settings.pages.modules.consciousness.sections.section.model-options.compact-requests.label')"
+        :description="compactRequestsDescription"
+        @update:model-value="updateCompactRequests"
       />
     </section>
   </SettingsCard>

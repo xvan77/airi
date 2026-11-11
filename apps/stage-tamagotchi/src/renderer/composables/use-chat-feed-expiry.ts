@@ -90,6 +90,12 @@ export function useChatFeedExpiry(options: ChatFeedExpiryOptions) {
     if ((message.id && expiredIds.has(message.id)) || message.role === 'system')
       return Number.NEGATIVE_INFINITY
 
+    // Errors stay long enough to read the fix steps. A short user line can expire first in danmaku mode.
+    if (message.role === 'error') {
+      const start = message.createdAt ?? Date.now()
+      return start + 120_000
+    }
+
     if (message.id && message.id === newestReplyId.value && toValue(options.voicing))
       return Number.POSITIVE_INFINITY
 

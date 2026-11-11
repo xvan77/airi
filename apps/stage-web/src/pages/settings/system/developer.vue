@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const settings = useSettings()
-const { showToolPayloadsAsJson } = storeToRefs(useSettingsDeveloper())
+const { showAssistantGenerationDuration, showToolPayloadsAsJson } = storeToRefs(useSettingsDeveloper())
 
 const menu = computed(() => [
   {
@@ -153,6 +153,17 @@ const menu = computed(() => [
     :enter="{ opacity: 1, y: 0 }"
     :duration="250 + (21 * 10)"
     :delay="3 * 50"
+    :class="['mt-2', 'transition-all duration-250 ease-in-out']"
+  />
+  <CheckBar
+    v-model="showAssistantGenerationDuration"
+    v-motion
+    text="settings.pages.system.sections.section.developer.sections.section.assistant-generation-duration.title"
+    description="settings.pages.system.sections.section.developer.sections.section.assistant-generation-duration.description"
+    :initial="{ opacity: 0, y: 10 }"
+    :enter="{ opacity: 1, y: 0 }"
+    :duration="250 + (22 * 10)"
+    :delay="4 * 50"
     :class="['mt-2', 'transition-all duration-250 ease-in-out']"
   />
 

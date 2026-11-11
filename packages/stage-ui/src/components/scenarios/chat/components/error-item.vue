@@ -37,7 +37,12 @@ const { t } = useI18n()
 const detailsOpen = shallowRef(false)
 
 const summary = computed(() => {
-  const firstLine = props.message.content.trim().split(/\r?\n/u, 1)[0]
+  const content = props.message.content.trim()
+  const friendlyBreak = content.indexOf('\n\n')
+  if (friendlyBreak >= 0)
+    return content.slice(0, friendlyBreak).trim()
+
+  const firstLine = content.split(/\r?\n/u, 1)[0]
   const payloadStart = firstLine.indexOf(': {')
   const text = payloadStart >= 0 ? firstLine.slice(0, payloadStart) : firstLine
   return text.length > 160 ? `${text.slice(0, 157)}…` : text

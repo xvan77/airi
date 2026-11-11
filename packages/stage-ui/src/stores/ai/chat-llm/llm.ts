@@ -23,6 +23,8 @@ export interface LlmStreamOptions extends StreamOptions {
    * place of the tools of the chat, and without the tools of the provider, so a task runs nothing else.
    */
   taskTools?: Tool[]
+  /** Omits debug tools and trims other payload pieces the chat store controls separately. */
+  compactChat?: boolean
 }
 
 export const useLLM = defineStore('llm', () => {
@@ -34,8 +36,8 @@ export const useLLM = defineStore('llm', () => {
     // `prepareConversation` runs for every resolved request, so the key follows a step that changes the model.
     let key = modelKey(model, chatProvider.generation(model))
     let toolExecutionStarted = false
-    const { tools: customTools, describeToolImage, taskTools, ...streamOptions } = options ?? {}
-    const resolveTools = async () => taskTools ?? await resolveLlmTools({ customTools, describeImage: describeToolImage })
+    const { tools: customTools, describeToolImage, taskTools, compactChat, ...streamOptions } = options ?? {}
+    const resolveTools = async () => taskTools ?? await resolveLlmTools({ customTools, describeImage: describeToolImage, compactChat })
     const builtinToolsResolver = resolveTools
     const resolveStep = streamOptions.resolveStep
 

@@ -1,5 +1,6 @@
 import type { ProviderDeployment, ProviderPricing } from '../providers/attributes'
 import type { ModelInfo } from '../providers/types'
+import type { ProviderTierTable } from './pricing-source'
 
 export type ModelCatalogPricingFilter = 'all' | ProviderPricing
 export type ModelCatalogDeploymentFilter = 'all' | ProviderDeployment
@@ -23,7 +24,8 @@ export interface ModelCatalogBadge {
 
 export interface ModelCatalogRow {
   model: ModelInfo
-  pricing: ProviderPricing
+  /** `null` means a pricing page lists tiers and this model id is absent. */
+  pricing: ProviderPricing | null
   deployment: ProviderDeployment
   parameterBillions: number | null
   contextTokens: number | null
@@ -41,4 +43,9 @@ export interface ModelCatalogContext {
   providerId: string
   /** Filename or catalog id → download size in bytes when known. */
   diskSizeByModelId?: Readonly<Record<string, number>>
+  /**
+   * Saved pricing-page results.
+   * Absent uses the tables currently loaded for the app.
+   */
+  tierTables?: Readonly<Record<string, ProviderTierTable>>
 }

@@ -99,8 +99,17 @@ const { activeSessionId, messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
 const { activeTurns, backgroundTasks } = storeToRefs(chatStore)
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
-const { chatReady } = storeToRefs(useConsciousnessStore())
+const { chatReady, chatSetupBlocker, activeProvider } = storeToRefs(useConsciousnessStore())
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
+
+function openChatSetup() {
+  if (chatSetupBlocker.value === 'provider-credentials' && activeProvider.value) {
+    void openSettings({ route: `/settings/providers/chat/${activeProvider.value}` })
+    return
+  }
+
+  void openSettings({ route: '/settings/modules/consciousness' })
+}
 
 const composer = useChatComposer<ChatImageAttachment>({
   activeSessionId,
@@ -153,7 +162,7 @@ const latestImageEntries = computed(() => {
 })
 
 const hasSubmission = computed(() => !!messageInput.value.trim() || attachments.value.length > 0)
-const { showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
+const { showComposerSend, showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
   sessionId: activeSessionId,
   generating: computed(() => activeTurns.value.some(turn => turn.sessionId === activeSessionId.value)),
   hasSubmission,
@@ -436,8 +445,9 @@ defineExpose({
       </button>
       <ChatProviderSetupCallout
         v-if="!chatReady"
+        :blocker="chatSetupBlocker === 'none' ? 'select-model' : chatSetupBlocker"
         :class="['mx-2 mb-1']"
-        @configure="openSettings({ route: '/settings/providers' })"
+        @configure="openChatSetup()"
       />
       <div
         ref="message-composer"
@@ -580,21 +590,25 @@ defineExpose({
               @submit="handleSend"
               @configure="route => openSettings({ route })"
             />
-            <GhostButton
+            <button
               v-if="showStopAction"
-              size="unset"
-              :class="['size-9 rounded-full']"
+              type="button"
               data-testid="stop-speaking-button"
+              :class="[
+                'size-9 flex items-center justify-center rounded-full bg-amber-500 text-white outline-none',
+                'hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400',
+                'transition-colors duration-200 motion-reduce:transition-none',
+              ]"
               :title="t('stage.chat.actions.stop')"
               :aria-label="t('stage.chat.actions.stop')"
               @click="stopActiveResponse"
             >
-              <span :class="['i-solar:stop-bold-duotone h-4 w-4']" />
-            </GhostButton>
+              <span :class="['i-solar:close-bold h-4 w-4']" aria-hidden="true" />
+            </button>
 
             <!-- Hover or right-click the send button to choose the send key. -->
             <ChatSendButton
-              v-else
+              v-if="showComposerSend"
               v-model:send-mode="sendMode"
               :disabled="voiceActive || !!pendingImages || (!messageInput.trim() && !attachments.length && !voicePending) || isComposing"
               :button-class="[

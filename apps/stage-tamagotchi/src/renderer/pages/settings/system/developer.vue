@@ -13,7 +13,7 @@ import { electronOpenDevtoolsWindow, electronOpenEditor, electronOpenMainDevtool
 
 const { t } = useI18n()
 const settings = useSettings()
-const { showToolPayloadsAsJson } = storeToRefs(useSettingsDeveloper())
+const { showAssistantGenerationDuration, showToolPayloadsAsJson } = storeToRefs(useSettingsDeveloper())
 const router = useRouter()
 const eventaContext = useElectronEventaContext()
 const getIOTraceRecording = useElectronEventaInvoke(ioTraceRecordingGet)
@@ -219,6 +219,12 @@ const openEditor = useElectronEventaInvoke(electronOpenEditor)
     v-model="showToolPayloadsAsJson"
     text="settings.pages.system.sections.section.developer.sections.section.tool-payloads-as-json.title"
     description="settings.pages.system.sections.section.developer.sections.section.tool-payloads-as-json.description"
+    :class="['mt-2', 'transition-all duration-250 ease-in-out']"
+  />
+  <CheckBar
+    v-model="showAssistantGenerationDuration"
+    text="settings.pages.system.sections.section.developer.sections.section.assistant-generation-duration.title"
+    description="settings.pages.system.sections.section.developer.sections.section.assistant-generation-duration.description"
     :class="['mt-2', 'transition-all duration-250 ease-in-out']"
   />
   <div :class="['flex flex-col gap-4', 'mt-2 pb-12']">

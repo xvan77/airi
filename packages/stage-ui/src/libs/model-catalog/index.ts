@@ -1,3 +1,6 @@
+import './pricing-page-google'
+import './pricing-page-groq'
+
 export {
   buildModelCatalogRow,
   compareProviderCatalogOrder,
@@ -15,6 +18,15 @@ export {
   parseParameterBillions,
   parseQuantizationLabel,
 } from './parse'
+export { ensurePricingSourcesFresh } from './pricing-source'
+export type { PricingFreePath, PricingTierEvidence, ResolveModelPricingTierInput } from './resolve-pricing-tier'
+export {
+  resolveModelPricingTier,
+  resolvePricingTierFromEvidence,
+  tierFromExplicitCatalogLabel,
+  tierFromGeminiPriceCells,
+  tierFromListingRates,
+} from './resolve-pricing-tier'
 export type {
   ModelCatalogBadge,
   ModelCatalogContext,

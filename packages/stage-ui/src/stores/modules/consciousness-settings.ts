@@ -29,12 +29,41 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
   // Pinia owns live cross-window state. Only synchronized actions write the
   // durable value, so a follower cannot persist an uncommitted proposal.
   const reasoning = shallowRef(loadEnabled('reasoning'))
+  /** Stage ACT and runtime emotion tokens in chat. Off by default to keep requests small. */
+  const stageActEnabled = shallowRef(loadEnabled('stage-act-enabled'))
+  /** Drops format rules, toolset prompts, and idle memory tools to shrink provider requests. */
+  const compactRequests = shallowRef(loadEnabled('compact-requests'))
+  /** True when compact requests turned on after a payload limit error. */
+  const compactRequestsAuto = shallowRef(loadEnabled('compact-requests-auto'))
   const temperatureEnabled = shallowRef(loadEnabled('temperature-enabled'))
   const topPEnabled = shallowRef(loadEnabled('top-p-enabled'))
 
   async function setReasoning(value: boolean) {
     reasoning.value = value
     persistEnabled('reasoning', value)
+  }
+
+  async function setStageActEnabled(value: boolean) {
+    stageActEnabled.value = value
+    persistEnabled('stage-act-enabled', value)
+  }
+
+  async function setCompactRequests(value: boolean) {
+    compactRequests.value = value
+    persistEnabled('compact-requests', value)
+    if (!value) {
+      compactRequestsAuto.value = false
+      persistEnabled('compact-requests-auto', false)
+    }
+  }
+
+  async function enableCompactRequestsFromLimitError() {
+    if (compactRequests.value)
+      return
+    compactRequests.value = true
+    compactRequestsAuto.value = true
+    persistEnabled('compact-requests', true)
+    persistEnabled('compact-requests-auto', true)
   }
 
   async function setTemperatureEnabled(value: boolean) {
@@ -49,22 +78,30 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
 
   async function resetState() {
     await setReasoning(false)
+    await setStageActEnabled(false)
+    await setCompactRequests(false)
     await setTemperatureEnabled(false)
     await setTopPEnabled(false)
   }
 
   return {
     reasoning,
+    stageActEnabled,
+    compactRequests,
+    compactRequestsAuto,
     temperatureEnabled,
     topPEnabled,
     setReasoning,
+    setStageActEnabled,
+    setCompactRequests,
+    enableCompactRequestsFromLimitError,
     setTemperatureEnabled,
     setTopPEnabled,
     resetState,
   }
 }, {
   synced: {
-    actions: ['resetState', 'setReasoning', 'setTemperatureEnabled', 'setTopPEnabled'],
+    actions: ['resetState', 'setReasoning', 'setStageActEnabled', 'setCompactRequests', 'enableCompactRequestsFromLimitError', 'setTemperatureEnabled', 'setTopPEnabled'],
     state: true,
   },
 })

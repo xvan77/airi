@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useSpeechOutputControlStore } from '@proj-airi/stage-ui/stores/speech-output-control'
 import { computed, ref } from 'vue'
 
@@ -25,15 +26,17 @@ interface ChatInterruptionSubmissionHooks {
 /**
  * Coordinates LLM cancellation, TTS cancellation, and replacement sends.
  *
- * The stop action appears only when a response is active and the composer is
- * empty. A new draft replaces the stop action with send. Sending that draft
- * cancels the visible session's response before it submits the next turn.
+ * The stop action appears while a response is active. When the composer is
+ * empty, stop replaces send. When the composer holds a draft, stop stays
+ * beside send so the user can cancel a slow turn without clearing text.
+ * Sending a draft still cancels the visible session's response before the next turn.
  *
  * A response in another session stays stoppable after the user switches chats (#2699).
  * Stop then targets the most recently started turn of another session. Sending from the
  * visible chat does not interrupt it, because unrelated sessions keep running.
  */
 export function useChatInterruption(options: ChatInterruptionOptions) {
+  const chat = useChatStore()
   const speech = useSpeechOutputControlStore()
   const {
     interruptSpeakingFromChat,
@@ -47,9 +50,16 @@ export function useChatInterruption(options: ChatInterruptionOptions) {
     ? options.sessionId.value
     : speech.activeTurns.findLast(turn => turn.sessionId !== options.sessionId.value)?.sessionId)
   const responseActive = computed(() => responseSessionId.value !== undefined)
-  const showStopAction = computed(() => responseActive.value && !options.hasSubmission.value && !preparingReplacement.value)
+  const showStopAction = computed(() => responseActive.value && !preparingReplacement.value)
+  const showComposerSend = computed(() => !showStopAction.value || options.hasSubmission.value)
   async function stopActiveResponse() {
-    const receipt = await stopSpeakingFromChat(responseSessionId.value ?? options.sessionId.value)
+    const sessionId = responseSessionId.value ?? options.sessionId.value
+    await chat.cancelPendingSends(sessionId)
+    for (const turn of chat.activeTurns) {
+      if (turn.sessionId === sessionId)
+        await chat.cancelTurn(turn)
+    }
+    const receipt = await stopSpeakingFromChat(sessionId)
     if (receipt.status === 'failed')
       throw new Error('Response interruption failed')
   }
@@ -83,6 +93,7 @@ export function useChatInterruption(options: ChatInterruptionOptions) {
 
   return {
     responseActive,
+    showComposerSend,
     showStopAction,
     stopActiveResponse,
     submitInterruptingResponse,

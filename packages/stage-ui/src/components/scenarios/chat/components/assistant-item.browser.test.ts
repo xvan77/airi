@@ -11,6 +11,7 @@ import AssistantItem from './assistant-item.vue'
 
 import { chatStickers } from '../../../../assets/stickers'
 import { useStickersStore } from '../../../../stores/modules/stickers'
+import { useSettingsDeveloper } from '../../../../stores/settings/developer'
 
 const stores: ReturnType<typeof createPinia>[] = []
 afterEach(() => {
@@ -31,6 +32,29 @@ function renderMessage(stickerId: string, pinia = createPinia()) {
     global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', messages: { en } })] },
   })
 }
+
+describe('assistant generation duration', () => {
+  it('shows elapsed wall time under finished replies when the developer option is on', async () => {
+    const pinia = createPinia()
+    stores.push(pinia)
+    useSettingsDeveloper(pinia).showAssistantGenerationDuration = true
+    const view = render(AssistantItem, {
+      props: {
+        label: 'AIRI',
+        message: {
+          role: 'assistant',
+          content: 'Done',
+          slices: [{ type: 'text', text: 'Done' }],
+          tool_results: [],
+          createdAt: 1_000,
+          completedAt: 3_250,
+        },
+      },
+      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', messages: { en } })] },
+    })
+    await expect.element(view.getByText('Generated in 2.3s', { exact: true })).toBeVisible()
+  })
+})
 
 describe('assistant stickers', () => {
   it('renders a text-only reply without requiring the sticker library or Pinia', async () => {

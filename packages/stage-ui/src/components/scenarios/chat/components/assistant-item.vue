@@ -5,6 +5,8 @@ import type { ChatHistoryReplyPayload } from '../reply'
 import type { ChatToolCallRendererRegistry, ChatToolCallWidgetRegistry } from './tool-call-renderer'
 
 import { isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
+import { useNow } from '@vueuse/core'
+import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -16,8 +18,9 @@ import ChatSticker from './sticker.vue'
 import ChatToolCallGroup from './tool-call-group.vue'
 
 import { stripPromptTimePrefix } from '../../../../stores/chat/datetime-prefix'
+import { useSettingsDeveloper } from '../../../../stores/settings/developer'
 import { MarkdownRenderer } from '../../../markdown'
-import { getChatHistoryItemCopyText } from '../utils'
+import { formatChatGenerationDuration, getChatHistoryItemCopyText } from '../utils'
 import { ChatActionMenu } from './action-menu'
 import { groupToolCallSlices } from './tool-call-group'
 import { createToolCallResultLookup, resolveToolCallBlockState } from './tool-call-results'
@@ -25,7 +28,7 @@ import { builtinToolCallWidgets } from './tool-call-widgets'
 
 const props = withDefaults(defineProps<{
   /** A reply of the history, or the reply that streams now. The card state of its tool calls is keyed by its id. */
-  message: ChatAssistantMessage & { id?: string }
+  message: ChatAssistantMessage & { id?: string, createdAt?: number, completedAt?: number }
   label: string
   replyTarget?: ChatHistoryReplyPayload
   canReply?: boolean
@@ -58,6 +61,26 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const now = useNow({ interval: 200 })
+const { showAssistantGenerationDuration } = storeToRefs(useSettingsDeveloper())
+
+const generationDurationLabel = computed(() => {
+  if (!showAssistantGenerationDuration.value)
+    return undefined
+
+  const startedAt = props.message.createdAt
+  if (startedAt == null || !Number.isFinite(startedAt))
+    return undefined
+
+  const endedAt = props.streaming ? now.value.getTime() : props.message.completedAt
+  if (endedAt == null || !Number.isFinite(endedAt))
+    return undefined
+
+  const durationMs = Math.max(0, endedAt - startedAt)
+  return t('stage.chat.message.generation-duration', {
+    duration: formatChatGenerationDuration(durationMs),
+  })
+})
 
 function stripAssistantTextSlice(slice: ChatSlicesText): ChatSlicesText {
   return { ...slice, text: stripPromptTimePrefix(slice.text) }
@@ -129,7 +152,11 @@ const drawingCard = computed(() => props.streaming && props.message.pendingConte
 // A call with its own renderer shows by itself. Every other call joins a group with the calls next to it.
 const sliceEntries = computed(() => groupToolCallSlices(resolvedSlices.value, toolName => Boolean(props.toolCallRenderers[toolName])))
 
-const showLoader = computed(() => props.showPlaceholder && resolvedSlices.value.length === 0)
+const speechSlices = computed(() => resolvedSlices.value.filter(slice =>
+  slice.type === 'text' || slice.type === 'sticker' || slice.type === 'card',
+))
+
+const showLoader = computed(() => props.showPlaceholder && speechSlices.value.length === 0)
 const containerClass = computed(() => props.variant === 'mobile' ? 'mr-0' : 'mr-12')
 const boxClasses = computed(() => {
   const spacing = props.variant === 'mobile' ? 'px-2 py-2 text-sm' : 'px-3 py-3'
@@ -209,7 +236,14 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
             </div>
           </div>
           <ResponseCitations v-if="message.citations?.length" :citations="message.citations" />
-          <div v-if="!resolvedSlices.length && showLoader" :class="['i-eos-icons:three-dots-loading']" />
+          <div v-if="showLoader" :class="['i-eos-icons:three-dots-loading']" />
+          <p
+            v-if="generationDurationLabel"
+            :class="['text-[11px] tabular-nums', 'text-neutral-500 dark:text-neutral-400']"
+            :title="t('stage.chat.message.generation-duration-hint')"
+          >
+            {{ generationDurationLabel }}
+          </p>
         </div>
       </template>
     </ChatActionMenu>

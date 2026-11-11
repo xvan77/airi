@@ -23,7 +23,11 @@ mobile-tools:
 chat:
   provider-configuration:
     title: Chat provider isn't configured
-    description: Choose and validate a provider in Settings before sending a message.
+    description: Choose a model on consciousness or use the brain button down here in chat.
+    action: Open consciousness
+  provider-credentials:
+    title: This provider is not ready for chat
+    description: Run Ping API in provider settings and fix the key until the test passes.
     action: Open provider settings
   voice-message:
     recording: Recording
@@ -167,6 +171,27 @@ chat:
   error-details:
     show: Show details
     hide: Hide details
+  errors:
+    openai_no_api_credits: >-
+      This OpenAI account has no API credits left. Add billing on the OpenAI site
+      or pick another provider in Consciousness.
+    non_chat_model: >-
+      The model you selected is not a text chat model and is not available.
+      Select a compatible model in Consciousness.
+    groq_free_tier_payload_too_large: >-
+      AIRI sent a request too large for this Groq model on the free tier. Each
+      model has its own per-request token cap (often 8000; Qwen is about 7000).
+      Compact requests is on now. Send again, or use a new chat, turn off Memory,
+      and pick GPT OSS 20B or 120B.
+    on_device_input_too_large: >-
+      The on-device model context is very small. AIRI now uses compact requests
+      for this chat. Start a new chat, turn off Memory, or pick a cloud provider
+      in Consciousness if it still fails.
+    rate_limited: This model hit a rate or quota limit. Wait a moment, then retry or pick another model.
+    model_unavailable: The provider could not run this model. It may be offline, removed, or blocked on your plan. Pick another model in Consciousness.
+    model_retired: This model is no longer available from the provider for new API users. Pick a newer model in Consciousness.
+    live_api_only: This model is for Gemini Live (real-time audio over WebSocket), not text chat in AIRI. Pick a Flash or Pro text model in Consciousness.
+    tools_not_supported: This model does not work with AIRI's current tool setup. Pick another model, or turn off built-in debug tools in Settings if you enabled them.
   images:
     empty: Share a thought or a picture.
     use-vision: Use the vision model for chat images
@@ -185,8 +210,10 @@ chat:
     reply: Reply
     retry: Retry
     send: Send message
-    stop: Stop response
+    stop: Cancel response
   message:
+    generation-duration: 'Generated in {duration}'
+    generation-duration-hint: Wall time from the first token until the reply finished, including tools and cards.
     character-name:
       airi: AIRI
       core-system: Core System

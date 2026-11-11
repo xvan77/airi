@@ -42,7 +42,10 @@ const {
   isManualTesting,
   manualTestPassed,
   manualTestMessage,
+  manualTestProgressLines,
   runManualTest,
+  cancelManualPing,
+  skipToNextPingModel,
 } = useProviderValidation(providerId)
 </script>
 
@@ -72,9 +75,12 @@ const {
         :is-manual-testing="isManualTesting"
         :manual-test-passed="manualTestPassed"
         :manual-test-message="manualTestMessage"
+        :manual-test-progress-lines="manualTestProgressLines"
         :on-run-test="runManualTest"
         :on-force-valid="forceValid"
         :on-go-to-model-selection="() => router.push('/settings/modules/consciousness')"
+        :on-cancel-manual-ping="cancelManualPing"
+        :on-skip-next-ping-model="skipToNextPingModel"
       />
     </ProviderSettingsContainer>
   </ProviderSettingsLayout>

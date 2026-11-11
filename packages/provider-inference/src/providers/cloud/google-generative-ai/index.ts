@@ -18,6 +18,16 @@ const googleGenerativeConfigSchema = z.object({
 
 type GoogleGenerativeConfig = z.input<typeof googleGenerativeConfigSchema>
 
+function normalizeGoogleModelId(model: string): string {
+  const trimmed = model.trim()
+  return trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed
+}
+
+/** Gemma models reject thinking-budget fields on the Gemini OpenAI-compatible route. */
+export function googleModelSupportsReasoningEffort(model: string): boolean {
+  return !normalizeGoogleModelId(model).toLowerCase().startsWith('gemma')
+}
+
 export const providerGoogleGenerativeAI = defineProvider<GoogleGenerativeConfig, 'google-generative-ai'>({
   id: 'google-generative-ai',
   order: 8,
@@ -49,10 +59,10 @@ export const providerGoogleGenerativeAI = defineProvider<GoogleGenerativeConfig,
       ...provider,
       chat(model: string, options?: ChatRequestOptions) {
         const request = provider.chat(model)
-        if (!options?.reasoning)
+        if (options?.reasoning !== 'enabled' || !googleModelSupportsReasoningEffort(model))
           return request
 
-        return { ...request, reasoningEffort: options.reasoning === 'enabled' ? 'medium' : 'none' }
+        return { ...request, reasoningEffort: 'medium' }
       },
     }
   },
@@ -63,6 +73,15 @@ export const providerGoogleGenerativeAI = defineProvider<GoogleGenerativeConfig,
   validators: {
     ...createOpenAICompatibleValidators({
       checks: [ProviderValidationCheck.Connectivity, ProviderValidationCheck.ModelList, ProviderValidationCheck.ChatCompletions],
+      catalogProviderId: 'google-generative-ai',
+      preferredValidationModelIds: [
+        'gemini-2.0-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-3.5-flash-lite',
+        'gemini-2.0-flash',
+        'gemini-3.6-flash',
+        'gemini-3.8-flash',
+      ],
     }),
   },
 })

@@ -70,6 +70,8 @@ export interface ResolveLlmToolsOptions {
    * @default images stay in tool results
    */
   describeImage?: DescribeToolImage
+  /** Omits debug tools to shrink request payloads. */
+  compactChat?: boolean
 }
 
 /**
@@ -151,6 +153,8 @@ async function resolveWebSearchTools(webSearchTools?: ToolSource): Promise<Tool[
  *
  * Every tool asks the model for a summary of each call. See {@link withCallSummary}.
  */
+const emptyTools = async () => [] as Tool[]
+
 export async function resolveLlmTools(options: ResolveLlmToolsOptions = {}): Promise<Tool[]> {
   const activeTools = await resolveActiveTools(options.activeTools)
   const [
@@ -160,9 +164,9 @@ export async function resolveLlmTools(options: ResolveLlmToolsOptions = {}): Pro
     webSearchTools,
     customTools,
   ] = await Promise.all([
-    resolveToolSource(options.builtInTools ?? mcp),
-    resolveToolSource(options.debugTools ?? debug),
-    resolveSparkCommandTools(options.sparkCommandTools),
+    resolveToolSource(options.compactChat ? emptyTools : options.builtInTools ?? mcp),
+    resolveToolSource(options.compactChat ? emptyTools : options.debugTools ?? debug),
+    options.compactChat ? emptyTools() : resolveSparkCommandTools(options.sparkCommandTools),
     resolveWebSearchTools(options.webSearchTools),
     resolveCustomTools(options.customTools),
   ])

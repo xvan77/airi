@@ -1,5 +1,6 @@
 import type { ProviderDeployment, ProviderPricing } from '../providers/attributes'
 import type { ModelInfo } from '../providers/types'
+import type { ProviderTierTable } from './pricing-source'
 import type {
   ModelCatalogBadge,
   ModelCatalogContext,
@@ -10,6 +11,7 @@ import type {
 } from './types'
 
 import { resolveProviderAttributes } from '../providers/attributes'
+import { isExcludedFromConsciousnessCatalog } from './consciousness-catalog-exclusions'
 import {
   formatContextChip,
   formatDiskChip,
@@ -21,28 +23,37 @@ import {
   quantSortRank,
   resolvePromptPricePerMillion,
 } from './parse'
+import { currentPricingTierTables } from './pricing-source'
+import { resolveModelPricingTier } from './resolve-pricing-tier'
+
+import './pricing-page-google'
+import './pricing-page-groq'
 
 const UNKNOWN_CHIP = '—'
 
-function isPricingFree(model: ModelInfo, providerPricing: ProviderPricing | undefined): ProviderPricing {
-  if (model.id.includes(':free'))
-    return 'free'
-
-  const units = model.metadata?.pricing?.units
-  if (units?.length) {
-    const paid = units.some((unit) => {
-      if ('rate' in unit && typeof unit.rate === 'number')
-        return unit.rate > 0
-      return true
-    })
-    return paid ? 'paid' : 'free'
-  }
-
-  return providerPricing ?? 'paid'
+function resolvePricingBucket(
+  model: ModelInfo,
+  providerPricing: ProviderPricing | undefined,
+  providerId: string,
+  tables: Readonly<Record<string, ProviderTierTable>> | undefined,
+): ProviderPricing | null {
+  return resolveModelPricingTier({
+    modelId: model.id,
+    providerId,
+    providerDefault: providerPricing,
+    listingRateUnits: model.metadata?.pricing?.units,
+    tierTables: tables,
+  })
 }
 
-function pricingRank(pricing: ProviderPricing): number {
-  return pricing === 'free' ? 0 : 1
+function pricingRank(pricing: ProviderPricing | null): number {
+  if (pricing === 'free')
+    return 0
+  if (pricing === 'limited')
+    return 1
+  if (pricing === 'paid')
+    return 2
+  return 3
 }
 
 function deploymentRank(deployment: ProviderDeployment): number {
@@ -79,13 +90,17 @@ export function resolveModelDeployment(providerId: string): ProviderDeployment {
   return resolveProviderAttributes({ id: providerId }).deployment ?? 'cloud'
 }
 
-export function resolveModelPricing(model: ModelInfo, providerId: string): ProviderPricing {
+export function resolveModelPricing(
+  model: ModelInfo,
+  providerId: string,
+  tables?: Readonly<Record<string, ProviderTierTable>>,
+): ProviderPricing | null {
   const providerPricing = resolveProviderAttributes({ id: providerId }).pricing
-  return isPricingFree(model, providerPricing)
+  return resolvePricingBucket(model, providerPricing, providerId, tables ?? currentPricingTierTables())
 }
 
 export function buildModelCatalogRow(model: ModelInfo, context: ModelCatalogContext): ModelCatalogRow {
-  const pricing = resolveModelPricing(model, context.providerId)
+  const pricing = resolveModelPricing(model, context.providerId, context.tierTables)
   const deployment = resolveModelDeployment(context.providerId)
   const parameterBillions = parseParameterBillionsFromModel(model)
   const contextTokens = model.contextLength ?? null
@@ -169,7 +184,8 @@ export function buildModelCatalogRow(model: ModelInfo, context: ModelCatalogCont
 }
 
 export function prepareModelCatalogRows(models: readonly ModelInfo[], context: ModelCatalogContext): ModelCatalogRow[] {
-  return models.map(model => buildModelCatalogRow(model, context))
+  const listed = models.filter(model => !isExcludedFromConsciousnessCatalog(model, context.providerId))
+  return listed.map(model => buildModelCatalogRow(model, context))
 }
 
 export function filterModelCatalogRows(rows: readonly ModelCatalogRow[], filters: ModelCatalogFilters): ModelCatalogRow[] {

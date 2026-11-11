@@ -42,7 +42,7 @@ const { activeSessionId, messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
 const { activeTurns, backgroundTasks } = storeToRefs(chatOrchestrator)
 const { isReceivingRemoteStream } = storeToRefs(useContextBridgeStore())
-const { chatReady } = storeToRefs(useConsciousnessStore())
+const { chatReady, chatSetupBlocker, activeProvider } = storeToRefs(useConsciousnessStore())
 const historyMessages = computed(() => messages.value)
 const isActiveSessionSending = computed(() => (
   (activeTurns.value.some(turn => turn.sessionId === activeSessionId.value))
@@ -74,8 +74,18 @@ const imageInput = useTemplateRef<HTMLInputElement>('imageInput')
 /** Recording UI covers the input bubble. Text, attachments, and send stay hidden and inactive until it closes. */
 const voiceActive = shallowRef(false)
 const router = useRouter()
+
+function openChatSetup() {
+  if (chatSetupBlocker.value === 'provider-credentials' && activeProvider.value) {
+    void router.push(`/settings/providers/chat/${activeProvider.value}`)
+    return
+  }
+
+  void router.push('/settings/modules/consciousness')
+}
+
 const hasSubmission = computed(() => !!messageInput.value.trim() || attachments.value.length > 0)
-const { showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
+const { showComposerSend, showStopAction, stopActiveResponse, submitInterruptingResponse } = useChatInterruption({
   sessionId: activeSessionId,
   generating: isActiveSessionSending,
   hasSubmission,
@@ -406,8 +416,9 @@ onUnmounted(() => {
       </div>
       <ChatProviderSetupCallout
         v-if="!chatReady"
+        :blocker="chatSetupBlocker === 'none' ? 'select-model' : chatSetupBlocker"
         :class="['mx-3']"
-        @configure="router.push('/settings/providers')"
+        @configure="openChatSetup()"
       />
       <div
         ref="messageComposer"
@@ -506,22 +517,21 @@ onUnmounted(() => {
         <div :class="['min-w-10 shrink-0 flex items-end justify-end gap-1']">
           <button
             v-if="showStopAction && !voiceActive"
+            type="button"
             data-testid="stop-speaking-button"
             :class="[
-              'size-10 flex items-center justify-center rounded-full outline-none backdrop-blur-md',
-              'border-2 border-solid border-neutral-200/60 bg-neutral-100/80',
-              'text-lg text-neutral-500 transition-all duration-200 active:scale-95',
-              'dark:border-neutral-700/60 dark:bg-neutral-950/80 dark:text-neutral-400',
-              'hover:bg-primary-100/60 hover:text-primary-600 dark:hover:bg-primary-900/40 dark:hover:text-primary-300',
+              'size-10 flex items-center justify-center rounded-full bg-amber-500 text-white outline-none backdrop-blur-md',
+              'transition-colors duration-200 hover:bg-amber-600 active:scale-95',
+              'dark:bg-amber-500 dark:hover:bg-amber-400 motion-reduce:transition-none',
             ]"
             :title="t('stage.chat.actions.stop')"
             :aria-label="t('stage.chat.actions.stop')"
             @click="stopActiveResponse"
           >
-            <div :class="['i-solar:stop-outline size-5']" />
+            <span :class="['i-solar:close-bold size-5']" aria-hidden="true" />
           </button>
           <button
-            v-else-if="hasSubmission && !voiceActive"
+            v-else-if="showComposerSend && hasSubmission && !voiceActive"
             :disabled="!!pendingImages"
             :aria-label="t('stage.chat.actions.send')"
             :class="[

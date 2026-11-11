@@ -112,19 +112,19 @@ const labels = computed(() => ({
 
 const streaming = computed<StreamingAssistantMessage>(() => props.streamingMessage ?? { role: 'assistant', content: '', slices: [], tool_results: [] })
 
-function hasVisibleAssistantContent(message: StreamingAssistantMessage) {
+/** Speech the owner reads in chat. Tool calls use their own row spinners and must not hide the waiting dots. */
+function hasVisibleAssistantSpeech(message: StreamingAssistantMessage) {
   if (typeof message.content === 'string' && message.content.trim())
     return true
 
   return (message.slices ?? []).some(slice =>
     slice.type === 'sticker'
     || slice.type === 'card'
-    || slice.type === 'tool-call'
     || (slice.type === 'text' && slice.text.trim().length > 0),
   )
 }
 
-const showStreamingPlaceholder = computed(() => !hasVisibleAssistantContent(streaming.value))
+const showStreamingPlaceholder = computed(() => !hasVisibleAssistantSpeech(streaming.value))
 function shouldShowPlaceholder(message: ChatHistoryItem) {
   return !!streaming.value.id && message.id === streaming.value.id
 }

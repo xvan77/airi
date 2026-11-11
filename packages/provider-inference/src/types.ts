@@ -70,10 +70,37 @@ export function withReasoning(provider: GenerationProvider, options: ChatRequest
 /** Translates a provider label or description for the active interface locale. */
 export type ProviderTranslator = (input: string) => string
 
+/**
+ * Abort controls for one manual Ping run. The UI creates this per run. The
+ * validator aborts the active HTTP request when the user cancels or skips to
+ * the next catalog model.
+ */
+export interface ChatPingRunHandles {
+  runAbortController: AbortController
+  attemptAbortController: AbortController
+}
+
 /** Context shared by provider callbacks that need interface translation. */
 export interface ProviderContext {
   /** Translates labels and descriptions for the active interface locale. */
   t: ProviderTranslator
+  /** Per-validation-run cache shared across provider validators in one plan. */
+  validationCache?: Map<string, unknown>
+  /** Live updates while the chat Ping probe tries catalog models. */
+  onChatPingProgress?: (event: ProviderChatPingProgressEvent) => void
+  /** Present only for manual Ping from settings (not serialized across synced stores). */
+  chatPingRunHandles?: ChatPingRunHandles
+}
+
+export type ProviderChatPingProgressPhase = 'start' | 'try' | 'retry' | 'success'
+
+export interface ProviderChatPingProgressEvent {
+  phase: ProviderChatPingProgressPhase
+  attempt: number
+  totalAttempts: number
+  modelId?: string
+  /** True when a catalog model is left because the user chose "Try another model". */
+  userSkippedModel?: boolean
 }
 
 export type ProviderInstance
@@ -386,6 +413,8 @@ export interface ProviderDefinition<TConfig = Record<string, unknown>, TId exten
    * verified yet.
    */
   disableChatPingCheckUI?: boolean
+  /** When true, Consciousness must not HTTP-fetch a model catalog for this provider. */
+  disableModelCatalog?: boolean
   business?: (contextOptions: ProviderContext) => {
     troubleshooting?: {
       validators?: {

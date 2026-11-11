@@ -1,4 +1,4 @@
-import type { GenerationProvider } from '@proj-airi/provider-inference'
+import type { GenerationProvider, ProviderContext } from '@proj-airi/provider-inference'
 import type { CloudModelCatalogCachedModel } from '@proj-airi/stage-shared/cloud-model-catalog-cache'
 import type {} from 'pinia-plugin-synced'
 
@@ -8,6 +8,7 @@ import type { ChatRequestOptions, ModelInfo, ProviderDefinition, ProviderInstanc
 import { errorMessageFrom } from '@moeru/std'
 import { enrichOpenRouterCatalogModels, getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
 import { isAggressiveOfflineStartup, isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { isUsableChatModel } from '@proj-airi/stage-shared/chat-model-eligibility'
 import {
 
   cloudModelCatalogConfigurationFingerprint,
@@ -248,10 +249,22 @@ export const useProviderStore = defineStore('provider', () => {
     }
   }
 
-  async function validateProviderConfig(
+  /**
+   * Runs provider validation in this renderer only. Use this when arguments are
+   * not `structuredClone`-safe (for example `onChatPingProgress`).
+   *
+   * Synced store actions serialize arguments for the leader renderer. Functions
+   * cannot cross that boundary.
+   */
+  async function validateProviderConfigLocal(
     providerId: string,
     config: Record<string, unknown>,
-    options: { onlyChatPingCheck?: boolean, skipChatPingCheck?: boolean } = {},
+    options: {
+      onlyChatPingCheck?: boolean
+      skipChatPingCheck?: boolean
+      onChatPingProgress?: ProviderContext['onChatPingProgress']
+      chatPingRunHandles?: ProviderContext['chatPingRunHandles']
+    } = {},
   ) {
     await waitForProviderMetadata()
     const definition = getProviderDefinition(providerId)
@@ -273,8 +286,13 @@ export const useProviderStore = defineStore('provider', () => {
       plan.steps = plan.steps.filter(step => !step.id.includes(CHAT_COMPLETIONS_VALIDATOR_ID))
     }
 
-    if (plan.providerValidators.length > 0 || plan.configValidators.length > 0)
-      await runProviderValidation(plan, { t })
+    if (plan.providerValidators.length > 0 || plan.configValidators.length > 0) {
+      await runProviderValidation(plan, {
+        t,
+        onChatPingProgress: options.onChatPingProgress,
+        chatPingRunHandles: options.chatPingRunHandles,
+      })
+    }
 
     const configOnly = !options.onlyChatPingCheck && !plan.shouldValidate
     const result = validationResultFromPlan(plan, configOnly)
@@ -297,6 +315,17 @@ export const useProviderStore = defineStore('provider', () => {
     }
   }
 
+  async function validateProviderConfig(
+    providerId: string,
+    config: Record<string, unknown>,
+    options: {
+      onlyChatPingCheck?: boolean
+      skipChatPingCheck?: boolean
+    } = {},
+  ) {
+    return validateProviderConfigLocal(providerId, config, options)
+  }
+
   async function hasManualProviderValidators(providerId: string) {
     const definition = findProviderDefinition(providerId)
     if (!definition || definition.disableChatPingCheckUI)
@@ -307,7 +336,8 @@ export const useProviderStore = defineStore('provider', () => {
   }
 
   function supportsModelListing(providerId: string) {
-    return findProviderDefinition(providerId) !== undefined
+    const definition = findProviderDefinition(providerId)
+    return !!definition && definition.disableModelCatalog !== true
   }
 
   // Configuration validation functions
@@ -747,6 +777,7 @@ export const useProviderStore = defineStore('provider', () => {
     provider?: string
   }>) {
     const normalized = uniqBy(models.filter(model => !!model.id), m => m.id)
+      .filter(model => isUsableChatModel({ id: model.id, name: model.name ?? '' }, providerId))
       .map(model => ({
         metadata: model.metadata,
         reasoning: model.reasoning,
@@ -840,6 +871,12 @@ export const useProviderStore = defineStore('provider', () => {
     const definition = findProviderDefinition(providerId)
     if (!definition)
       return { models: [] }
+
+    if (definition.disableModelCatalog) {
+      initializeProviderRuntimeState(providerId)
+      commitProviderModelCatalog(providerId, [], {})
+      return { models: [] }
+    }
 
     const config = providerCredentials.value[providerId]
     if (!config && definition.requiresCredentials !== false)
@@ -1292,6 +1329,7 @@ export const useProviderStore = defineStore('provider', () => {
     findProviderDefinition,
     getDefaultProviderConfig,
     validateProviderConfig,
+    validateProviderConfigLocal,
     hasManualProviderValidators,
     supportsModelListing,
     getTranscriptionFeatures,

@@ -68,7 +68,8 @@ describe('chat interruption controls', () => {
     const interrupt = connectHost(receipt.promise)
     expect(controls.showStopAction.value).toBe(true)
     hasSubmission.value = true
-    expect(controls.showStopAction.value).toBe(false)
+    expect(controls.showStopAction.value).toBe(true)
+    expect(controls.showComposerSend.value).toBe(true)
     const sending = controls.submitInterruptingResponse()
     sessionId.value = 'bob'
     await vi.waitFor(() => expect(interrupt).toHaveBeenCalledTimes(1))

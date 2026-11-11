@@ -26,6 +26,12 @@ onMounted(async () => {
 async function download() {
   const resultAvailability = await props.download(p => progress.value = p)
   availability.value = resultAvailability
+  const refreshed = await props.checkAvailability()
+  availability.value = refreshed
+  if (refreshed === 'available' || resultAvailability === 'available') {
+    progress.value = 1
+    props.setVaild()
+  }
 }
 </script>
 

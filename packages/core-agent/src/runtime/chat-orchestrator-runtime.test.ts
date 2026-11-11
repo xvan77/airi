@@ -1859,7 +1859,7 @@ describe('chat stickers', () => {
     })
     expect(literals.join('')).toBe('Hello! ')
     expect(specials).toEqual(['<|ACT|>'])
-    expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe('Hello! <|ACT|>')
+    expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe('Hello! ')
   })
 
   it('ignores unknown IDs, model URLs, and an unfinished marker', async () => {

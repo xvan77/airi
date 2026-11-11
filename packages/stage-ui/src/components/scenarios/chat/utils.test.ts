@@ -2,7 +2,21 @@ import type { ChatHistoryItem } from '../../../types/chat'
 
 import { describe, expect, it } from 'vitest'
 
-import { getChatHistoryItemKey } from './utils'
+import { formatChatGenerationDuration, getChatHistoryItemKey } from './utils'
+
+describe('formatChatGenerationDuration', () => {
+  it('shows one decimal for sub-10-second replies', () => {
+    expect(formatChatGenerationDuration(1250)).toBe('1.3s')
+  })
+
+  it('keeps one decimal for replies under one minute', () => {
+    expect(formatChatGenerationDuration(12_400)).toBe('12.4s')
+  })
+
+  it('shows minutes and seconds for long replies', () => {
+    expect(formatChatGenerationDuration(92_000)).toBe('1m 32s')
+  })
+})
 
 describe('getChatHistoryItemKey', () => {
   it('prefers stable message ids when available', () => {

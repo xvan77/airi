@@ -396,6 +396,33 @@ describe('chat history', () => {
     expect(historyBottom - messages[0].getBoundingClientRect().bottom).toBeLessThanOrEqual(64)
   })
 
+  it('keeps the streaming dots while tool calls run before visible speech', async () => {
+    const screen = await render(ChatHistory, {
+      props: {
+        messages: [{ id: 'user-1', role: 'user', content: 'hello' }],
+        sending: true,
+        streamingMessage: {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: '',
+          slices: [{
+            type: 'tool-call',
+            toolCall: { toolCallId: 'call-1', toolCallType: 'function', toolName: 'builtIn_debugRandomNumber', args: '{}' },
+          }],
+          tool_results: [],
+        },
+        style: 'height: 240px; width: 320px; overflow-y: auto;',
+      },
+      global: {
+        plugins: [createEnglishI18n()],
+      },
+    })
+
+    await vi.waitFor(() => {
+      expect(screen.container.querySelector('.i-eos-icons\\:three-dots-loading')).not.toBeNull()
+    })
+  })
+
   // ROOT CAUSE:
   //
   // Rendering every message keeps every backdrop-filter surface alive, even when
@@ -671,6 +698,23 @@ describe('chat history', () => {
   // A provider can place a full response body inside one chat error message.
   // The error item rendered that body immediately and filled the mobile Stage.
   // Keep a short summary visible and reveal the complete message on request.
+  it('shows the full friendly error summary before the provider details', async () => {
+    const friendly = 'AIRI sent a request too large for Groq free tier. Compact requests is on now. Send your message again, or open Consciousness and adjust Stage ACT, Compact requests, or Memory.'
+    const content = `${friendly}\n\nRemote sent 413 response: Limit 8000, Requested 9830`
+    const screen = await render(ChatHistory, {
+      props: {
+        messages: [{ role: 'error', content }],
+        variant: 'mobile',
+        style: 'height: 480px; width: 320px; overflow-y: auto;',
+      },
+      global: { plugins: [createEnglishI18n()] },
+    })
+
+    await vi.waitFor(() => expect(screen.container.textContent).toContain('Compact requests, or Memory.'))
+    expect(screen.container.textContent).not.toContain('Compact re')
+    expect(screen.container.querySelector('button[aria-expanded]')).not.toBeNull()
+  })
+
   it('keeps a long provider error compact until the user opens its details', async () => {
     const responseBody = JSON.stringify({ error: { message: 'Invalid schema for configure_wake_words', metadata: 'x'.repeat(1200) } })
     const content = `Remote sent 400 response: ${responseBody}`

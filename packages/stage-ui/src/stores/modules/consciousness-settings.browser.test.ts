@@ -38,7 +38,7 @@ describe('consciousness settings synchronization', () => {
     localStorage.clear()
   })
 
-  it.each(['reasoning', 'temperatureEnabled', 'topPEnabled'] as const)('applies a remote %s snapshot without publishing it again', async (field) => {
+  it.each(['reasoning', 'stageActEnabled', 'compactRequests', 'compactRequestsAuto', 'temperatureEnabled', 'topPEnabled'] as const)('applies a remote %s snapshot without publishing it again', async (field) => {
     const namespace = `consciousness-settings:${crypto.randomUUID()}`
     const leaderContext = createSyncedContext(namespace, 'leader-only')
     await vi.waitFor(() => expect(leaderContext.runtime.isLeader()).toBe(true))
@@ -66,6 +66,9 @@ describe('consciousness settings synchronization', () => {
     expect(followerMutations).toBe(1)
     expect(followerActions).toBe(0)
     expect(localStorage.getItem('settings/consciousness/reasoning')).toBeNull()
+    expect(localStorage.getItem('settings/consciousness/stage-act-enabled')).toBeNull()
+    expect(localStorage.getItem('settings/consciousness/compact-requests')).toBeNull()
+    expect(localStorage.getItem('settings/consciousness/compact-requests-auto')).toBeNull()
     expect(localStorage.getItem('settings/consciousness/temperature-enabled')).toBeNull()
     expect(localStorage.getItem('settings/consciousness/top-p-enabled')).toBeNull()
   })
