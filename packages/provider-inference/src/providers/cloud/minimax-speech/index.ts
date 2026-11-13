@@ -3,6 +3,7 @@ import type { VoiceInfo } from '../../../types'
 import { EventSourceParserStream } from '@xsai/shared-stream'
 import { z } from 'zod'
 
+import { SPEECH_CREDENTIALS_VALIDATOR_ID } from '../../../types'
 import { defineProvider } from '../../registry'
 
 const minimaxSpeechConfigSchema = z.object({
@@ -341,23 +342,29 @@ export const providerMinimaxSpeech = defineProvider<MinimaxSpeechConfig, 'minima
         id: 'minimax-speech:check-config',
         name: t('settings.pages.providers.catalog.edit.validators.openai-compatible.check-config.title'),
         validator: async (config) => {
-          const errors: Array<{ error: unknown }> = []
-
-          if (!config.apiKey?.trim()) {
-            errors.push({ error: new Error('API key is required.') })
-          }
-          else {
-            // A nonempty key is a supplied key, not an authenticated one.
-            const refusal = await probeMinimaxCredentials(config)
-            if (refusal)
-              errors.push({ error: new Error(refusal) })
-          }
-
+          const valid = Boolean(config.apiKey?.trim())
+          const reason = valid ? '' : 'API key is required.'
           return {
-            errors,
-            reason: errors.map(item => (item.error as Error).message).join(', '),
+            errors: valid ? [] : [{ error: new Error(reason) }],
+            reason,
             reasonKey: '',
-            valid: errors.length === 0,
+            valid,
+          }
+        },
+      }),
+    ],
+    validateProvider: [
+      ({ t }) => ({
+        id: `minimax-speech:${SPEECH_CREDENTIALS_VALIDATOR_ID}`,
+        name: t('settings.pages.providers.catalog.edit.validators.openai-compatible.check-connectivity.title'),
+        validator: async (config) => {
+          // A nonempty key is a supplied key, not an authenticated one.
+          const refusal = await probeMinimaxCredentials(config)
+          return {
+            errors: refusal ? [{ error: new Error(refusal) }] : [],
+            reason: refusal,
+            reasonKey: '',
+            valid: !refusal,
           }
         },
       }),

@@ -2,6 +2,7 @@ import { toWavFromPCM16 } from '@proj-airi/audio/encoding'
 import { EventSourceParserStream } from '@xsai/shared-stream'
 import { z } from 'zod'
 
+import { createSpeechCredentialValidator, probeSpeechCredentialRequest } from '../../../validators'
 import { defineProvider } from '../../registry'
 import { OPENROUTER_ATTRIBUTION_HEADERS } from '../openrouter-ai'
 
@@ -119,7 +120,7 @@ export const providerOpenRouterAudioSpeech = defineProvider<OpenRouterAudioConfi
   icon: 'i-lobe-icons:openrouter',
   createProviderConfig: () => openRouterAudioConfigSchema,
   createProvider(config) {
-    const apiKey = config.apiKey.trim()
+    const apiKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : ''
     const baseUrl = normalizeBaseUrl(config.baseUrl)
     return {
       speech: (model?: string) => {
@@ -146,6 +147,19 @@ export const providerOpenRouterAudioSpeech = defineProvider<OpenRouterAudioConfi
             reasonKey: '',
             valid,
           }
+        },
+      }),
+    ],
+    validateProvider: [
+      createSpeechCredentialValidator<OpenRouterAudioConfig>({
+        id: 'openrouter-audio-speech:check-credentials',
+        probe: async (config) => {
+          await probeSpeechCredentialRequest(new URL('key', normalizeBaseUrl(config.baseUrl)), {
+            headers: {
+              Authorization: `Bearer ${config.apiKey.trim()}`,
+              ...OPENROUTER_ATTRIBUTION_HEADERS,
+            },
+          })
         },
       }),
     ],

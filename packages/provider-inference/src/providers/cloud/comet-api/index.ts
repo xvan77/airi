@@ -72,7 +72,10 @@ export const providerCometAPISpeech = defineProvider<CometApiConfig, 'comet-api-
     )
   },
   validationRequiredWhen: config => Boolean(config.apiKey?.trim()),
-  validators: createOpenAICompatibleValidators({ checks: [ProviderValidationCheck.ModelList] }),
+  validators: createOpenAICompatibleValidators({
+    checks: [ProviderValidationCheck.Connectivity, ProviderValidationCheck.ModelList],
+    deferToManualPing: true,
+  }),
 })
 
 export const providerCometAPITranscription = defineProvider<CometApiConfig, 'comet-api-transcription'>({

@@ -2,7 +2,6 @@ import en from '@proj-airi/i18n/locales/en'
 
 import { PiniaColada } from '@pinia/colada'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
-import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
@@ -62,16 +61,6 @@ async function renderPage(store: ReturnType<typeof createPinia>) {
       directives: { motion: {} },
     },
   })
-}
-
-/** The playground voice selector, addressed by its field description. */
-function voiceSelector() {
-  return page.getByRole('combobox', { name: /Select preferred voice/ })
-}
-
-/** The selector is a text input whose value holds the selected voice label. */
-function voiceLabel(locator: ReturnType<typeof voiceSelector>) {
-  return (locator.element() as HTMLInputElement).value
 }
 
 describe('minimax speech settings page', () => {
@@ -138,52 +127,14 @@ describe('minimax speech settings page', () => {
     }, { timeout: 4000 }).toBe('configured')
   })
 
-  // ROOT CAUSE:
-  //
-  // `SpeechPlayground` owned the picked voice in a local ref with no selection
-  // binding. A pick changed the preview request only, so nothing was saved and
-  // a reopened page fell back to the first entry. The page now binds the
-  // playground to the persisted `configs[providerId].voice`.
-  it('keeps a picked voice after the page is reopened', async () => {
+  // Voice pick moved to Speech. This page must not keep a playground selector.
+  it('does not show a playground voice selector', async () => {
     storeConfiguredProvider(savedCredentials)
 
-    const screen = await renderPage(pinia)
+    await renderPage(pinia)
 
     await expect.poll(() => useSpeechStore(pinia).availableVoices[providerId]?.length, { timeout: 5000 })
-      .toBe(3)
-
-    // A non-default choice, so a fallback to the first entry cannot pass.
-    await voiceSelector().click()
-    await page.getByText('Wise Scholar').click()
-
-    await expect.poll(() => useProviderConfigStore(pinia).configs[providerId]?.voice, { timeout: 5000 })
-      .toBe('Spanish_WiseScholar')
-    await expect.poll(() => storedConfig()?.voice, { timeout: 5000 }).toBe('Spanish_WiseScholar')
-
-    // A fresh store proves the choice came back from storage, not from memory.
-    screen.unmount()
-    const reopened = createPinia()
-    stores.push(reopened)
-    const restored = await renderPage(reopened)
-
-    await expect.poll(() => useSpeechStore(reopened).availableVoices[providerId]?.length, { timeout: 5000 })
-      .toBe(3)
-    await expect.poll(() => voiceLabel(restored.getByRole('combobox', { name: /Select preferred voice/ })), { timeout: 5000 })
-      .toContain('Wise Scholar')
-  }, 30_000)
-
-  // A voice the catalog no longer lists cannot be synthesized. The selection
-  // must fall back instead of leaving a request with an ID the API rejects.
-  it('falls back to a listed voice when the saved one is gone', async () => {
-    storeConfiguredProvider({ ...savedCredentials, voice: 'Spanish_Serene_Woman' })
-
-    const screen = await renderPage(pinia)
-
-    await expect.poll(() => useSpeechStore(pinia).availableVoices[providerId]?.length, { timeout: 5000 })
-      .toBe(3)
-
-    await expect.poll(() => voiceLabel(screen.getByRole('combobox', { name: /Select preferred voice/ })), { timeout: 5000 })
-      .toContain('Graceful Lady')
-    await expect.poll(() => storedConfig()?.voice, { timeout: 5000 }).toBe('English_Graceful_Lady')
+      .toBeGreaterThan(0)
+    await expect.element(page.getByRole('combobox', { name: /Select preferred voice/ })).not.toBeInTheDocument()
   }, 30_000)
 })

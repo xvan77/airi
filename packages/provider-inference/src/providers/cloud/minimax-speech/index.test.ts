@@ -98,6 +98,19 @@ async function validateConfig(providerConfig: { apiKey: string, baseUrl?: string
   return await validator.validator(providerConfig, context)
 }
 
+async function validateCredentials(providerConfig: { apiKey: string, baseUrl?: string }) {
+  const context = { t: (key: string) => key }
+  const validator = await providerMinimaxSpeech.validators!.validateProvider![0](context)
+  const provider = await providerMinimaxSpeech.createProvider(providerConfig)
+
+  return await validator.validator(
+    providerConfig,
+    provider,
+    providerMinimaxSpeech.extraMethods ?? {},
+    context,
+  )
+}
+
 describe('providerMinimaxSpeech voice catalog', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -327,7 +340,7 @@ describe('providerMinimaxSpeech credential validation', () => {
   it('reports a nonempty but refused key as invalid', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => voiceResponse(INVALID_KEY_PAYLOAD)))
 
-    const result = await validateConfig(config)
+    const result = await validateCredentials(config)
 
     expect(result.valid).toBe(false)
     expect(result.reason).toContain('invalid api key')
@@ -336,7 +349,7 @@ describe('providerMinimaxSpeech credential validation', () => {
   it('reports a key the account accepts as valid', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => voiceResponse(ACCEPTED_CATALOG)))
 
-    const result = await validateConfig(config)
+    const result = await validateCredentials(config)
 
     expect(result.valid).toBe(true)
     expect(result.errors).toEqual([])
@@ -359,7 +372,7 @@ describe('providerMinimaxSpeech credential validation', () => {
       throw new TypeError('network down')
     }))
 
-    const result = await validateConfig(config)
+    const result = await validateCredentials(config)
 
     expect(result.valid).toBe(true)
   })

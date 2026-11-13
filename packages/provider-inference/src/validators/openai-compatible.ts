@@ -10,7 +10,7 @@ import { listModels } from '@xsai/model'
 import { message } from '@xsai/utils-chat'
 import { Mutex } from 'es-toolkit'
 
-import { getGenerationProvider, isModelProvider, ProviderValidationCheck } from '../types'
+import { getGenerationProvider, isModelProvider, ProviderValidationCheck, SPEECH_CREDENTIALS_VALIDATOR_ID } from '../types'
 import { compareValidationPingModels, sortValidationPingModels } from './validation-ping-model-rank'
 
 const MAX_CHAT_PING_MODEL_ATTEMPTS = 32
@@ -32,6 +32,12 @@ interface OpenAICompatibleValidationOptions<TConfig extends { apiKey?: string, b
   preferredValidationModelIds?: readonly string[]
   /** Provider id for the same usable-chat rules as the Consciousness catalog. */
   catalogProviderId?: string
+  /**
+   * Settings skip these provider checks until Ping API, the same way they skip
+   * chat ping. Use this for speech providers that share OpenAI-compatible
+   * connectivity and model-list checks.
+   */
+  deferToManualPing?: boolean
 }
 
 function extractStatusCode(error: unknown): number | null {
@@ -568,6 +574,10 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
     }
   }
 
+  function providerValidatorId(id: string) {
+    return options?.deferToManualPing ? `${id}:${SPEECH_CREDENTIALS_VALIDATOR_ID}` : id
+  }
+
   const validatorConfig: ProviderDefinition<TConfig>['validators'] = {
     validateConfig: [],
     validateProvider: [],
@@ -608,7 +618,7 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
 
   if (checks.includes(ProviderValidationCheck.Connectivity)) {
     validatorConfig.validateProvider?.push(({ t }) => ({
-      id: 'openai-compatible:check-connectivity',
+      id: providerValidatorId('openai-compatible:check-connectivity'),
       name: t('settings.pages.providers.catalog.edit.validators.openai-compatible.check-connectivity.title'),
       schedule: options?.schedule,
       validator: async (config) => {
@@ -690,7 +700,7 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
 
   if (checks.includes(ProviderValidationCheck.ModelList)) {
     validatorConfig.validateProvider?.push(({ t }) => ({
-      id: 'openai-compatible:check-model-list',
+      id: providerValidatorId('openai-compatible:check-model-list'),
       name: t('settings.pages.providers.catalog.edit.validators.openai-compatible.check-supports-model-listing.title'),
       schedule: options?.schedule,
       validator: async (config, provider, providerExtra) => {

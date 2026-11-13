@@ -5,12 +5,7 @@ const providerId = 'aivis-speech'
 </script>
 
 <template>
-  <VoicevoxFamilySettings
-    :provider-id="providerId"
-    intonation-label-key="settings.pages.providers.provider.aivis-speech.fields.field.intonation.label"
-    intonation-description-key="settings.pages.providers.provider.aivis-speech.fields.field.intonation.description"
-    default-text="こんにちは、はじめまして。"
-  />
+  <VoicevoxFamilySettings :provider-id="providerId" />
 </template>
 
 <route lang="yaml">

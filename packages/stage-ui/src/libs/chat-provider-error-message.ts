@@ -221,8 +221,14 @@ export function formatChatProviderErrorContent(
 
   if (kind) {
     const summary = translate(CHAT_ERROR_I18N_KEYS[kind])
-    if (kind === 'openai_no_api_credits' || kind === 'non_chat_model' || kind === 'on_device_input_too_large')
+    if (
+      kind === 'openai_no_api_credits'
+      || kind === 'non_chat_model'
+      || kind === 'on_device_input_too_large'
+      || kind === 'rate_limited'
+    ) {
       return summary
+    }
     return `${summary}\n\n${detail}`
   }
 

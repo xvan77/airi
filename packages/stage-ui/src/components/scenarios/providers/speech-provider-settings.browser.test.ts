@@ -16,7 +16,7 @@ const providerId = 'minimax-speech'
 
 const SAVE_DEBOUNCE_MS = 1000
 
-async function mountSettings(pinia: Pinia) {
+async function mountSettings(pinia: Pinia, extraProps: { hideApiKey?: boolean } = {}) {
   const i18n = createI18n({
     // Every label resolves to its own key. These cases assert on store state,
     // so they need no message catalogue.
@@ -29,15 +29,18 @@ async function mountSettings(pinia: Pinia) {
 
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/', component: { template: '<div />' } }],
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/settings/modules/speech', component: { template: '<div />' } },
+    ],
   })
   await router.push('/')
   await router.isReady()
 
   await page.viewport(1100, 1100)
 
-  return await render(SpeechProviderSettings, {
-    props: { providerId, defaultModel: 'speech-2.8-hd' },
+  const screen = await render(SpeechProviderSettings, {
+    props: { providerId, defaultModel: 'speech-2.8-hd', ...extraProps },
     global: {
       plugins: [pinia, PiniaColada, i18n, router],
       // The settings layout animates its header. The application installs the
@@ -45,6 +48,8 @@ async function mountSettings(pinia: Pinia) {
       directives: { motion: {} },
     },
   })
+
+  return { screen, router }
 }
 
 /** Parks provider validation so an edit can land while the save flow waits. */
@@ -135,5 +140,35 @@ describe('speech provider settings save flow', () => {
     await expect.poll(() => useProviderConfigStore(pinia).getProviderConfig(providerId)?.apiKey, { timeout: 5000 })
       .toBe('key-entered-first')
     expect(validation.validate).toHaveBeenCalledOnce()
+  }, 30_000)
+
+  // ROOT CAUSE:
+  //
+  // SpeechProviderSettings always rendered ProviderApiKeyInput. Local engines
+  // such as Player2 and IndexTTS take no credentials, so the box asked for a
+  // key that had no effect.
+  //
+  // We fixed this by hiding the field when hideApiKey is set. Voicevox already
+  // used that prop. Player2 and IndexTTS now pass it too.
+  it('hides the API key field when hideApiKey is set', async () => {
+    const pinia = createPinia()
+    await mountSettings(pinia, { hideApiKey: true })
+
+    await expect.element(page.getByPlaceholder('API Key')).not.toBeInTheDocument()
+  }, 30_000)
+
+  // Speech provider pages match chat: after cheap auto checks, Ping API is
+  // optional and Select Model opens Speech so the user picks the model and voice.
+  it('opens Speech with a browse query after a valid key', async () => {
+    const pinia = createPinia()
+    const { router } = await mountSettings(pinia)
+
+    await page.getByPlaceholder('API Key').fill('key-entered-first')
+
+    await expect.element(page.getByRole('button', { name: 'settings.pages.providers.common.goToModelSelection' }), { timeout: 10000 }).toBeVisible()
+    await page.getByRole('button', { name: 'settings.pages.providers.common.goToModelSelection' }).click()
+
+    expect(router.currentRoute.value.path).toBe('/settings/modules/speech')
+    expect(router.currentRoute.value.query.browse).toBe(providerId)
   }, 30_000)
 })

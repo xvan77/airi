@@ -101,8 +101,8 @@ function togglePlayback() {
     ]"
   >
     <!-- Voice info section -->
-    <div class="p-3">
-      <div class="flex items-start">
+    <div :class="['py-2 pl-2.5 pr-2']">
+      <div :class="['flex items-center']">
         <!-- Radio button -->
         <input
           v-model="voiceId"
@@ -112,7 +112,7 @@ function togglePlayback() {
           :value="props.voice.id"
           class="absolute cursor-pointer opacity-0"
         >
-        <div class="relative mr-3 mt-0.5 flex-shrink-0">
+        <div :class="['relative mr-2 shrink-0']">
           <div
             class="size-5 border-2 rounded-full transition-colors duration-200"
             :class="[
@@ -149,11 +149,12 @@ function togglePlayback() {
         </button>
 
         <!-- Voice info -->
-        <div class="flex-1 cursor-pointer">
-          <div class="flex items-center">
+        <div :class="['min-w-0 flex-1 cursor-pointer']">
+          <div :class="['flex min-w-0 items-center gap-2']">
             <span
-              class="line-clamp-1 font-medium"
               :class="[
+                'shrink-0 font-medium',
+                'line-clamp-1',
                 voiceId === voice.id
                   ? 'text-neutral-700 dark:text-neutral-300'
                   : 'text-neutral-700 dark:text-neutral-400',
@@ -161,10 +162,25 @@ function togglePlayback() {
             >
               {{ voice.name }}
             </span>
+            <span
+              v-if="voice.description"
+              :class="[
+                'min-w-0 truncate text-xs',
+                voiceId === voice.id
+                  ? 'text-neutral-600 dark:text-neutral-400'
+                  : 'text-neutral-500 dark:text-neutral-500',
+              ]"
+              :title="voice.description"
+            >
+              {{ voice.description }}
+            </span>
           </div>
 
           <!-- Voice attributes (gender, age, accent, etc.) -->
-          <div v-if="formatVoiceAttributes(voice).length > 0" class="mt-1 flex flex-wrap gap-1">
+          <div
+            v-if="formatVoiceAttributes(voice).length > 0"
+            :class="['mt-0.5 flex flex-wrap gap-1']"
+          >
             <span
               v-for="(attribute, attrIndex) in formatVoiceAttributes(voice)"
               :key="attrIndex"
@@ -180,7 +196,7 @@ function togglePlayback() {
           </div>
 
           <!-- Custom input field for selected voice -->
-          <div v-if="voice.customizable && voiceId === voice.id" class="mt-3">
+          <div v-if="voice.customizable && voiceId === voice.id" :class="['mt-2']">
             <Input
               v-model="customVoiceName"
               type="text"
@@ -189,17 +205,6 @@ function togglePlayback() {
             />
           </div>
 
-          <!-- Voice description -->
-          <div
-            v-if="voice.description" class="line-clamp-2 mt-1 text-xs"
-            :class="[
-              voiceId === voice.id
-                ? 'text-neutral-600 dark:text-neutral-400'
-                : 'text-neutral-500 dark:text-neutral-500',
-            ]"
-          >
-            {{ voice.description }}
-          </div>
         </div>
       </div>
     </div>

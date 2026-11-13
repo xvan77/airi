@@ -18,6 +18,7 @@ import {
 } from 'unspeech'
 import { z } from 'zod'
 
+import { createSpeechCredentialValidator, probeSpeechVoiceCatalog } from '../../../validators'
 import { defineProvider } from '../../registry'
 
 const unspeechConfigSchema = z.object({
@@ -110,6 +111,12 @@ function createUnspeechValidators<TConfig extends UnspeechConfig>(id: string, re
         id: `${id}:check-config`,
         name: t('settings.pages.providers.catalog.edit.validators.openai-compatible.check-config.title'),
         validator: async (config: TConfig) => validateUnspeechConfig(config, requireAppId),
+      }),
+    ],
+    validateProvider: [
+      createSpeechCredentialValidator<TConfig>({
+        id: `${id}:check-credentials`,
+        probe: probeSpeechVoiceCatalog,
       }),
     ],
   }

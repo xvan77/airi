@@ -4,6 +4,7 @@ import { createOpenAI } from '@xsai-ext/providers/create'
 import { listModels } from '@xsai/model'
 import { z } from 'zod'
 
+import { createSpeechCredentialValidator, probeSpeechCredentialRequest } from '../../../validators'
 import { defineProvider } from '../../registry'
 
 const OPENAI_BASE_URL = 'https://api.openai.com/v1/'
@@ -57,7 +58,7 @@ function createTranscriptionProvider(config: AudioConfig) {
   return provider
 }
 
-function createAudioValidators<TConfig extends AudioConfig>() {
+function createAudioValidators<TConfig extends AudioConfig>(options: { acceptNotFound?: boolean } = {}) {
   return {
     validateConfig: [
       ({ t }: ProviderContext) => ({
@@ -92,6 +93,16 @@ function createAudioValidators<TConfig extends AudioConfig>() {
             reasonKey: '',
             valid: errors.length === 0,
           }
+        },
+      }),
+    ],
+    validateProvider: [
+      createSpeechCredentialValidator<TConfig>({
+        id: 'openai-audio:check-credentials',
+        probe: async (config) => {
+          await probeSpeechCredentialRequest(new URL('models', normalizeBaseUrl(config.baseUrl)), {
+            headers: { Authorization: `Bearer ${config.apiKey.trim()}` },
+          }, { acceptNotFound: options.acceptNotFound })
         },
       }),
     ],
@@ -203,7 +214,7 @@ export const providerOpenAICompatibleAudioSpeech = defineProvider<OpenAICompatib
   createProviderConfig: ({ t }) => createAudioConfigSchema(openAICompatibleAudioConfigSchema, t),
   createProvider: createAudioProvider,
   validationRequiredWhen: config => Boolean(config.apiKey?.trim() && config.baseUrl?.trim()),
-  validators: createAudioValidators<OpenAICompatibleAudioConfig>(),
+  validators: createAudioValidators<OpenAICompatibleAudioConfig>({ acceptNotFound: true }),
   extraMethods: {
     voiceCatalogConfig: () => ({}),
     listVoices: async () => [],
@@ -262,7 +273,7 @@ export const providerOpenAICompatibleAudioTranscription = defineProvider<OpenAIC
   createProviderConfig: ({ t }) => createAudioConfigSchema(openAICompatibleAudioConfigSchema, t),
   createProvider: createTranscriptionProvider,
   validationRequiredWhen: config => Boolean(config.apiKey?.trim() && config.baseUrl?.trim()),
-  validators: createAudioValidators<OpenAICompatibleAudioConfig>(),
+  validators: createAudioValidators<OpenAICompatibleAudioConfig>({ acceptNotFound: true }),
   // Transcription model names are not reliably available from /v1/models.
   extraMethods: { listModels: async () => [] },
 })

@@ -50,17 +50,17 @@ async function mountSettings(pinia: Pinia, providerId = 'voicevox') {
 
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/', component: { template: '<div />' } }],
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/settings/modules/speech', component: { template: '<div />' } },
+    ],
   })
   await router.push('/')
   await router.isReady()
 
-  return await render(VoicevoxFamilySettings, {
+  const screen = await render(VoicevoxFamilySettings, {
     props: {
       providerId,
-      intonationLabelKey: 'intonation.label',
-      intonationDescriptionKey: 'intonation.description',
-      defaultText: 'こんにちは',
     },
     global: {
       plugins: [pinia, PiniaColada, i18n, router],
@@ -69,25 +69,8 @@ async function mountSettings(pinia: Pinia, providerId = 'voicevox') {
       directives: { motion: {} },
     },
   })
-}
 
-async function expectVoiceSettingsPersistence(providerId: 'voicevox' | 'aivis-speech') {
-  stubReachableEngine()
-  const pinia = createPinia()
-
-  const screen = await mountSettings(pinia, providerId)
-  const providerConfig = useProviderConfigStore(pinia)
-  const sliders = screen.getByRole('slider').all()
-
-  await sliders[0].fill('15000')
-
-  await expect.poll(() => providerConfig.getProviderConfig(providerId)?.voiceSettings).toMatchObject({ speed: 1.5 })
-  await expect.poll(() => {
-    const stored = localStorage.getItem('settings/providers/configured')
-    if (!stored)
-      return undefined
-    return JSON.parse(stored)[providerId]?.config?.voiceSettings?.speed
-  }).toBe(1.5)
+  return { screen, router }
 }
 
 describe('voicevox family settings', () => {
@@ -112,42 +95,32 @@ describe('voicevox family settings', () => {
     stubReachableEngine()
     const pinia = createPinia()
 
-    const screen = await mountSettings(pinia)
+    const { screen } = await mountSettings(pinia)
     const providerConfig = useProviderConfigStore(pinia)
     const speech = useSpeechStore(pinia)
 
     await expect.poll(() => providerConfig.providers.voicevox?.status).toBe('configured')
     await expect.poll(() => speech.availableVoices.voicevox?.map(voice => voice.name)).toEqual(['ずんだもん / ノーマル'])
-    await expect.element(screen.getByRole('button', { name: /Test/i })).toBeEnabled()
+    await expect.element(screen.getByRole('button', { name: 'settings.pages.providers.common.goToModelSelection' })).toBeEnabled()
+    await screen.getByText('settings.pages.providers.common.section.advanced.title').click()
+    await expect.element(screen.getByRole('slider')).not.toBeInTheDocument()
   })
 
-  it('marks the provider invalid and loads no voices when the engine is unreachable', async () => {
+  it('marks the provider invalid and still opens Speech after Continue Anyway', async () => {
     stubUnreachableEngine()
     const pinia = createPinia()
 
-    await mountSettings(pinia)
+    const { screen, router } = await mountSettings(pinia)
     const providerConfig = useProviderConfigStore(pinia)
     const speech = useSpeechStore(pinia)
 
     await expect.poll(() => providerConfig.providers.voicevox?.status).toBe('invalid')
     expect(speech.availableVoices.voicevox).toBeUndefined()
-  })
 
-  // ROOT CAUSE:
-  //
-  // `SpeechProviderSettings` replaced an entry on the computed `configs` map.
-  // The replacement did not update the full provider record, so local storage
-  // kept the old voice settings.
-  //
-  // The shared component now updates configuration through the owning store.
-  // https://github.com/moeru-ai/airi/issues/2449
-  it('persists voice settings through the provider record (Issue #2449)', async () => {
-    await expectVoiceSettingsPersistence('voicevox')
-  })
-
-  // https://github.com/moeru-ai/airi/issues/2449
-  it('persists AivisSpeech voice settings through the provider record (Issue #2449)', async () => {
-    await expectVoiceSettingsPersistence('aivis-speech')
+    await screen.getByRole('button', { name: 'settings.pages.providers.common.continueAnyway' }).click()
+    await screen.getByRole('button', { name: 'settings.pages.providers.common.goToModelSelection' }).click()
+    expect(router.currentRoute.value.path).toBe('/settings/modules/speech')
+    expect(router.currentRoute.value.query.browse).toBe('voicevox')
   })
 
   // ROOT CAUSE:

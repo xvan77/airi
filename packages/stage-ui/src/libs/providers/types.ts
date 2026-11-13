@@ -21,8 +21,10 @@ export interface ProviderDefinition<TConfig = Record<string, unknown>, TId exten
 
 export {
   CHAT_COMPLETIONS_VALIDATOR_ID,
+  isManualPingValidatorId,
   isModelProvider,
   ProviderValidationCheck,
+  SPEECH_CREDENTIALS_VALIDATOR_ID,
 } from '@proj-airi/provider-inference'
 
 export type {

@@ -848,4 +848,19 @@ describe('vOICEVOX provider defaults', () => {
       await active
     }
   })
+
+  it('remembers each provider model and switches runtime on commitSpeechSelection', async () => {
+    const speech = useSpeechStore()
+
+    await speech.commitSpeechSelection('google-gemini-audio-speech', 'gemini-2.5-flash-preview-tts')
+    await speech.commitSpeechSelection('openrouter-audio-speech', 'google/gemini-2.5-flash-preview-tts')
+
+    expect(speech.lastModelForSpeechProvider('google-gemini-audio-speech')).toBe('gemini-2.5-flash-preview-tts')
+    expect(speech.activeSpeechProvider).toBe('openrouter-audio-speech')
+    expect(speech.activeSpeechModel).toBe('google/gemini-2.5-flash-preview-tts')
+
+    await speech.commitSpeechSelection('google-gemini-audio-speech', 'gemini-2.5-flash-preview-tts', 'Zephyr')
+    expect(speech.activeSpeechProvider).toBe('google-gemini-audio-speech')
+    expect(speech.activeSpeechVoiceId).toBe('Zephyr')
+  })
 })

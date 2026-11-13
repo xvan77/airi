@@ -416,6 +416,29 @@ describe('provider store synchronization boundary', () => {
     ])
   })
 
+  it('keeps OpenAI speech TTS models in the catalog', async () => {
+    // ROOT CAUSE:
+    //
+    // Speech catalogs used the chat usability filter. tts-1 matches non-chat
+    // markers, so Speech showed no models while the static voices still listed.
+    //
+    // Chat catalogs still use that filter. Speech catalogs keep adapter models.
+    const store = useProviderStore()
+    const configStore = useProviderConfigStore()
+    await store.initializeProvider('openai-audio-speech')
+    await configStore.updateProviderConfig('openai-audio-speech', {
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com/v1/',
+    }, 'configured')
+
+    const catalog = await store.fetchModelsForProvider('openai-audio-speech')
+    expect(catalog.models.map(model => model.id)).toEqual(expect.arrayContaining([
+      'tts-1',
+      'tts-1-hd',
+      'gpt-4o-mini-tts',
+    ]))
+  })
+
   // ROOT CAUSE:
   //
   // Speech startup previously had both an immediate watcher and a mounted

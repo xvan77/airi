@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import Alert from '../../misc/alert.vue'
@@ -17,11 +18,17 @@ const props = withDefaults(defineProps<{
   onGoToModelSelection: () => void
   onCancelManualPing?: () => void
   onSkipNextPingModel?: () => void
+  /** Overrides the success-row action label. Chat and Speech both use Select Model by default. */
+  goToSelectionLabel?: string
 }>(), {
   manualTestProgressLines: () => [],
 })
 
 const { t } = useI18n()
+
+const selectionLabel = computed(() => {
+  return props.goToSelectionLabel ?? t('settings.pages.providers.common.goToModelSelection')
+})
 </script>
 
 <template>
@@ -117,7 +124,7 @@ const { t } = useI18n()
           :class="['ml-2 rounded px-2 py-0.5 text-xs font-medium transition-colors', 'bg-green-100 text-green-600 hover:bg-green-200', 'dark:bg-green-800/30 dark:text-green-300 dark:hover:bg-green-700/40']"
           @click="props.onGoToModelSelection"
         >
-          {{ t('settings.pages.providers.common.goToModelSelection') }}
+          {{ selectionLabel }}
         </button>
       </div>
     </template>
@@ -179,7 +186,7 @@ const { t } = useI18n()
       @click="props.onGoToModelSelection"
     >
       <div class="i-solar:settings-bold-duotone text-lg" aria-hidden="true" />
-      {{ t('settings.pages.providers.common.goToModelSelection') }}
+      {{ selectionLabel }}
       <div class="i-solar:arrow-right-linear text-base opacity-70" aria-hidden="true" />
     </button>
   </div>

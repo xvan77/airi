@@ -185,7 +185,7 @@ function updateCustomValue(value: string) {
     <!-- Items list with search results info -->
     <div
       :class="[
-        'mt-4',
+        searchable ? 'mt-4' : '',
         layout.itemsArea,
       ]"
     >

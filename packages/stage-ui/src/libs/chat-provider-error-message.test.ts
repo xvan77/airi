@@ -86,15 +86,23 @@ describe('chat provider error message', () => {
     expect(content).toBe('Pick a chat model')
   })
 
-  it('prefixes a friendly summary before the raw provider message', () => {
-    const detail = 'Remote sent 429 response: rate limit'
+  it('maps Gemini free-tier speech quota dumps to the rate-limit summary without JSON', () => {
+    // ROOT CAUSE:
+    //
+    // Speech Test Voice stored errorMessageFrom(error). Gemini 429 bodies are
+    // a full QuotaFailure JSON, so Speech painted that dump over the page.
+    //
+    // Rate-limit summaries now stay short. The raw JSON stays out of the UI.
+    const detail = '{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaMetric":"generativelanguage.googleapis.com/generate_content_free_tier_requests","quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","quotaDimensions":{"model":"gemini-2.5-flash-tts"},"quotaValue":"10"}]}]}}'
     const content = formatChatProviderErrorContent(
       new Error(detail),
-      key => key === 'stage.chat.errors.rate_limited' ? 'Friendly rate limit' : key,
+      key => key === 'stage.chat.errors.rate_limited' ? 'Quota limit' : key,
       'Unknown',
     )
 
-    expect(content.startsWith('Friendly rate limit\n\n')).toBe(true)
-    expect(content).toContain(detail)
+    expect(classifyChatProviderError(detail)).toBe('rate_limited')
+    expect(content).toBe('Quota limit')
+    expect(content).not.toContain('RESOURCE_EXHAUSTED')
+    expect(content).not.toContain('quotaValue')
   })
 })

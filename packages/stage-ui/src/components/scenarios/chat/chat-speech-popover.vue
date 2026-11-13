@@ -28,6 +28,10 @@ const { activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId } = storeTo
 const { cards } = storeToRefs(airiCardStore)
 const { availableSpeechProvidersMetadata } = storeToRefs(speechStore)
 
+const favoriteSpeechProviders = computed(() => {
+  return availableSpeechProvidersMetadata.value.filter(prov => prov.id !== 'speech-noop')
+})
+
 const showAddForm = ref(false)
 
 interface FavoriteSpeechModel {
@@ -110,8 +114,8 @@ const isSpeechActive = computed(() => {
 })
 
 onMounted(() => {
-  if (availableSpeechProvidersMetadata.value.length > 0) {
-    newProvider.value = availableSpeechProvidersMetadata.value[0].id
+  if (favoriteSpeechProviders.value.length > 0) {
+    newProvider.value = favoriteSpeechProviders.value[0].id
   }
 })
 
@@ -179,7 +183,7 @@ function handleDeleteFavorite(fav: FavoriteSpeechModel) {
 }
 
 async function handleSelectFavorite(fav: FavoriteSpeechModel) {
-  await speechStore.selectProviderModel(fav.provider, fav.model, fav.voiceId)
+  await speechStore.commitSpeechSelection(fav.provider, fav.model, fav.voiceId)
   await airiCardStore.syncActiveCardSpeechFromRuntime()
 }
 
@@ -381,7 +385,7 @@ function handleGoToSettings() {
                 v-model="newProvider"
                 :class="['w-full border border-neutral-200/60 rounded-lg bg-white px-2 py-1.5 text-xs text-neutral-800 outline-none transition-all dark:border-neutral-800 focus:border-primary-500 dark:bg-neutral-900 dark:text-neutral-200 focus:ring-1 focus:ring-primary-500/20']"
               >
-                <option v-for="prov in availableSpeechProvidersMetadata" :key="prov.id" :value="prov.id">
+                <option v-for="prov in favoriteSpeechProviders" :key="prov.id" :value="prov.id">
                   {{ prov.name || prov.id }}
                 </option>
               </select>

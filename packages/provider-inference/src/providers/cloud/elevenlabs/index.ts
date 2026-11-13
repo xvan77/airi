@@ -6,6 +6,7 @@ import type { ProviderContext } from '../../../types'
 import { createUnElevenLabs, listVoices } from 'unspeech'
 import { z } from 'zod'
 
+import { createSpeechCredentialValidator, probeSpeechVoiceCatalog } from '../../../validators'
 import { defineProvider } from '../../registry'
 import { models as elevenLabsModels } from './list-models'
 
@@ -61,6 +62,12 @@ function createElevenLabsValidators() {
             valid: errors.length === 0,
           }
         },
+      }),
+    ],
+    validateProvider: [
+      createSpeechCredentialValidator<ElevenLabsConfig>({
+        id: 'elevenlabs:check-credentials',
+        probe: probeSpeechVoiceCatalog,
       }),
     ],
   }

@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai'
 import { toWavFromPCM16 } from '@proj-airi/audio/encoding'
 import { z } from 'zod'
 
+import { createSpeechCredentialValidator, probeSpeechCredentialRequest } from '../../../validators'
 import { defineProvider } from '../../registry'
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/'
@@ -87,6 +88,9 @@ function createAudioFetch(apiKey: string, baseUrl: string) {
       throw new Error('Missing input text for Gemini TTS')
     if (!body.model)
       throw new Error('Missing model for Gemini TTS')
+    const voiceName = body.voice?.trim() ?? ''
+    if (!voiceName)
+      throw new Error('Missing voice for Gemini TTS')
 
     const response = await client.models.generateContent({
       model: body.model,
@@ -94,7 +98,7 @@ function createAudioFetch(apiKey: string, baseUrl: string) {
       config: {
         responseModalities: ['AUDIO'],
         speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: body.voice || 'Kore' } },
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
         },
         ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
       },
@@ -120,15 +124,21 @@ export const providerGoogleGeminiAudioSpeech = defineProvider<GoogleGeminiSpeech
   tasks: ['text-to-speech', 'tts'],
   icon: 'i-lobe-icons:gemini',
   iconColor: 'i-lobe-icons:gemini-color',
+  capabilities: {
+    speech: {
+      transport: 'rest',
+      ttsMaxConcurrent: 1,
+    },
+  },
   createProviderConfig: () => googleGeminiSpeechConfigSchema,
   createProvider(config) {
-    const apiKey = config.apiKey.trim()
+    const apiKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : ''
     const baseUrl = normalizeBaseUrl(config.baseUrl)
     return {
       speech: (model?: string, options?: Record<string, unknown>) => ({
+        ...options,
         baseURL: baseUrl,
         fetch: createAudioFetch(apiKey, baseUrl),
-        ...options,
         model: model || (typeof options?.model === 'string' ? options.model : DEFAULT_MODEL),
       }),
     }
@@ -147,6 +157,16 @@ export const providerGoogleGeminiAudioSpeech = defineProvider<GoogleGeminiSpeech
             reasonKey: '',
             valid,
           }
+        },
+      }),
+    ],
+    validateProvider: [
+      createSpeechCredentialValidator<GoogleGeminiSpeechConfig>({
+        id: 'google-gemini-audio-speech:check-credentials',
+        probe: async (config) => {
+          await probeSpeechCredentialRequest(new URL('models', normalizeBaseUrl(config.baseUrl)), {
+            headers: { 'x-goog-api-key': config.apiKey.trim() },
+          })
         },
       }),
     ],

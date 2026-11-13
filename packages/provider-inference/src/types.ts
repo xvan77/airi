@@ -216,6 +216,19 @@ export interface ProviderValidationResult {
  */
 export const CHAT_COMPLETIONS_VALIDATOR_ID = 'check-chat-completions'
 
+/**
+ * Validator ID fragment for the speech credential probe.
+ * Settings skip it during automatic validation, the same way they skip chat ping.
+ * Matched via `.includes()` against validator instance ids
+ * (e.g. `google-gemini-audio-speech:check-speech-credentials`).
+ */
+export const SPEECH_CREDENTIALS_VALIDATOR_ID = 'check-speech-credentials'
+
+/** Chat ping and speech credential probes are optional after cheap auto checks. */
+export function isManualPingValidatorId(id: string): boolean {
+  return id.includes(CHAT_COMPLETIONS_VALIDATOR_ID) || id.includes(SPEECH_CREDENTIALS_VALIDATOR_ID)
+}
+
 export enum ProviderValidationCheck {
   /** Lightweight GET to /models endpoint to check reachability (definition system) */
   Connectivity = 'connectivity',
@@ -401,6 +414,11 @@ export interface ProviderDefinition<TConfig = Record<string, unknown>, TId exten
      */
     speech?: {
       transport: 'rest' | 'bidirectional-ws'
+      /**
+       * How many TTS segments the host may synthesize at once.
+       * Omit to use the speech pipeline default of 4.
+       */
+      ttsMaxConcurrent?: number
     }
   }
   /**

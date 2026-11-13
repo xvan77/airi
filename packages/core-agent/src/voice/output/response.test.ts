@@ -294,4 +294,37 @@ describe('voiceController output', () => {
     expect(recordInterruption).toHaveBeenCalledTimes(1)
     await controller.close()
   })
+
+  // ROOT CAUSE:
+  //
+  // Chat TTS opened the speech pipeline with the default of 4 concurrent
+  // requests. Gemini then returned HTTP 429 for extra segments while Test
+  // Voice still worked, because Test Voice sends one request.
+  //
+  // We fixed this by passing output.ttsMaxConcurrent into the pipeline.
+  it('synthesizes speech segments one at a time when ttsMaxConcurrent is 1', async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    const playback = new Playback({ nowMs: () => 0, play: () => ({ done: Promise.resolve({ throughMs: 1 }), stop: async () => ({ throughMs: 0 }) }) })
+    const controller = new VoiceController({
+      speech: () => ({
+        playback,
+        ttsMaxConcurrent: 1,
+        synthesize: async (request) => {
+          inFlight += 1
+          maxInFlight = Math.max(maxInFlight, inFlight)
+          await new Promise(resolve => setTimeout(resolve, 20))
+          inFlight -= 1
+          return new Blob([request.text])
+        },
+      }),
+    })
+    const response = controller.openResponse({ sessionId: 'alice', turnId: 'serial' })
+    const speech = response.openSpeech({ purpose: 'answer' })
+    await speech.write('Hello there my good friend. How are you doing today now?')
+    speech.end()
+    await response.finish()
+    expect(maxInFlight).toBe(1)
+    await controller.close()
+  })
 })

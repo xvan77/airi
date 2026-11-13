@@ -14,7 +14,9 @@ import {
   ProviderBaseUrlInput,
   ProviderBasicSettings,
   ProviderSettingsContainer,
+  ProviderValidationAlerts,
 } from '.'
+import { useProviderValidation } from '../../../composables/use-provider-validation'
 import { selectProviderMetadata } from '../../../libs/providers/metadata'
 import { useSpeechStore } from '../../../stores/modules/speech'
 import { useProviderConfigStore } from '../../../stores/providers/config'
@@ -42,14 +44,36 @@ defineSlots<{
    */
   'voice-settings': (props: { voiceSettings: Record<string, any> }) => any
   'advanced-settings': (props: any) => any
-  'playground': (props: any) => any
 }>()
 const { t } = useI18n()
 const router = useRouter()
+
+const {
+  isValidating,
+  isValid,
+  validationMessage,
+  forceValid,
+  hasManualValidators,
+  isManualTesting,
+  manualTestPassed,
+  manualTestMessage,
+  manualTestProgressLines,
+  runManualTest,
+  cancelManualPing,
+  skipToNextPingModel,
+} = useProviderValidation(props.providerId)
+
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
 const speechStore = useSpeechStore()
 const { configs: providers } = storeToRefs(providerStore)
+
+function goToSpeechSelection() {
+  // Consciousness Select Model does not mark the provider configured. Speech
+  // lists only configured engines, so this skip is the Continue Anyway path.
+  void providersStore.forceProviderConfigured(props.providerId)
+  router.push({ path: '/settings/modules/speech', query: { browse: props.providerId } })
+}
 
 const providerMetadata = computedAsync(async () => {
   const definition = providersStore.getProviderDefinition(props.providerId)
@@ -236,48 +260,54 @@ function handleResetVoiceSettings() {
     :provider-icon-color="providerMetadata?.iconColor"
     :on-back="() => router.back()"
   >
-    <div flex="~ col md:row gap-6">
-      <ProviderSettingsContainer class="w-full md:w-[40%]">
-        <!-- Basic settings section -->
-        <ProviderBasicSettings
-          :title="t('settings.pages.providers.common.section.basic.title')"
-          :description="t('settings.pages.providers.common.section.basic.description')"
-          :on-reset="handleResetVoiceSettings"
+    <ProviderSettingsContainer>
+      <ProviderBasicSettings
+        :title="t('settings.pages.providers.common.section.basic.title')"
+        :description="t('settings.pages.providers.common.section.basic.description')"
+        :on-reset="handleResetVoiceSettings"
+      >
+        <ProviderApiKeyInput
+          v-if="!props.hideApiKey"
+          v-model="apiKey"
+          :provider-name="providerMetadata?.localizedName ?? ''"
+          :placeholder="props.placeholder || 'API Key'"
+        />
+        <slot name="basic-settings" />
+      </ProviderBasicSettings>
+
+      <ProviderAdvancedSettings :title="t('settings.pages.providers.common.section.advanced.title')">
+        <ProviderBaseUrlInput
+          v-model="baseUrl"
+          :placeholder="providerMetadata?.defaultConfig.baseUrl as string || ''"
+          required
+        />
+        <slot name="advanced-settings" />
+        <div
+          v-if="$slots['voice-settings']"
+          :class="['flex flex-col gap-4']"
         >
-          <ProviderApiKeyInput v-if="!props.hideApiKey" v-model="apiKey" :provider-name="providerMetadata?.localizedName ?? ''" :placeholder="props.placeholder || 'API Key'" />
-          <!-- Slot for provider-specific basic settings -->
-          <slot name="basic-settings" />
-        </ProviderBasicSettings>
-
-        <!-- Voice settings section -->
-        <div flex="~ col gap-6">
-          <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-400">
+          <h3 :class="['text-base text-neutral-500 dark:text-neutral-400']">
             {{ t('settings.pages.providers.common.section.voice.title') }}
-          </h2>
-          <div flex="~ col gap-4">
-            <!-- Common voice settings with ranges -->
-            <slot name="voice-settings" :voice-settings="voiceSettings" />
-          </div>
+          </h3>
+          <slot name="voice-settings" :voice-settings="voiceSettings" />
         </div>
+      </ProviderAdvancedSettings>
 
-        <!-- Advanced settings section -->
-        <ProviderAdvancedSettings :title="t('settings.pages.providers.common.section.advanced.title')">
-          <ProviderBaseUrlInput
-            v-model="baseUrl"
-            :placeholder="providerMetadata?.defaultConfig.baseUrl as string || ''" required
-          />
-          <!-- Slot for provider-specific advanced settings -->
-          <slot name="advanced-settings" />
-        </ProviderAdvancedSettings>
-      </ProviderSettingsContainer>
-
-      <!-- Playground section -->
-      <div flex="~ col gap-6" class="w-full md:w-[60%]">
-        <div w-full rounded-xl>
-          <!-- Custom playground slot -->
-          <slot name="playground" />
-        </div>
-      </div>
-    </div>
+      <ProviderValidationAlerts
+        :is-valid="isValid"
+        :is-validating="isValidating"
+        :validation-message="validationMessage"
+        :has-manual-validators="hasManualValidators"
+        :is-manual-testing="isManualTesting"
+        :manual-test-passed="manualTestPassed"
+        :manual-test-message="manualTestMessage"
+        :manual-test-progress-lines="manualTestProgressLines"
+        :on-run-test="runManualTest"
+        :on-force-valid="forceValid"
+        :on-go-to-model-selection="goToSpeechSelection"
+        :on-cancel-manual-ping="cancelManualPing"
+        :on-skip-next-ping-model="skipToNextPingModel"
+      />
+    </ProviderSettingsContainer>
   </ProviderSettingsLayout>
 </template>

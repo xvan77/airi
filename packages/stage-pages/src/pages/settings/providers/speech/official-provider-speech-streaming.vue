@@ -3,9 +3,8 @@ import { isFluxPurchaseDisabled } from '@proj-airi/stage-shared'
 import {
   ProviderSettingsContainer,
   ProviderSettingsLayout,
-  SpeechPlayground,
 } from '@proj-airi/stage-ui/components'
-import { selectProviderMetadata, streamingSynthesize } from '@proj-airi/stage-ui/libs'
+import { selectProviderMetadata } from '@proj-airi/stage-ui/libs'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
@@ -46,9 +45,6 @@ const streamingAvailable = shallowRef(false)
 const model = computed(() => (providerConfig.value?.model as string | undefined) ?? serverDefaultModel.value ?? '')
 const modelOptions = computed(() => providerModels.value.map(m => ({ label: m.name, value: m.id })))
 
-const availableVoices = computed(() => speechStore.availableVoices[providerId] || [])
-const voicesLoading = shallowRef(false)
-
 async function setModel(value: string | number | undefined) {
   if (typeof value !== 'string')
     return
@@ -56,13 +52,7 @@ async function setModel(value: string | number | undefined) {
 }
 
 async function loadVoices() {
-  voicesLoading.value = true
-  try {
-    await speechStore.loadVoicesForProvider(providerId, model.value)
-  }
-  finally {
-    voicesLoading.value = false
-  }
+  await speechStore.loadVoicesForProvider(providerId, model.value)
 }
 
 watch(isAuthenticated, async (authenticated, _, onCleanup) => {
@@ -117,45 +107,11 @@ watch(isAuthenticated, async (authenticated, _, onCleanup) => {
     await providerConfigStore.setProviderModelIfUnset(providerId, serverDefaultModel.value)
 }, { immediate: true })
 
-// Volcengine TTS 1.0 and 2.0 ship different voice catalogues (mars/moon/ICL
-// vs uranus/saturn; see unspeech voices.go). Re-fetch on model change so the
-// list switches accordingly.
 watch([isAuthenticated, streamingAvailable, model], async ([authenticated, available, selectedModel]) => {
   if (!authenticated || !available || !selectedModel)
     return
   await loadVoices()
 }, { immediate: true })
-
-// Synthesize via the streaming session helper. The page uses the SAME
-// transport the runtime pipeline uses (ws → API proxy → unspeech
-// bridge → Volcengine v3 bidirectional) so the preview faithfully
-// represents what the user hears in actual chat. The session is opened
-// per-preview because there's no LLM token stream here — we just send
-// one `text` frame containing the static preview prompt.
-async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: boolean): Promise<ArrayBuffer> {
-  const requestedModel = model.value
-  if (!requestedModel)
-    throw new Error('No streaming TTS model selected and server returned no default')
-  // `model` looks like `volcengine/seed-tts-2.0`. The trailing path is
-  // forwarded as Volcengine's `api_resource_id` so the upstream knows which
-  // model variant to use; matches the wiring in `Stage.vue`. We require the
-  // `<backend>/<resource>` shape and refuse anything else — silently picking
-  // a fallback resource id hides config drift.
-  const slashIndex = requestedModel.indexOf('/')
-  if (slashIndex < 0)
-    throw new Error(`Streaming model id missing backend prefix: ${requestedModel}`)
-  const apiResourceId = requestedModel.slice(slashIndex + 1)
-  const result = await streamingSynthesize({
-    model: requestedModel,
-    voice: voiceId,
-    input,
-    extraBody: {
-      api_resource_id: apiResourceId,
-      audio: { sample_rate: 24000, bit_rate: 64000 },
-    },
-  })
-  return result.audio
-}
 
 function handleLogin() {
   needsLogin.value = true
@@ -231,14 +187,6 @@ function handleLogin() {
             @update:model-value="setModel"
           />
         </div>
-
-        <SpeechPlayground
-          :available-voices="availableVoices"
-          :generate-speech="handleGenerateSpeech"
-          :api-key-configured="true"
-          :voices-loading="voicesLoading"
-          default-text="你好，这是流式语音合成的试听样例。"
-        />
       </div>
     </ProviderSettingsContainer>
   </ProviderSettingsLayout>

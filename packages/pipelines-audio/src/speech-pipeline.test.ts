@@ -165,6 +165,50 @@ describe('createSpeechPipeline', () => {
     expect(maxInFlight).toBe(2)
   })
 
+  it('holds Gemini-style speech to one in-flight TTS request', async () => {
+    const { playback } = createPlaybackSpy()
+    const pendingRequests = [
+      deferred<string>(),
+      deferred<string>(),
+    ]
+    let inFlight = 0
+    let maxInFlight = 0
+
+    const pipeline = createSpeechPipeline<string>({
+      ttsMaxConcurrent: 1,
+      segmenter: createSegmenter(['alpha', 'beta']),
+      playback,
+      async tts(request: TtsRequest) {
+        inFlight += 1
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        try {
+          return await pendingRequests[request.sequence]!.promise
+        }
+        finally {
+          inFlight -= 1
+        }
+      },
+    })
+
+    const intentFinished = new Promise<void>((resolve) => {
+      pipeline.on('onIntentEnd', () => resolve())
+    })
+
+    const intent = pipeline.openIntent()
+    intent.end()
+
+    await delay(0)
+
+    expect(maxInFlight).toBe(1)
+
+    pendingRequests[0]!.resolve('alpha')
+    await delay(0)
+    pendingRequests[1]!.resolve('beta')
+    await intentFinished
+
+    expect(maxInFlight).toBe(1)
+  })
+
   it('cancels in-flight TTS work without scheduling stale playback', async () => {
     const { scheduled, playback } = createPlaybackSpy()
     const abortedRequests: number[] = []

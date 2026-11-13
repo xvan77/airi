@@ -16,6 +16,10 @@ const props = withDefaults(defineProps<{
   providerId: '',
 })
 
+const emit = defineEmits<{
+  shown: []
+}>()
+
 const VIEWPORT_MARGIN = 8
 const CHIP_MAX_WIDTH = 208
 const DETAIL_MIN_WIDTH = 420
@@ -91,6 +95,7 @@ function updatePosition() {
 }
 
 async function showTooltip() {
+  emit('shown')
   updatePosition()
   visible.value = true
   await nextTick()

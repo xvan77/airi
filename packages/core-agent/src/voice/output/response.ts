@@ -43,6 +43,11 @@ export type SpeechOutput = {
   readonly onPlaybackStart?: (clip: SpeechClip) => void
   /** Runs once for each started clip after playback ends, stops, or fails. */
   readonly onPlaybackEnd?: (clip: SpeechClip, end: SpeechClipEnd) => void
+  /**
+   * How many TTS segments this output may synthesize at once.
+   * Omit to use the speech pipeline default of 4.
+   */
+  readonly ttsMaxConcurrent?: number
 } & ({
   readonly synthesize: SpeechPipelineOptions<Blob>['tts']
 } | {
@@ -117,6 +122,7 @@ export class SpeechStream {
     const pending = new Set<PlaybackItem<Blob>>()
 
     const pipeline = createSpeechPipeline<Blob>({
+      ttsMaxConcurrent: output.ttsMaxConcurrent,
       tts: async (request, signal) => {
         try {
           const audio = await output.synthesize(request, AbortSignal.any([signal, this.signal, response.signal]))

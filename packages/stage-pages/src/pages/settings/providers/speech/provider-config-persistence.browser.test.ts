@@ -32,7 +32,10 @@ describe('speech provider configuration persistence', () => {
     await page.viewport(1100, 1100)
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/', component: { template: '<div />' } }],
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/settings/modules/speech', component: { template: '<div />' } },
+      ],
     })
     await router.push('/')
     return await render(component, {
@@ -53,19 +56,15 @@ describe('speech provider configuration persistence', () => {
   //
   // The immediate model watcher creates an entry in the computed configs map.
   // initializeProvider sees that entry and skips creation of the persisted provider.
-  // Input changes then mutate a plain object, so the playground keeps its cached
-  // missing-key state and localStorage stays empty. These tests fail if the page
-  // and initialization flow stop writing through the provider store.
+  // Input changes then mutate a plain object, so localStorage stays empty.
   // https://github.com/moeru-ai/airi/issues/2449
-  it('enables Test Voice after the user enters an API key (Issue #2449)', async () => {
+  it('lets the user open Speech after a key even if the ping fails (Issue #2449)', async () => {
     const screen = await renderPage()
 
-    const testVoice = screen.getByRole('button', { name: 'Test Voice', exact: true })
-    await expect.element(testVoice).toBeDisabled()
     await page.getByPlaceholder('sk-...').fill('issue-2449-test-key')
-    await expect.element(testVoice, { timeout: 1500 }).toBeEnabled()
-    await expect.element(screen.getByText('Please enter an API key to test the voice.')).not.toBeInTheDocument()
     expect(useProviderConfigStore(pinia).getProviderConfig(providerId)?.apiKey).toBe('issue-2449-test-key')
+    await expect.element(screen.getByRole('button', { name: 'Ping API' })).toBeVisible()
+    await expect.element(screen.getByRole('button', { name: 'Select Model →' })).toBeVisible()
   })
 
   // https://github.com/moeru-ai/airi/issues/2449
@@ -93,18 +92,17 @@ describe('speech provider configuration persistence', () => {
       },
     }))
     const screen = await renderPage()
-    await expect.element(screen.getByRole('button', { name: 'Test Voice', exact: true })).toBeEnabled()
+    await expect.element(screen.getByRole('button', { name: 'Select Model →' })).toBeVisible()
     expect(useProviderConfigStore(pinia).getProviderConfig(providerId)?.apiKey).toBe('issue-2449-test-key')
   })
 
   // https://github.com/moeru-ai/airi/issues/2449
-  it('enables Comet API Test Voice after the user enters an API key (Issue #2449)', async () => {
+  it('lets the user open Speech on Comet API after a key even if the ping fails (Issue #2449)', async () => {
     const screen = await renderPage(CometApiSpeechPage)
 
-    const testVoice = screen.getByRole('button', { name: 'Test Voice', exact: true })
-    await expect.element(testVoice).toBeDisabled()
     await page.getByPlaceholder('API Key').fill('issue-2449-comet-key')
-    await expect.element(testVoice, { timeout: 1500 }).toBeEnabled()
+    await expect.element(screen.getByRole('button', { name: 'Ping API' })).toBeVisible()
+    await expect.element(screen.getByRole('button', { name: 'Select Model →' })).toBeVisible()
   })
 
   // https://github.com/moeru-ai/airi/issues/2449

@@ -1236,6 +1236,9 @@ pages:
     speech:
       description: Speech synthesis
       model_catalog:
+        catalog_not_loaded_hint: >-
+          The model list from the provider did not load. Your selected model above
+          is still in use. To refresh the list,
         description_show: More info
         description_hide: Hide
         filters:
@@ -1265,10 +1268,20 @@ pages:
           cancelling_download: Cancelling download...
       sections:
         section:
+          provider-tabs:
+            no_providers_configured_title: No Speech Providers Configured
+            no_providers_configured_description: Click here to set up your speech providers
           playground:
             buttons:
               stop:
                 label: Stop
+            testing:
+              label: 'Testing:'
+              model: Model
+              voice: Voice
+              empty: No selected voice yet.
+              not_the_list: We will test the model and voice from the latest selected provider. This does not change until you select a voice from another provider.
+              select_voice_first: 'Note: Please select a voice before you can use the Test Voice option.'
             select-voice:
               loading: Loading model...
               required: Please select a voice
@@ -1279,6 +1292,9 @@ pages:
             loading: Loading Voice Packs...
             title: Voice Pack
           provider-voice-selection:
+            browsing_last_voice:
+              label: 'Last voice on this provider:'
+              select: Select
             custom_model_placeholder: Enter custom model name...
             custom_voice_placeholder: Enter custom voice ID...
             description: Select the suitable speech provider
@@ -1911,6 +1927,7 @@ pages:
     common:
       continueAnyway: Continue Anyway
       goToModelSelection: Select Model →
+      goToSpeechSelection: Open Speech →
       fields:
         field:
           api-key:
@@ -2301,8 +2318,10 @@ pages:
       index-tts-vllm:
         description: https://index-tts.github.io/
         title: Bilibili / IndexTTS
+        callout_engine_title: Local engine
+        callout_engine: IndexTTS is a separate program on this computer. Start the program. Then set Base URL under Advanced. The default address is http://localhost:11996/tts/. This engine takes no API key.
         callout_indextts2_unavailable_title: Limited Support
-        callout_indextts2_unavailable: Support for IndexTTS2 is currently unavailable. Please use IndexTTS.
+        callout_indextts2_unavailable: This page talks to IndexTTS 1.5. IndexTTS2 is not available yet.
       azure-ai-foundry:
         description: Azure AI Foundry
         title: Azure AI Foundry
@@ -2373,6 +2392,8 @@ pages:
       player2:
         description: player2.game
         title: Player2
+        callout_engine_title: Local app
+        callout_engine: Player2 is a separate program. Download it from https://player2.game, start it, then set Base URL under Advanced. The default address is http://localhost:4315/v1/. This engine takes no API key. If it still fails, use https://player2.game/discord.
       together:
         description: together.ai
         title: Together.ai

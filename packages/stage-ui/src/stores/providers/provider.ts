@@ -29,14 +29,15 @@ import {
   writePersistedCloudModelCatalog,
 } from '../../libs/model-catalog/cloud-cache-storage'
 import {
-  CHAT_COMPLETIONS_VALIDATOR_ID,
   getProviderValidationIntervalMs,
   getValidatorsOfProvider,
+  isManualPingValidatorId,
   isModelProvider,
   listProviders as listDefinedProviders,
   validateProvider as runProviderValidation,
+  SPEECH_CREDENTIALS_VALIDATOR_ID,
 } from '../../libs/providers'
-import { selectProviderMetadata, selectProvidersMetadata } from '../../libs/providers/metadata'
+import { getProviderCategory, selectProviderMetadata, selectProvidersMetadata } from '../../libs/providers/metadata'
 import { getSchemaDefault } from '../../libs/zod'
 import { useAuthStore } from '../auth'
 import { useProviderConfigStore } from './config'
@@ -278,12 +279,12 @@ export const useProviderStore = defineStore('provider', () => {
 
     if (options.onlyChatPingCheck) {
       plan.configValidators = []
-      plan.providerValidators = plan.providerValidators.filter(validator => validator.id.includes(CHAT_COMPLETIONS_VALIDATOR_ID))
-      plan.steps = plan.steps.filter(step => step.id.includes(CHAT_COMPLETIONS_VALIDATOR_ID))
+      plan.providerValidators = plan.providerValidators.filter(validator => isManualPingValidatorId(validator.id))
+      plan.steps = plan.steps.filter(step => isManualPingValidatorId(step.id))
     }
     else if (options.skipChatPingCheck) {
-      plan.providerValidators = plan.providerValidators.filter(validator => !validator.id.includes(CHAT_COMPLETIONS_VALIDATOR_ID))
-      plan.steps = plan.steps.filter(step => !step.id.includes(CHAT_COMPLETIONS_VALIDATOR_ID))
+      plan.providerValidators = plan.providerValidators.filter(validator => !isManualPingValidatorId(validator.id))
+      plan.steps = plan.steps.filter(step => !isManualPingValidatorId(step.id))
     }
 
     if (plan.providerValidators.length > 0 || plan.configValidators.length > 0) {
@@ -326,13 +327,25 @@ export const useProviderStore = defineStore('provider', () => {
     return validateProviderConfigLocal(providerId, config, options)
   }
 
+  async function listRuntimeValidators(providerId: string) {
+    const definition = findProviderDefinition(providerId)
+    if (!definition)
+      return []
+    return await Promise.all((definition.validators?.validateProvider ?? [])
+      .map(createValidator => createValidator({ t })))
+  }
+
   async function hasManualProviderValidators(providerId: string) {
     const definition = findProviderDefinition(providerId)
     if (!definition || definition.disableChatPingCheckUI)
       return false
-    const validators = await Promise.all((definition.validators?.validateProvider ?? [])
-      .map(createValidator => createValidator({ t })))
-    return validators.some(validator => validator.id.includes(CHAT_COMPLETIONS_VALIDATOR_ID))
+    const validators = await listRuntimeValidators(providerId)
+    return validators.some(validator => isManualPingValidatorId(validator.id))
+  }
+
+  async function hasSpeechCredentialPing(providerId: string) {
+    const validators = await listRuntimeValidators(providerId)
+    return validators.some(validator => validator.id.includes(SPEECH_CREDENTIALS_VALIDATOR_ID))
   }
 
   function supportsModelListing(providerId: string) {
@@ -394,9 +407,13 @@ export const useProviderStore = defineStore('provider', () => {
 
       if (providerRuntimeState.value[providerId]) {
         providerRuntimeState.value[providerId].validatedCredentialHash = configString
-        providerConfigStore.setProviderStatus(providerId, validationResult.valid ? 'configured' : 'invalid')
+        const pendingSpeechPing = validationResult.valid && await hasSpeechCredentialPing(providerId)
+        providerConfigStore.setProviderStatus(
+          providerId,
+          validationResult.valid && !pendingSpeechPing ? 'configured' : 'invalid',
+        )
         // Auto-mark Web Speech API as added if valid and available
-        if (validationResult.valid && ['browser-web-speech-api', 'player2'].includes(providerId)) {
+        if (validationResult.valid && !pendingSpeechPing && ['browser-web-speech-api', 'player2'].includes(providerId)) {
           markProviderAdded(providerId)
         }
       }
@@ -765,6 +782,13 @@ export const useProviderStore = defineStore('provider', () => {
     }
   }
 
+  function usesChatModelEligibility(providerId: string) {
+    const definition = findProviderDefinition(providerId)
+    if (!definition)
+      return true
+    return getProviderCategory(definition.tasks) === 'chat'
+  }
+
   function normalizeFetchedProviderModels(providerId: string, models: Array<{
     metadata?: ModelInfo['metadata']
     reasoning?: ModelInfo['reasoning']
@@ -776,8 +800,9 @@ export const useProviderStore = defineStore('provider', () => {
     deprecated?: boolean
     provider?: string
   }>) {
+    const applyChatEligibility = usesChatModelEligibility(providerId)
     const normalized = uniqBy(models.filter(model => !!model.id), m => m.id)
-      .filter(model => isUsableChatModel({ id: model.id, name: model.name ?? '' }, providerId))
+      .filter(model => !applyChatEligibility || isUsableChatModel({ id: model.id, name: model.name ?? '' }, providerId))
       .map(model => ({
         metadata: model.metadata,
         reasoning: model.reasoning,

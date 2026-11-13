@@ -2,6 +2,7 @@ import type { ProviderContext } from '../../../types'
 
 import { z } from 'zod'
 
+import { createSpeechCredentialValidator, probeSpeechCredentialRequest } from '../../../validators'
 import { defineProvider } from '../../registry'
 
 const mimoSpeechConfigSchema = z.object({
@@ -47,6 +48,16 @@ function createMimoValidators<TConfig extends MimoConfig>(id: string) {
             reasonKey: '',
             valid: errors.length === 0,
           }
+        },
+      }),
+    ],
+    validateProvider: [
+      createSpeechCredentialValidator<TConfig>({
+        id: `${id}:check-credentials`,
+        probe: async (config) => {
+          await probeSpeechCredentialRequest(new URL('models', normalizeBaseUrl(config.baseUrl)), {
+            headers: { 'api-key': config.apiKey.trim() },
+          }, { acceptNotFound: true })
         },
       }),
     ],

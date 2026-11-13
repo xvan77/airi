@@ -31,6 +31,7 @@ import { getDefaultKokoroModel, kokoroInferenceStatusIdForSpeechModel } from '..
 import { stripPromptTimePrefix } from '../chat/datetime-prefix'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
+import { EMPTY_SPEECH_PROVIDER_CONFIG, resolveChatSpeechSelection } from './speech-selection'
 
 function readLegacyAudioConsoleSettings(): Partial<AudioConsoleSettings> {
   if (typeof localStorage === 'undefined')
@@ -114,6 +115,10 @@ export const useSpeechStore = defineStore('speech', () => {
   // State
   const activeSpeechProvider = useLocalStorageManualReset<string>('settings/speech/active-provider', 'speech-noop', persistenceOptions)
   const activeSpeechModel = useLocalStorageManualReset<string>('settings/speech/active-model', '', persistenceOptions)
+  /** Last model picked for each speech provider. Browsing another provider tab must not erase local selections. */
+  const modelBySpeechProvider = useLocalStorageManualReset<Record<string, string>>('settings/speech/model-by-provider', {}, persistenceOptions)
+  /** Last voice picked for each speech provider. Browsing another provider tab must not auto-apply it. */
+  const voiceBySpeechProvider = useLocalStorageManualReset<Record<string, string>>('settings/speech/voice-by-provider', {}, persistenceOptions)
   const activeSpeechVoiceId = useLocalStorageManualReset<string>('settings/speech/voice', '', persistenceOptions)
   const activeSpeechVoice = refManualReset<VoiceInfo | undefined>(undefined)
 
@@ -564,6 +569,53 @@ export const useSpeechStore = defineStore('speech', () => {
     clearVoiceSelection()
   }
 
+  function rememberModelForSpeechProvider(provider: string, model: string) {
+    if (!provider || !model)
+      return
+    modelBySpeechProvider.value = {
+      ...modelBySpeechProvider.value,
+      [provider]: model,
+    }
+  }
+
+  function lastModelForSpeechProvider(provider: string) {
+    return modelBySpeechProvider.value[provider] ?? ''
+  }
+
+  function rememberVoiceForSpeechProvider(provider: string, voiceId: string) {
+    if (!provider || !voiceId)
+      return
+    voiceBySpeechProvider.value = {
+      ...voiceBySpeechProvider.value,
+      [provider]: voiceId,
+    }
+  }
+
+  function lastVoiceForSpeechProvider(provider: string) {
+    return voiceBySpeechProvider.value[provider] ?? ''
+  }
+
+  /**
+   * Updates the provider, model, and voice that chat, cards, and runtime use.
+   * Speech provider tabs must not assign `activeSpeechProvider` alone.
+   */
+  async function commitSpeechSelection(provider: string, model: string, voiceId?: string) {
+    const previousProvider = activeSpeechProvider.value
+    const previousModel = activeSpeechModel.value
+    const previousVoiceId = activeSpeechVoiceId.value
+    if (previousProvider && previousModel && (previousProvider !== provider || previousModel !== model))
+      rememberModelForSpeechProvider(previousProvider, previousModel)
+    if (previousProvider && previousVoiceId && previousProvider !== provider)
+      rememberVoiceForSpeechProvider(previousProvider, previousVoiceId)
+
+    await selectProviderModel(provider, model, voiceId)
+
+    if (provider && model)
+      rememberModelForSpeechProvider(provider, model)
+    if (provider && voiceId)
+      rememberVoiceForSpeechProvider(provider, voiceId)
+  }
+
   /** Commits an explicit selection in the leader before watchers request its catalog. An omitted voice preserves an unchanged selection. */
   async function selectProviderModel(provider: string, model: string, voiceId?: string) {
     if (disposed)
@@ -848,31 +900,16 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 
   function resolveSpeechSelectionForChat(selection: AiriExtension['modules']['speech']): AiriExtension['modules']['speech'] {
-    const runtimeProvider = activeSpeechProvider.value
-    const runtimeModel = activeSpeechModel.value
-    const runtimeVoiceId = activeSpeechVoiceId.value
-
-    let provider = selection.provider
-    if (!provider || provider === 'speech-noop' || provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID) {
-      if (runtimeProvider && runtimeProvider !== 'speech-noop' && runtimeProvider !== VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
-        provider = runtimeProvider
+    const runtime = {
+      provider: activeSpeechProvider.value,
+      model: activeSpeechModel.value,
+      voiceId: activeSpeechVoiceId.value,
     }
-
-    const useRuntime = provider === runtimeProvider
-      && runtimeProvider !== 'speech-noop'
-      && runtimeProvider !== VIRTUAL_AUDIO_STUDIO_PROVIDER_ID
-    const providerConfig = providerStore.getProviderConfig(provider) ?? {}
-
-    const model = selection.model
-      || (useRuntime ? runtimeModel : '')
-      || (typeof providerConfig.model === 'string' ? providerConfig.model : '')
-
-    const voice_id = selection.voice_id
-      || (useRuntime ? runtimeVoiceId : '')
-      || (typeof providerConfig.voiceId === 'string' ? providerConfig.voiceId : '')
-      || (typeof providerConfig.voice === 'string' ? providerConfig.voice : '')
-
-    return { provider, model, voice_id }
+    const provider = runtime.provider && runtime.provider !== 'speech-noop' && runtime.provider !== VIRTUAL_AUDIO_STUDIO_PROVIDER_ID
+      ? runtime.provider
+      : selection.provider
+    const providerConfig = providerStore.getProviderConfig(provider) ?? EMPTY_SPEECH_PROVIDER_CONFIG
+    return resolveChatSpeechSelection(selection, runtime, providerConfig)
   }
 
   /** Captures one response's provider, voice, model, and settings before any asynchronous work. */
@@ -918,7 +955,9 @@ export const useSpeechStore = defineStore('speech', () => {
     if (!model || !voiceId)
       throw new Error('Speech requires a model and voice')
     const provider = providersStore.getProviderInstance<SpeechProviderWithExtraOptions<string, Record<string, unknown>>>(providerId)
-    return { ...output, synthesize: async (request, signal) => {
+    // Gemini free TTS refuses overlapping segment requests. Test Voice sends one.
+    const ttsMaxConcurrent = getDefinedProvider(resolveProviderDefinitionId(providerId))?.capabilities?.speech?.ttsMaxConcurrent
+    return { ...output, ttsMaxConcurrent, synthesize: async (request, signal) => {
       signal.throwIfAborted()
       beginPlaybackAudioConsole()
       const client = await provider
@@ -1126,6 +1165,11 @@ export const useSpeechStore = defineStore('speech', () => {
     cancelKokoroDownload,
     invalidateVoiceCatalogs,
     selectProviderModel,
+    commitSpeechSelection,
+    lastModelForSpeechProvider,
+    rememberModelForSpeechProvider,
+    lastVoiceForSpeechProvider,
+    rememberVoiceForSpeechProvider,
     ensureActiveSpeechVoice,
     prepareSpeechForChatTurn,
     getVoicesForProvider,
@@ -1142,7 +1186,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 }, {
   synced: {
-    actions: ['loadVoiceCatalog', 'invalidateVoiceCatalogs', 'selectProviderModel', 'ensureActiveSpeechVoice', 'resetSettings', 'cancelKokoroDownload'],
+    actions: ['loadVoiceCatalog', 'invalidateVoiceCatalogs', 'selectProviderModel', 'commitSpeechSelection', 'ensureActiveSpeechVoice', 'resetSettings', 'cancelKokoroDownload'],
     state: true,
   },
 })

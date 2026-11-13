@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import type { SpeechProvider } from '@xsai-ext/providers/utils'
-
 import { getCachedWebGPUCapabilities } from '@proj-airi/stage-shared/webgpu'
 import {
-  SpeechPlayground,
   SpeechProviderSettings,
 } from '@proj-airi/stage-ui/components'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
@@ -22,12 +19,6 @@ const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
 const { t } = useI18n()
 
-// Get available voices for Kokoro
-const availableVoices = computed(() => {
-  return speechStore.availableVoices[providerId] || []
-})
-
-// Get provider config
 const providerConfig = computed(() => {
   return providerStore.getProviderConfig(providerId)
 })
@@ -71,36 +62,6 @@ const modelOptions = computed(() => {
     value: m.id,
   }))
 })
-
-// Generate speech with Kokoro-specific parameters
-async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: boolean) {
-  try {
-    const provider = await providersStore.getProviderInstance(providerId) as SpeechProvider
-    if (!provider) {
-      console.error('[Kokoro Playground] Failed to get provider instance')
-      throw new Error('Failed to initialize speech provider')
-    }
-
-    const config = providerStore.getProviderConfig(providerId)
-    const selectedModel = config.model as string | undefined || defaultModel
-
-    const result = await speechStore.speech(
-      provider,
-      selectedModel,
-      input,
-      voiceId,
-      {
-        ...config,
-      },
-    )
-
-    return result
-  }
-  catch (error) {
-    console.error('[Kokoro Playground] Error generating speech:', error)
-    throw error
-  }
-}
 
 onMounted(async () => {
   // Check WebGPU support
@@ -175,7 +136,7 @@ watch(model, async (newValue) => {
     :provider-id="providerId"
     :default-model="defaultModel"
   >
-    <template #voice-settings>
+    <template #advanced-settings>
       <!-- Model Selection -->
       <div class="space-y-3">
         <Callout :label="t('settings.pages.providers.provider.kokoro-local.fields.field.model.label')">
@@ -192,17 +153,6 @@ watch(model, async (newValue) => {
           />
         </div>
       </div>
-    </template>
-
-    <!-- Replace the default playground with our standalone component -->
-    <template #playground>
-      <SpeechPlayground
-        :available-voices="availableVoices"
-        :generate-speech="handleGenerateSpeech"
-        :api-key-configured="true"
-        :voices-loading="voicesLoading"
-        :default-text="t('settings.pages.providers.provider.kokoro-local.playground.default-text')"
-      />
     </template>
   </SpeechProviderSettings>
 </template>

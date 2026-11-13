@@ -7,6 +7,17 @@ import { fetchUrlTextForCatalog } from '@proj-airi/stage-shared/catalog-url-fetc
 export { isTruncatedCatalogDescription, pickLongerDescription }
 
 const cache = new Map<string, string>()
+const inflight = new Map<string, Promise<string | null>>()
+
+/** True when More info can replace an OpenRouter `/v1/models` preview with the public model page. */
+export function canEnrichOpenRouterCatalogDescription(
+  providerId: string | undefined,
+  description: string | undefined,
+): boolean {
+  if (providerId !== 'openrouter-ai' && providerId !== 'openrouter-audio-speech')
+    return false
+  return isTruncatedCatalogDescription(description)
+}
 
 function decodeHtmlEntities(text: string): string {
   return text
@@ -22,43 +33,95 @@ function stripHtmlTags(text: string): string {
   return text.replace(/<[^>]+>/g, '')
 }
 
-/** Parses the model detail prose from an OpenRouter model page HTML document. */
+function isCatalogProse(text: string | null | undefined): text is string {
+  if (!text?.trim())
+    return false
+  if (text.includes('"datePublished"') || text.includes('"@type"') || text.includes('featureList'))
+    return false
+  if (/"\s*,\s*"/.test(text))
+    return false
+  return true
+}
+
+function collectJsonLdDescriptions(value: unknown, into: string[]): void {
+  if (!value || typeof value !== 'object')
+    return
+  if (Array.isArray(value)) {
+    for (const item of value)
+      collectJsonLdDescriptions(item, into)
+    return
+  }
+
+  const record = value as Record<string, unknown>
+  if (typeof record.description === 'string')
+    into.push(record.description)
+  for (const nested of Object.values(record)) {
+    if (nested && typeof nested === 'object')
+      collectJsonLdDescriptions(nested, into)
+  }
+}
+
+function descriptionsFromJsonLd(html: string): string[] {
+  const descriptions: string[] = []
+  for (const match of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
+    try {
+      collectJsonLdDescriptions(JSON.parse(match[1]) as unknown, descriptions)
+    }
+    catch {
+      continue
+    }
+  }
+  return descriptions
+}
+
+function pickProseContainingStem(candidates: readonly string[], stem: string): string | undefined {
+  const matches = candidates.filter(text => isCatalogProse(text) && text.includes(stem))
+  if (!matches.length)
+    return undefined
+  return matches.reduce((best, text) => pickLongerDescription(best, text) ?? text)
+}
+
+function nearbyParagraphContainingStem(html: string, stem: string): string | null {
+  const stemIndex = html.indexOf(stem)
+  if (stemIndex < 0)
+    return null
+
+  const open = html.lastIndexOf('<p', stemIndex)
+  const close = html.indexOf('</p>', stemIndex)
+  if (open < 0 || close < 0 || close - open > 2500)
+    return null
+
+  const text = decodeHtmlEntities(stripHtmlTags(html.slice(open, close))).trim()
+  return isCatalogProse(text) && text.includes(stem) ? text : null
+}
+
+/**
+ * Reads the model prose from an OpenRouter page.
+ * Prefers JSON-LD `description`. A preview stem cut at the next `</p>` copies schema.org fields.
+ */
 export function parseOpenRouterModelPageHtml(html: string, previewDescription: string): string | null {
   const stem = previewDescription.replace(/\.\.\.$/, '').replace(/…$/, '').trim()
   if (!stem)
     return null
 
-  const stemIndex = html.indexOf(stem)
-  let firstParagraph: string | null = null
-  if (stemIndex >= 0) {
-    const tail = html.slice(stemIndex)
-    const closeTag = tail.indexOf('</p>')
-    if (closeTag > 0) {
-      firstParagraph = decodeHtmlEntities(stripHtmlTags(tail.slice(0, closeTag))).trim()
-    }
-    else {
-      const jsonEnd = tail.search(/"\s*[,}]/)
-      firstParagraph = decodeHtmlEntities(tail.slice(0, jsonEnd > 0 ? jsonEnd : 1200).trim())
-    }
-  }
+  const primary = pickLongerDescription(
+    pickProseContainingStem(descriptionsFromJsonLd(html), stem),
+    nearbyParagraphContainingStem(html, stem) ?? undefined,
+  )
 
-  const prosePattern = /<p class="mb-3 whitespace-pre-wrap break-words[^"]*leading-prose[^"]*">([\s\S]*?)<\/p>/g
+  const prosePattern = /<p class="mb-3 whitespace-pre-wrap break-words[^"]*">([\s\S]*?)<\/p>/g
   const proseParagraphs = [...html.matchAll(prosePattern)]
     .map(match => decodeHtmlEntities(stripHtmlTags(match[1])).trim())
-    .filter(Boolean)
-
+    .filter(isCatalogProse)
   const secondParagraph = proseParagraphs.find(paragraph => paragraph.startsWith('It uses'))
 
-  if (firstParagraph && secondParagraph)
-    return `${firstParagraph}\n\n${secondParagraph}`
-
-  if (firstParagraph && firstParagraph.length > previewDescription.length)
-    return firstParagraph
-
+  if (primary && secondParagraph && !primary.includes(secondParagraph))
+    return `${primary}\n\n${secondParagraph}`
+  if (primary)
+    return primary
   if (proseParagraphs.length >= 2 && proseParagraphs[0].includes(stem.slice(0, 40)))
     return proseParagraphs.slice(0, 2).join('\n\n')
-
-  return secondParagraph ?? firstParagraph
+  return secondParagraph ?? null
 }
 
 /**
@@ -70,16 +133,37 @@ export async function fetchOpenRouterFullDescription(
   previewDescription?: string,
 ): Promise<string | null> {
   const cached = cache.get(modelId)
-  if (cached)
-    return cached
+  if (cached) {
+    if (isCatalogProse(cached))
+      return cached
+    cache.delete(modelId)
+  }
 
+  const pending = inflight.get(modelId)
+  if (pending)
+    return pending
+
+  const request = loadOpenRouterFullDescription(modelId, previewDescription)
+  inflight.set(modelId, request)
+  try {
+    return await request
+  }
+  finally {
+    inflight.delete(modelId)
+  }
+}
+
+async function loadOpenRouterFullDescription(
+  modelId: string,
+  previewDescription?: string,
+): Promise<string | null> {
   const html = await fetchUrlTextForCatalog(`https://openrouter.ai/${modelId}`)
   if (!html)
     return null
 
   const preview = previewDescription ?? cache.get(`${modelId}:preview`) ?? ''
   const parsed = parseOpenRouterModelPageHtml(html, preview)
-  if (!parsed)
+  if (!parsed || !isCatalogProse(parsed))
     return null
 
   cache.set(modelId, parsed)
