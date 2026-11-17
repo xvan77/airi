@@ -69,6 +69,14 @@ onMounted(async () => {
   removeHtmlBootSplash()
   rendererBootComplete.value = false
 
+  const initialPath = resolveInitialRendererRoutePath(route.path)
+  await setRendererBootLoading({
+    labelId: labelId.value,
+    active: false,
+    force: true,
+    routePath: initialPath,
+  })
+
   if (tracksBootOnMainStage.value) {
     router.beforeEach((to, from, next) => {
       if (to.fullPath !== from.fullPath) {

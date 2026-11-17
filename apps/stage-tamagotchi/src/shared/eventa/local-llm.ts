@@ -20,6 +20,7 @@ export interface LocalLlmDownloadProgress {
 }
 
 export const electronLocalLlmGetStatus = defineInvokeEventa<LocalLlmServerStatus>('eventa:invoke:electron:local-llm:get-status')
+export const electronLocalLlmWaitUntilReady = defineInvokeEventa<boolean, { timeoutMs?: number, pollMs?: number }>('eventa:invoke:electron:local-llm:wait-until-ready')
 export const electronLocalLlmGetDownloadedModels = defineInvokeEventa<string[]>('eventa:invoke:electron:local-llm:get-downloaded-models')
 export const electronLocalLlmDownloadModel = defineInvokeEventa<void, { modelId: string, repo: string, filename: string }>('eventa:invoke:electron:local-llm:download-model')
 export const electronLocalLlmDeleteModel = defineInvokeEventa<void, { modelId: string }>('eventa:invoke:electron:local-llm:delete-model')

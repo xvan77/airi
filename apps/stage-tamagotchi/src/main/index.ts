@@ -26,7 +26,7 @@ import { isLinux } from 'std-env'
 import devIcon from '../../resources/icon-dev.png?asset'
 
 import { electronBeatSyncEnsureBackgroundWindow } from '../shared/eventa'
-import { TAMAGOTCHI_AGGRESSIVE_STARTUP } from '../shared/startup-profile'
+import { TAMAGOTCHI_AGGRESSIVE_STARTUP, TAMAGOTCHI_DEFERRED_WARMUP_MS } from '../shared/startup-profile'
 import { openDebugger, setupDebugger } from './app/debugger'
 import { nullFileLoggerHandle, setupFileLogger } from './app/file-logger'
 import { resolveIsWayland } from './app/ozone'
@@ -439,7 +439,7 @@ app.whenReady().then(async () => {
     dependsOn: {
       editorWindow,
       settingsWindow,
-      workspaceWindow,
+      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP ? {} : { workspaceWindow }),
       chatWindow,
       widgetsManager,
       noticeWindow,
@@ -544,7 +544,9 @@ app.whenReady().then(async () => {
       widgetsWindow: widgetsManager,
       spotlightWindow,
       artistryConfig,
-      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP ? {} : { godotStageManager, pluginHost, mcpManager }),
+      ...(TAMAGOTCHI_AGGRESSIVE_STARTUP
+        ? { mcpManager, pluginHost, workspaceWindow }
+        : { godotStageManager, pluginHost, mcpManager }),
     },
     callback: async (deps) => {
       const { context } = createContext(ipcMain)
@@ -552,6 +554,14 @@ app.whenReady().then(async () => {
         defineInvokeHandler(context, electronBeatSyncEnsureBackgroundWindow, async () => {
           await lazyBeatSyncHandle.ensure()
         })
+        setTimeout(() => {
+          void deps.mcpManager.ensureRunning().catch((error) => {
+            log.withError(error).warn('Deferred MCP warmup failed')
+          })
+          void deps.pluginHost.warmup?.().catch((error) => {
+            log.withError(error).warn('Deferred extension warmup failed')
+          })
+        }, TAMAGOTCHI_DEFERRED_WARMUP_MS)
       }
 
       setupComputerUse(context)

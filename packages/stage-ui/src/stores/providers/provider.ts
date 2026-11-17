@@ -7,7 +7,7 @@ import type { ChatRequestOptions, ModelInfo, ProviderDefinition, ProviderInstanc
 
 import { errorMessageFrom } from '@moeru/std'
 import { enrichOpenRouterCatalogModels, getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
-import { isAggressiveOfflineStartup, isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { isAggressiveOfflineStartup, isCustomProvidersDisabled, waitForLocalLlmServerReady } from '@proj-airi/stage-shared'
 import { isUsableChatModel } from '@proj-airi/stage-shared/chat-model-eligibility'
 import {
 
@@ -646,6 +646,13 @@ export const useProviderStore = defineStore('provider', () => {
   async function listProviderModels(providerId: string, config: Record<string, unknown>) {
     const definition = getProviderDefinition(providerId)
     const provider = await definition.createProvider(config)
+    if (providerId === 'local-llm') {
+      const ready = await waitForLocalLlmServerReady({ timeoutMs: 5_000 })
+      if (!ready) {
+        await disposeTemporaryProvider(provider)
+        return { models: [] }
+      }
+    }
     try {
       if (definition.extraMethods?.listModelCatalog) {
         const catalog = await definition.extraMethods.listModelCatalog(config, provider, { t })
@@ -896,6 +903,12 @@ export const useProviderStore = defineStore('provider', () => {
     const definition = findProviderDefinition(providerId)
     if (!definition)
       return { models: [] }
+
+    if (definition.configuredBy === 'authentication' && !useAuthStore().isAuthenticated) {
+      initializeProviderRuntimeState(providerId)
+      commitProviderModelCatalog(providerId, [], {})
+      return { models: [], available: false }
+    }
 
     if (definition.disableModelCatalog) {
       initializeProviderRuntimeState(providerId)

@@ -1,13 +1,14 @@
 import type { Message } from '@xsai/shared-chat'
 
 import { normalizeLlamaServerChatMessages } from '@proj-airi/core-agent'
-import { isStageTamagotchi } from '@proj-airi/stage-shared'
+import { isStageTamagotchi, waitForLocalLlmServerReady } from '@proj-airi/stage-shared'
 import { createOpenAI } from '@xsai-ext/providers/create'
 import { z } from 'zod'
 
 import { defineProvider } from '../registry'
 
 const LOCAL_LLM_BASE_URL = 'http://localhost:39000/v1'
+const LOCAL_LLM_VALIDATION_READY_TIMEOUT_MS = 30_000
 
 function wrapFetchForLlamaServer(fetchImpl: typeof globalThis.fetch): typeof globalThis.fetch {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -96,6 +97,9 @@ export const providerLocalLlm = defineProvider<LocalLlmConfig, 'local-llm'>({
         name: 'Local server connectivity',
         validator: async () => {
           try {
+            const ready = await waitForLocalLlmServerReady({ timeoutMs: LOCAL_LLM_VALIDATION_READY_TIMEOUT_MS })
+            if (!ready)
+              throw new Error('Local LLM server is not ready yet.')
             const res = await fetch(`${LOCAL_LLM_BASE_URL}/models`)
             if (res.ok)
               return { errors: [], reason: '', reasonKey: '', valid: true }

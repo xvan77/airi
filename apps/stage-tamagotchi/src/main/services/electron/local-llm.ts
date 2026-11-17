@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 
 import type { LocalLlmDownloadProgress, LocalLlmServerStatus } from '../../../shared/eventa/local-llm'
 
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -27,6 +28,7 @@ import {
   electronLocalLlmProgressEvent,
   electronLocalLlmStartServer,
   electronLocalLlmStopServer,
+  electronLocalLlmWaitUntilReady,
 } from '../../../shared/eventa/local-llm'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 
@@ -35,6 +37,35 @@ const USER_DATA_DIR = app.getPath('userData')
 const BIN_DIR = path.join(USER_DATA_DIR, 'bin')
 const MODELS_DIR = path.join(USER_DATA_DIR, 'models')
 const PORT = 39000
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function probeModelsEndpoint(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${PORT}/v1/models`, (res) => {
+      res.resume()
+      resolve(res.statusCode === 200)
+    })
+    req.on('error', () => resolve(false))
+    req.setTimeout(2_000, () => {
+      req.destroy()
+      resolve(false)
+    })
+  })
+}
+
+async function waitUntilModelsEndpointReady(timeoutMs: number, pollMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const ready = await probeModelsEndpoint()
+    if (ready)
+      return true
+    await sleep(pollMs)
+  }
+  return false
+}
 
 /** llama-server context window. AIRI chat history is larger than 2048 tokens. */
 const DEFAULT_CONTEXT_SIZE = 16_384
@@ -301,6 +332,12 @@ export function setupLocalLlmService(context: MainContext): void {
       error: lastError,
       downloadProgress: currentDownloadProgress,
     }
+  })
+
+  defineInvokeHandler(context, electronLocalLlmWaitUntilReady, async (payload) => {
+    const timeoutMs = payload?.timeoutMs ?? 120_000
+    const pollMs = payload?.pollMs ?? 1_000
+    return waitUntilModelsEndpointReady(timeoutMs, pollMs)
   })
 
   // List downloaded GGUF files

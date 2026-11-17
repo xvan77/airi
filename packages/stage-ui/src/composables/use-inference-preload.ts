@@ -23,8 +23,14 @@ export interface UseInferencePreloadOptions {
   delayMs?: number
 }
 
+const DEFAULT_INFERENCE_PRELOAD_DELAY_MS = 3_000
+const AGGRESSIVE_STARTUP_INFERENCE_PRELOAD_DELAY_MS = 15_000
+
 export function useInferencePreload(options: UseInferencePreloadOptions = {}) {
-  const { delayMs = 3000 } = options
+  const defaultDelayMs = isAggressiveOfflineStartup()
+    ? AGGRESSIVE_STARTUP_INFERENCE_PRELOAD_DELAY_MS
+    : DEFAULT_INFERENCE_PRELOAD_DELAY_MS
+  const { delayMs = defaultDelayMs } = options
 
   const preload = useModelPreload({ delayMs })
 

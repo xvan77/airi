@@ -1031,9 +1031,14 @@ export const useChatSessionStore = defineStore('chat-session', () => {
    * no-ops while the existing client is open. Called from `initialize` and
    * from the auth `watch`.
    */
+  let loggedAnonymousWsSkip = false
+
   function ensureCloudWsClient() {
     if (getCurrentUserId() === 'local') {
-      console.info('[chat-sync] WS skipped: anonymous user')
+      if (!loggedAnonymousWsSkip) {
+        console.info('[chat-sync] WS skipped: anonymous user')
+        loggedAnonymousWsSkip = true
+      }
       return
     }
     if (wsClient)

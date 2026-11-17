@@ -28,6 +28,8 @@ export type ExtensionId = string
 export interface ExtensionHostService {
   host: ExtensionHost
   manifests: ExtensionManifestV2[]
+  /** Loads enabled extensions when aggressive startup skipped activation at boot. */
+  warmup?: () => Promise<void>
 }
 
 /**

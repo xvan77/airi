@@ -153,7 +153,14 @@ const stopLeadershipListener = syncedPinia.onLeadershipChange((isLeader) => {
   void homeAssistantStore.refresh().catch((error) => {
     console.warn('[App] Failed to refresh Home Assistant tools:', error)
   })
-  void refreshPluginRuntimeTools()
+  if (isMainWindow) {
+    window.setTimeout(() => {
+      void refreshPluginRuntimeTools()
+    }, 8_000)
+  }
+  else {
+    void refreshPluginRuntimeTools()
+  }
 })
 
 function createFullStageRuntime() {
@@ -165,7 +172,7 @@ function createFullStageRuntime() {
   const cardStore = useAiriCardStore()
   const serverChannelStore = useModsServerChannelStore()
   const characterOrchestratorStore = useCharacterOrchestratorStore()
-  const inferencePreload = useInferencePreload()
+  const inferencePreload = useInferencePreload({ delayMs: 12_000 })
   const pluginHostInspectorStore = usePluginHostInspectorStore()
   const stageWindowLifecycleStore = useStageWindowLifecycleStore()
   const settingsAudioDeviceStore = useSettingsAudioDevice()

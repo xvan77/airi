@@ -22,6 +22,7 @@ import { ExtensionHost, planExtensionActivation } from '@proj-airi/plugin-sdk/pl
 import { Mutex } from 'async-mutex'
 import { app, session as electronSession } from 'electron'
 
+import { TAMAGOTCHI_AGGRESSIVE_STARTUP } from '../../../../../shared/startup-profile'
 import { createExtensionAutoReloadFeature } from '../features/auto-reload'
 import { createExtensionAssetService } from '../features/static-assets'
 import { createBuiltInExtensionKitRuntime } from '../kits'
@@ -98,6 +99,8 @@ function createElectronExtensionAssetCookieAdapter() {
 export interface ExtensionHostServiceInternal extends ExtensionHostService {
   /** Tamagotchi-owned extension tool registry used by IPC tool bridges. */
   tools: TamagotchiToolRegistry
+
+  ensureStartupActivation: () => Promise<void>
 
   /**
    * Applies the main-process system activation state without changing enabled intent.
@@ -655,16 +658,29 @@ export async function setupExtensionHostServiceInternal(
     return report
   }
 
-  await activationMutex.runExclusive(async () => {
-    await refreshManifests()
-    try {
-      await loadEnabledExtensions()
-    }
-    catch (error) {
-      log.withError(error).error('extension activation plan rejected during startup')
-    }
-  })
-  autoReloadFeature.sync()
+  async function runStartupActivation() {
+    await activationMutex.runExclusive(async () => {
+      await refreshManifests()
+      try {
+        await loadEnabledExtensions()
+      }
+      catch (error) {
+        log.withError(error).error('extension activation plan rejected during startup')
+      }
+    })
+    autoReloadFeature.sync()
+  }
+
+  let startupActivationPromise: Promise<void> | undefined
+
+  async function ensureStartupActivation() {
+    startupActivationPromise ??= runStartupActivation()
+    await startupActivationPromise
+  }
+
+  if (!TAMAGOTCHI_AGGRESSIVE_STARTUP) {
+    await runStartupActivation()
+  }
 
   return {
     host,
@@ -673,6 +689,7 @@ export async function setupExtensionHostServiceInternal(
     // to this host service and passing it into kit registration as a dependency.
     tools: builtInKitRuntime.tools,
     manifests: extensionRegistry.listManifests(),
+    ensureStartupActivation,
     async prepareDirectoryImport(sourcePath, securityScopedBookmark) {
       await refreshManifests()
       return await directoryImporter.prepare(sourcePath, securityScopedBookmark)

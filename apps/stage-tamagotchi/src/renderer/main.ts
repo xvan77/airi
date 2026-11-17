@@ -23,6 +23,7 @@ import { nestFullscreenSurfaces } from './components/fullscreen/surfaces'
 import { i18n } from './modules/i18n'
 import { resolveRendererWindowContext } from './window-context'
 
+import './bridges/local-llm-server-ready'
 import '@unocss/reset/tailwind.css'
 import 'splitpanes/dist/splitpanes.css'
 import 'vue-sonner/style.css'

@@ -30,6 +30,25 @@ describe('consciousness settings store', () => {
     expect(store.compactRequestsAuto).toBe(false)
   })
 
+  it('enables compact requests for App LLM when the user never set the toggle', async () => {
+    const store = useConsciousnessSettingsStore()
+    await store.ensureCompactRequestsForOnDeviceProvider('openrouter-ai')
+    expect(store.compactRequests).toBe(false)
+
+    await store.ensureCompactRequestsForOnDeviceProvider('local-llm')
+    expect(store.compactRequests).toBe(true)
+    expect(store.compactRequestsAuto).toBe(true)
+  })
+
+  it('does not override an explicit compact requests choice for App LLM', async () => {
+    localStorage.setItem('settings/consciousness/compact-requests', 'false')
+    const store = useConsciousnessSettingsStore()
+
+    await store.ensureCompactRequestsForOnDeviceProvider('local-llm')
+
+    expect(store.compactRequests).toBe(false)
+  })
+
   it('enables compact requests from a limit error', async () => {
     const store = useConsciousnessSettingsStore()
     await store.enableCompactRequestsFromLimitError()

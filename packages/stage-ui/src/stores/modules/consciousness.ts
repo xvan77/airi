@@ -173,6 +173,9 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
     activeModel.value = model
     activeCustomModelName.value = ''
 
+    if (provider === 'local-llm')
+      void settingsStore.ensureCompactRequestsForOnDeviceProvider(provider)
+
     if (provider && model)
       rememberModelForProvider(provider, model)
   }

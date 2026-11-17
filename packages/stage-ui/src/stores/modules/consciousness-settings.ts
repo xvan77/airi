@@ -19,6 +19,12 @@ function persistEnabled(key: string, value: boolean) {
   localStorage.setItem(`settings/consciousness/${key}`, String(value))
 }
 
+function hasStoredCompactRequestsPreference(): boolean {
+  if (typeof localStorage === 'undefined')
+    return false
+  return localStorage.getItem('settings/consciousness/compact-requests') !== null
+}
+
 /**
  * Stores request policies for the consciousness module.
  *
@@ -66,6 +72,17 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
     persistEnabled('compact-requests-auto', true)
   }
 
+  /** Turns compact requests on for App LLM when the user never chose a value. */
+  async function ensureCompactRequestsForOnDeviceProvider(providerId: string) {
+    if (providerId !== 'local-llm')
+      return
+    if (hasStoredCompactRequestsPreference())
+      return
+    await setCompactRequests(true)
+    compactRequestsAuto.value = true
+    persistEnabled('compact-requests-auto', true)
+  }
+
   async function setTemperatureEnabled(value: boolean) {
     temperatureEnabled.value = value
     persistEnabled('temperature-enabled', value)
@@ -95,13 +112,14 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
     setStageActEnabled,
     setCompactRequests,
     enableCompactRequestsFromLimitError,
+    ensureCompactRequestsForOnDeviceProvider,
     setTemperatureEnabled,
     setTopPEnabled,
     resetState,
   }
 }, {
   synced: {
-    actions: ['resetState', 'setReasoning', 'setStageActEnabled', 'setCompactRequests', 'enableCompactRequestsFromLimitError', 'setTemperatureEnabled', 'setTopPEnabled'],
+    actions: ['resetState', 'setReasoning', 'setStageActEnabled', 'setCompactRequests', 'enableCompactRequestsFromLimitError', 'ensureCompactRequestsForOnDeviceProvider', 'setTemperatureEnabled', 'setTopPEnabled'],
     state: true,
   },
 })

@@ -106,8 +106,14 @@ function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicator
     defineInvokeHandler(context, electronSetRendererWindowBootLoading, (payload) => {
       if (!payload?.labelId)
         return
+      const labelId = payload.labelId as RendererWindowLoadLabelId
+      if (payload.force && !payload.active) {
+        bootPending.delete(labelId)
+        broadcast()
+        return
+      }
       setBootPending(
-        payload.labelId as RendererWindowLoadLabelId,
+        labelId,
         payload.active,
         payload.routePath,
       )
@@ -170,7 +176,11 @@ function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicator
 
     window.webContents.on('did-finish-load', () => {
       syncWindowRouteFromUrl(window)
+      const entryOnLoad = tracked.get(windowId)
+      if (entryOnLoad)
+        bootPending.delete(entryOnLoad.labelId)
       onStop()
+      broadcast()
     })
     window.webContents.on('did-fail-load', onStop)
     window.webContents.on('did-start-loading', onStart)
@@ -197,6 +207,9 @@ function createRendererWindowLoadIndicatorService(): RendererWindowLoadIndicator
       onStart()
     }
     window.once('closed', () => {
+      const entryOnClose = tracked.get(windowId)
+      if (entryOnClose)
+        bootPending.delete(entryOnClose.labelId)
       tracked.delete(windowId)
       broadcast()
     })

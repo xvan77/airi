@@ -36,6 +36,7 @@ import {
   electronMcpWriteConfigText,
 } from '../../../../shared/eventa'
 import { isHttpServerConfig, parseElectronMcpConfigText } from '../../../../shared/mcp-config'
+import { TAMAGOTCHI_AGGRESSIVE_STARTUP } from '../../../../shared/startup-profile'
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 
 /** A transport that the MCP client can drive. Both kinds expose `close`. */
@@ -49,6 +50,8 @@ interface McpServerSession {
 
 export interface McpManager {
   ensureConfigFile: () => Promise<{ path: string }>
+  /** Starts configured stdio and HTTP MCP servers when startup did not apply them yet. */
+  ensureRunning: () => Promise<void>
   openConfigFile: () => Promise<{ path: string }>
   applyAndRestart: () => Promise<ElectronMcpApplyResult>
   /** Returns the complete active-server catalog. Any discovery failure rejects with server names and reasons. */
@@ -481,8 +484,21 @@ export function createMcpManager(): McpManager {
     }
   }
 
+  let ensureRunningPromise: Promise<void> | undefined
+
+  async function ensureRunning() {
+    ensureRunningPromise ??= applyAndRestart()
+      .then(() => {})
+      .catch((error) => {
+        ensureRunningPromise = undefined
+        throw error
+      })
+    await ensureRunningPromise
+  }
+
   return {
     ensureConfigFile,
+    ensureRunning,
     openConfigFile,
     applyAndRestart,
     listTools,
@@ -505,8 +521,12 @@ export async function setupMcpManager() {
 
   await manager.ensureConfigFile()
 
+  if (TAMAGOTCHI_AGGRESSIVE_STARTUP) {
+    return manager
+  }
+
   try {
-    await manager.applyAndRestart()
+    await manager.ensureRunning()
   }
   catch (error) {
     log.withError(error).warn('failed to apply mcp stdio config during startup')
@@ -529,10 +549,12 @@ export function createMcpServersService(params: { context: ReturnType<typeof cre
   })
 
   defineInvokeHandler(params.context, electronMcpListTools, async () => {
+    await params.manager.ensureRunning()
     return params.manager.listTools()
   })
 
   defineInvokeHandler(params.context, electronMcpCallTool, async (payload) => {
+    await params.manager.ensureRunning()
     return params.manager.callTool(payload)
   })
 

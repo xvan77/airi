@@ -259,5 +259,6 @@ export async function setupExtensionHost(options: SetupExtensionHostOptions): Pr
   return {
     host: hostService.host,
     manifests: hostService.manifests,
+    warmup: () => hostService.ensureStartupActivation(),
   }
 }

@@ -37,6 +37,7 @@ import { array, number, object, optional, string } from 'valibot'
 import icon from '../../../../resources/icon.png?asset'
 
 import { electronFullscreenExit, electronFullscreenOpen, electronFullscreenPack, electronFullscreenRequestClose, electronFullscreenSetMode, electronFullscreenSurfaceChanged, electronMainWindowEnterFullscreen, electronMainWindowGetFullscreenState, electronMainWindowSetFullscreenBounds, electronStartDraggingWindow } from '../../../shared/eventa'
+import { TAMAGOTCHI_AGGRESSIVE_STARTUP, TAMAGOTCHI_DEFERRED_INLAY_MS } from '../../../shared/startup-profile'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { shouldOpenDevTools } from '../../libs/electron/devtools'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
@@ -277,12 +278,21 @@ export async function setupMainWindow(params: {
     query: { 'synced-leader': 'true', 'fullscreen-host': 'main-window' },
   }))
 
+  function showInlayInactive() {
+    void params.inlayWindow().then((inlay) => {
+      if (!inlay.isDestroyed())
+        inlay.showInactive()
+    }).catch(error => console.error('Failed to prepare the inlay window', error))
+  }
+
   // The inlay loads once and stays shown, so the first speech does not wait for a window and a page load.
   // It is transparent and click-through until speech starts. Showing it inactive keeps focus in the main window.
-  void params.inlayWindow().then((inlay) => {
-    if (!inlay.isDestroyed())
-      inlay.showInactive()
-  }).catch(error => console.error('Failed to prepare the inlay window', error))
+  if (TAMAGOTCHI_AGGRESSIVE_STARTUP) {
+    setTimeout(showInlayInactive, TAMAGOTCHI_DEFERRED_INLAY_MS)
+  }
+  else {
+    showInlayInactive()
+  }
 
   /**
    * This is a know issue (or expected behavior maybe) to Electron.

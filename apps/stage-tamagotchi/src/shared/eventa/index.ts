@@ -624,7 +624,7 @@ export interface ElectronRendererWindowLoadActivity {
 }
 export const electronRendererWindowLoadActivityChanged = defineEventa<ElectronRendererWindowLoadActivity>('eventa:event:electron:renderer-window-load-activity-changed')
 export const electronGetRendererWindowLoadActivity = defineInvokeEventa<ElectronRendererWindowLoadActivity>('eventa:invoke:electron:renderer-window-load-activity:get')
-export const electronSetRendererWindowBootLoading = defineInvokeEventa<void, { labelId: string, active: boolean, routePath?: string }>('eventa:invoke:electron:renderer-window-boot-loading:set')
+export const electronSetRendererWindowBootLoading = defineInvokeEventa<void, { labelId: string, active: boolean, routePath?: string, force?: boolean }>('eventa:invoke:electron:renderer-window-boot-loading:set')
 export const electronWindowSetAlwaysOnTop = defineInvokeEventa<void, boolean>('eventa:invoke:electron:window:set-always-on-top')
 export const electronAppOpenUserDataFolder = defineInvokeEventa<{ path: string }>('eventa:invoke:electron:app:open-user-data-folder')
 export const electronAppQuit = defineInvokeEventa<void>('eventa:invoke:electron:app:quit')
