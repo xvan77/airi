@@ -16,9 +16,12 @@ import {
   SpeechModelCatalogFilters,
   TestDummyMarker,
   VoiceCardManySelect,
+  WindowsVoicePackClearLocale,
+  WindowsVoicePacks,
 } from '@proj-airi/stage-ui/components'
 import { removeInferenceStatus, useAnalytics, useInferenceStatus } from '@proj-airi/stage-ui/composables'
 import { applyVoiceProfileEffects } from '@proj-airi/stage-ui/composables/audio/audio-effects'
+import { applyHeavyConsoleProcessing } from '@proj-airi/stage-ui/composables/audio/heavy-audio-processor'
 import { formatChatProviderErrorContent } from '@proj-airi/stage-ui/libs/chat-provider-error-message'
 import { clearModelCache, isKokoroSpeechModelDownloaded } from '@proj-airi/stage-ui/libs/inference'
 import { getKokoroAdapter } from '@proj-airi/stage-ui/libs/inference/adapters/kokoro'
@@ -87,6 +90,9 @@ const kokoroSortKey = ref<SpeechCatalogSortKey>('disk')
 const kokoroSortDirection = ref<SpeechCatalogSortDirection>('asc')
 const kokoroQuantDownloaded = ref<Record<string, boolean>>({})
 const clearingKokoroDownloads = ref(false)
+const windowsVoiceDownloadingLocale = ref('')
+const windowsVoiceClearingLocale = ref('')
+const windowsVoiceRemoveNotice = ref<'remove_failed' | 'remove_cancelled' | ''>('')
 const isCancellingKokoroDownload = ref(false)
 const useSSML = ref(false)
 const testText = ref('Hello, my name is AI Assistant')
@@ -1211,8 +1217,10 @@ async function generateTestSpeech() {
     const decoded = await context.decodeAudioData(response.slice(0))
     if (!isSpeechPlaygroundTestCurrent(generation))
       return
+    const consoleEffects = { ...speechStore.audioConsole.effects }
+    const processed = applyHeavyConsoleProcessing(context, decoded, consoleEffects)
     const source = context.createBufferSource()
-    source.buffer = decoded
+    source.buffer = processed
     consolePreviewSource = source
     const effectsResult = applyVoiceProfileEffects(context, source, speechStore.audioConsole.effects)
     consolePreviewCleanup = effectsResult.cleanup
@@ -1338,7 +1346,12 @@ async function handleDeleteProvider(providerId: string) {
   <SettingsSplitPane storage-key="settings/speech/split-left-percent">
     <template #left>
       <SettingsCard :class="['w-full']">
-        <div flex="~ col gap-4">
+        <div
+          :class="[
+            'flex flex-col',
+            resolvedBrowsingSpeechProvider === 'app-local-audio-speech' ? 'gap-2' : 'gap-4',
+          ]"
+        >
           <div>
             <div class="flex items-center justify-between gap-4">
               <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-500">
@@ -1572,21 +1585,14 @@ async function handleDeleteProvider(providerId: string) {
                   </i18n-t>
                 </div>
               </template>
-              <div
-                :class="[
-                  'flex flex-col gap-3',
-                  'lg:flex-row lg:items-start lg:justify-between',
-                ]"
-              >
-                <SpeechModelCatalogFilters
-                  v-if="isKokoroSpeechProvider"
-                  v-model:sort-key="kokoroSortKey"
-                  v-model:sort-direction="kokoroSortDirection"
-                  class="min-w-0 flex-1"
-                  :disable-clear-downloads="clearingKokoroDownloads"
-                  @clear-downloads="clearKokoroDownloads"
-                />
-              </div>
+              <SpeechModelCatalogFilters
+                v-if="isKokoroSpeechProvider"
+                v-model:sort-key="kokoroSortKey"
+                v-model:sort-direction="kokoroSortDirection"
+                class="min-w-0 flex-1"
+                :disable-clear-downloads="clearingKokoroDownloads"
+                @clear-downloads="clearKokoroDownloads"
+              />
               <RadioCardManySelect
                 v-model:search-query="modelSearchQuery"
                 :model-value="catalogRadioSelection"
@@ -1604,7 +1610,7 @@ async function handleDeleteProvider(providerId: string) {
                 :custom-input-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.custom_model_placeholder')"
                 :expand-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.expand')"
                 :collapse-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.collapse')"
-                expanded-class="mb-12"
+                :expanded-class="isKokoroSpeechProvider ? 'mb-12' : 'mb-2'"
                 @update:model-value="selectSpeechModel"
                 @update:custom-value="updateCustomModelName"
               />
@@ -1640,19 +1646,57 @@ async function handleDeleteProvider(providerId: string) {
         </div>
 
         <!-- Voice Configuration Section -->
-        <div v-if="browsingSpeechSource && browsingSpeechSource !== 'speech-noop'">
-          <div flex="~ col gap-4">
-            <div class="flex items-center justify-between gap-4">
-              <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-400">
+        <div
+          v-if="browsingSpeechSource && browsingSpeechSource !== 'speech-noop'"
+          :class="[
+            resolvedBrowsingSpeechProvider === 'app-local-audio-speech' ? 'mt-1' : 'mt-0',
+          ]"
+        >
+          <div
+            :class="[
+              resolvedBrowsingSpeechProvider === 'app-local-audio-speech'
+                ? 'flex flex-col gap-2'
+                : 'flex flex-col gap-4',
+            ]"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <h2
+                :class="[
+                  'text-lg text-neutral-500 md:text-2xl dark:text-neutral-400',
+                  resolvedBrowsingSpeechProvider === 'app-local-audio-speech' ? 'mt-0' : '',
+                ]"
+              >
                 Voice Configuration
               </h2>
+              <div
+                v-if="resolvedBrowsingSpeechProvider === 'app-local-audio-speech'"
+                class="max-w-full flex shrink-0 flex-col items-end gap-2"
+              >
+                <SpeechBrowsingLastVoiceBanner
+                  v-if="showBrowsingLastVoiceBanner"
+                  :voice-id="lastVoiceOnBrowsingSpeechProvider"
+                  @select="selectLastVoiceOnBrowsingSpeechProvider"
+                />
+                <WindowsVoicePackClearLocale
+                  v-model:voice-id="displayedSpeechVoiceId"
+                  v-model:clearing-locale="windowsVoiceClearingLocale"
+                  :installed-voices="availableVoices[resolvedBrowsingSpeechProvider] ?? []"
+                  @notice="windowsVoiceRemoveNotice = $event"
+                />
+              </div>
               <SpeechBrowsingLastVoiceBanner
-                v-if="showBrowsingLastVoiceBanner"
+                v-else-if="showBrowsingLastVoiceBanner"
                 :voice-id="lastVoiceOnBrowsingSpeechProvider"
                 class="shrink-0"
                 @select="selectLastVoiceOnBrowsingSpeechProvider"
               />
             </div>
+            <p
+              v-if="resolvedBrowsingSpeechProvider === 'app-local-audio-speech' && windowsVoiceRemoveNotice"
+              class="text-right text-sm text-red-600 dark:text-red-300"
+            >
+              {{ t(`settings.pages.modules.speech.sections.section.windows-voices.${windowsVoiceRemoveNotice}`) }}
+            </p>
             <div
               v-if="kokoroProgressText"
               class="max-w-full flex items-center gap-2"
@@ -1703,6 +1747,14 @@ async function handleDeleteProvider(providerId: string) {
             </div>
 
             <!-- Error state -->
+            <WindowsVoicePacks
+              v-else-if="resolvedBrowsingSpeechProvider === 'app-local-audio-speech'"
+              v-model:voice-id="displayedSpeechVoiceId"
+              v-model:downloading-locale="windowsVoiceDownloadingLocale"
+              v-model:clearing-locale="windowsVoiceClearingLocale"
+              :installed-voices="availableVoices[resolvedBrowsingSpeechProvider] ?? []"
+            />
+
             <!-- Voice selection with RadioCardManySelect (skip for OpenAI Compatible) -->
             <div
               v-else-if="resolvedBrowsingSpeechProvider !== 'openai-compatible-audio-speech' && displayedVoiceOptions.length > 0"

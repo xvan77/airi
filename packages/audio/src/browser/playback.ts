@@ -7,13 +7,22 @@ import { AudioOutput } from './audio-output'
  * Fade completion follows source ended events on that clock.
  */
 export class BrowserPlayback implements PlaybackDriver {
-  constructor(private readonly context: AudioContext, private readonly options?: { destination?: AudioNode, onSource?: (source: AudioBufferSourceNode) => void }) {}
+  constructor(private readonly context: AudioContext, private readonly options?: {
+    destination?: AudioNode
+    onSource?: (source: AudioBufferSourceNode) => void
+    transformAudioBuffer?: (buffer: AudioBuffer) => Promise<AudioBuffer> | AudioBuffer
+  }) {}
 
   nowMs() {
     return this.context.currentTime * 1000
   }
 
   play(clip: PlaybackClip): PlayingAudio {
-    return new AudioOutput(this.context, clip.audio, this.options?.destination ?? this.context.destination, { startAtMs: clip.startAtMs, onStart: clip.onStart, onSource: this.options?.onSource })
+    return new AudioOutput(this.context, clip.audio, this.options?.destination ?? this.context.destination, {
+      startAtMs: clip.startAtMs,
+      onStart: clip.onStart,
+      onSource: this.options?.onSource,
+      transformAudioBuffer: this.options?.transformAudioBuffer,
+    })
   }
 }

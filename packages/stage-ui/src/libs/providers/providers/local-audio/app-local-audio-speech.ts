@@ -1,3 +1,5 @@
+import type { WindowsVoicePackInstallResult, WindowsVoicePackState } from '@proj-airi/stage-shared'
+
 import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { isElectronWindow, isStageTamagotchi } from '@proj-airi/stage-shared'
@@ -21,10 +23,16 @@ const electronGetNativeTtsVoices = defineInvokeEventa<Array<{
 }>>('eventa:invoke:electron:speech:get-native-tts-voices')
 
 const electronGenerateNativeTts = defineInvokeEventa<ArrayBuffer | null, { text: string, voiceId?: string }>('eventa:invoke:electron:speech:generate-native-tts')
+const electronListWindowsVoicePacks = defineInvokeEventa<WindowsVoicePackState[]>('eventa:invoke:electron:speech:list-windows-voice-packs')
+const electronInstallWindowsVoicePack = defineInvokeEventa<WindowsVoicePackInstallResult, { locale: string }>('eventa:invoke:electron:speech:install-windows-voice-pack')
+const electronRemoveWindowsVoicePack = defineInvokeEventa<WindowsVoicePackInstallResult, { locale: string }>('eventa:invoke:electron:speech:remove-windows-voice-pack')
 
 function withNativeTtsInvokers<T>(run: (invokers: {
   getVoices: () => Promise<Array<{ id: string, name: string, lang: string, gender: string }>>
   generateTts: (payload: { text: string, voiceId?: string }) => Promise<ArrayBuffer | null>
+  listWindowsVoicePacks: () => Promise<WindowsVoicePackState[]>
+  installWindowsVoicePack: (payload: { locale: string }) => Promise<WindowsVoicePackInstallResult>
+  removeWindowsVoicePack: (payload: { locale: string }) => Promise<WindowsVoicePackInstallResult>
 }) => Promise<T>): Promise<T> {
   if (typeof window === 'undefined' || !isElectronWindow(window))
     throw new Error('Native TTS is only available in the desktop app')
@@ -33,8 +41,23 @@ function withNativeTtsInvokers<T>(run: (invokers: {
   const invokers = {
     getVoices: defineInvoke(context, electronGetNativeTtsVoices),
     generateTts: defineInvoke(context, electronGenerateNativeTts),
+    listWindowsVoicePacks: defineInvoke(context, electronListWindowsVoicePacks),
+    installWindowsVoicePack: defineInvoke(context, electronInstallWindowsVoicePack),
+    removeWindowsVoicePack: defineInvoke(context, electronRemoveWindowsVoicePack),
   }
   return run(invokers).finally(() => dispose())
+}
+
+export function listWindowsVoicePacks(): Promise<WindowsVoicePackState[]> {
+  return withNativeTtsInvokers(invokers => invokers.listWindowsVoicePacks())
+}
+
+export function installWindowsVoicePack(locale: string): Promise<WindowsVoicePackInstallResult> {
+  return withNativeTtsInvokers(invokers => invokers.installWindowsVoicePack({ locale }))
+}
+
+export function removeWindowsVoicePack(locale: string): Promise<WindowsVoicePackInstallResult> {
+  return withNativeTtsInvokers(invokers => invokers.removeWindowsVoicePack({ locale }))
 }
 
 export const providerAppLocalAudioSpeech = defineProvider<AppLocalAudioSpeechConfig, 'app-local-audio-speech'>({

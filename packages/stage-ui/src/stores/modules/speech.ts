@@ -131,6 +131,17 @@ export const useSpeechStore = defineStore('speech', () => {
   const audioConsoleEffectPitch = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/pitch', legacyAudioConsole.effects?.pitch ?? defaultAudioConsole.effects.pitch, persistenceOptions)
   const audioConsoleEffectRate = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/rate', legacyAudioConsole.effects?.rate ?? defaultAudioConsole.effects.rate, persistenceOptions)
   const audioConsoleEffectVolume = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/volume', legacyAudioConsole.effects?.volume ?? defaultAudioConsole.effects.volume, persistenceOptions)
+  const audioConsoleEffectHighpass = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/highpass', legacyAudioConsole.effects?.highpass ?? defaultAudioConsole.effects.highpass, persistenceOptions)
+  const audioConsoleEffectEqBass = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/eq-bass', legacyAudioConsole.effects?.eqBass ?? defaultAudioConsole.effects.eqBass, persistenceOptions)
+  const audioConsoleEffectEqMid = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/eq-mid', legacyAudioConsole.effects?.eqMid ?? defaultAudioConsole.effects.eqMid, persistenceOptions)
+  const audioConsoleEffectEqTreble = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/eq-treble', legacyAudioConsole.effects?.eqTreble ?? defaultAudioConsole.effects.eqTreble, persistenceOptions)
+  const audioConsoleEffectDeesser = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/deesser', legacyAudioConsole.effects?.deesser ?? defaultAudioConsole.effects.deesser, persistenceOptions)
+  const audioConsoleEffectLimiter = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/limiter', legacyAudioConsole.effects?.limiter ?? defaultAudioConsole.effects.limiter, persistenceOptions)
+  const audioConsoleEffectChorus = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/chorus', legacyAudioConsole.effects?.chorus ?? defaultAudioConsole.effects.chorus, persistenceOptions)
+  const audioConsoleEffectGrit = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/grit', legacyAudioConsole.effects?.grit ?? defaultAudioConsole.effects.grit, persistenceOptions)
+  const audioConsoleEffectGate = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/gate', legacyAudioConsole.effects?.gate ?? defaultAudioConsole.effects.gate, persistenceOptions)
+  const audioConsoleEffectPitchTone = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/pitch-tone', legacyAudioConsole.effects?.pitchTone ?? defaultAudioConsole.effects.pitchTone, persistenceOptions)
+  const audioConsoleEffectFormant = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/formant', legacyAudioConsole.effects?.formant ?? defaultAudioConsole.effects.formant, persistenceOptions)
   const audioConsoleEffectAsmr = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/asmr', legacyAudioConsole.effects?.asmr ?? defaultAudioConsole.effects.asmr, persistenceOptions)
   const audioConsoleEffectRadio = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/radio', legacyAudioConsole.effects?.radio ?? defaultAudioConsole.effects.radio, persistenceOptions)
   const audioConsoleEffectRobot = useLocalStorageManualReset<number>('settings/speech/audio-console/effects/robot', legacyAudioConsole.effects?.robot ?? defaultAudioConsole.effects.robot, persistenceOptions)
@@ -147,6 +158,17 @@ export const useSpeechStore = defineStore('speech', () => {
       pitch: audioConsoleEffectPitch.value,
       rate: audioConsoleEffectRate.value,
       volume: audioConsoleEffectVolume.value,
+      highpass: audioConsoleEffectHighpass.value,
+      eqBass: audioConsoleEffectEqBass.value,
+      eqMid: audioConsoleEffectEqMid.value,
+      eqTreble: audioConsoleEffectEqTreble.value,
+      deesser: audioConsoleEffectDeesser.value,
+      limiter: audioConsoleEffectLimiter.value,
+      chorus: audioConsoleEffectChorus.value,
+      grit: audioConsoleEffectGrit.value,
+      gate: audioConsoleEffectGate.value,
+      pitchTone: audioConsoleEffectPitchTone.value,
+      formant: audioConsoleEffectFormant.value,
       asmr: audioConsoleEffectAsmr.value,
       radio: audioConsoleEffectRadio.value,
       robot: audioConsoleEffectRobot.value,
@@ -1082,20 +1104,21 @@ export const useSpeechStore = defineStore('speech', () => {
     await useSpeechStore(pinia).resetSettings()
   }
 
-  /** Resets shared settings in the leader and rejects catalog results started before this reset. */
-  async function resetSettings() {
-    // Invalidate request ownership before the reset publishes new settings.
-    cancelCatalogRequests()
-    activeSpeechProvider.reset()
-    activeSpeechModel.reset()
-    activeSpeechVoiceId.reset()
-    activeSpeechVoice.reset()
-    pitch.reset()
-    rate.reset()
-    ssmlEnabled.reset()
+  function resetAudioConsole() {
     audioConsoleEffectPitch.reset()
     audioConsoleEffectRate.reset()
     audioConsoleEffectVolume.reset()
+    audioConsoleEffectHighpass.reset()
+    audioConsoleEffectEqBass.reset()
+    audioConsoleEffectEqMid.reset()
+    audioConsoleEffectEqTreble.reset()
+    audioConsoleEffectDeesser.reset()
+    audioConsoleEffectLimiter.reset()
+    audioConsoleEffectChorus.reset()
+    audioConsoleEffectGrit.reset()
+    audioConsoleEffectGate.reset()
+    audioConsoleEffectPitchTone.reset()
+    audioConsoleEffectFormant.reset()
     audioConsoleEffectAsmr.reset()
     audioConsoleEffectRadio.reset()
     audioConsoleEffectRobot.reset()
@@ -1107,6 +1130,20 @@ export const useSpeechStore = defineStore('speech', () => {
     audioConsoleUstStripEmojis.reset()
     audioConsoleUstTildeReplacement.reset()
     playbackApplyAudioConsole.reset()
+  }
+
+  /** Resets shared settings in the leader and rejects catalog results started before this reset. */
+  async function resetSettings() {
+    // Invalidate request ownership before the reset publishes new settings.
+    cancelCatalogRequests()
+    activeSpeechProvider.reset()
+    activeSpeechModel.reset()
+    activeSpeechVoiceId.reset()
+    activeSpeechVoice.reset()
+    pitch.reset()
+    rate.reset()
+    ssmlEnabled.reset()
+    resetAudioConsole()
     modelSearchQuery.reset()
     catalog.$patch((state) => {
       state.availableVoices = {}
@@ -1129,6 +1166,17 @@ export const useSpeechStore = defineStore('speech', () => {
     audioConsoleEffectPitch,
     audioConsoleEffectRate,
     audioConsoleEffectVolume,
+    audioConsoleEffectHighpass,
+    audioConsoleEffectEqBass,
+    audioConsoleEffectEqMid,
+    audioConsoleEffectEqTreble,
+    audioConsoleEffectDeesser,
+    audioConsoleEffectLimiter,
+    audioConsoleEffectChorus,
+    audioConsoleEffectGrit,
+    audioConsoleEffectGate,
+    audioConsoleEffectPitchTone,
+    audioConsoleEffectFormant,
     audioConsoleEffectAsmr,
     audioConsoleEffectRadio,
     audioConsoleEffectRobot,
@@ -1183,6 +1231,7 @@ export const useSpeechStore = defineStore('speech', () => {
     createOutput,
     resetState,
     resetSettings,
+    resetAudioConsole,
   }
 }, {
   synced: {

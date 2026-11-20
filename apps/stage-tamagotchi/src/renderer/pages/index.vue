@@ -60,6 +60,7 @@ import { useFullscreenStore } from '../stores/fullscreen'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useToolSelectionStore } from '../stores/tools'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
+import { resolveWidgetStageCanvas } from '../utils/resolve-widget-stage-canvas'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
 
 const hearingStatusElement = ref<HTMLElement>()
@@ -71,8 +72,8 @@ const controlsIslandInteractionActive = shallowRef(false)
 const widgetStageRef = ref<InstanceType<typeof WidgetStage>>()
 // The stage canvas alpha tells the sampler which pixels of the window AIRI
 // paints, so it can read the desktop showing through behind the character.
-useScreenAmbientLight({ stageCanvas: () => widgetStageRef.value?.canvasElement() })
-const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
+useScreenAmbientLight({ stageCanvas: () => resolveWidgetStageCanvas(widgetStageRef.value) })
+const stageCanvas = toRef(() => resolveWidgetStageCanvas(widgetStageRef.value))
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 const stageMounted = computed(() => componentStateStage.value === 'mounted')
 // A stage that fails to render never reaches `mounted`, so the loading overlay would

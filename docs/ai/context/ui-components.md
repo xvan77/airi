@@ -461,6 +461,7 @@ Horizontal slider with progress visualization.
 | `thumbColor` | `string?` | `'#9090906e'` | Thumb color |
 | `trackColor` | `string?` | `'gray'` | Track color |
 | `trackValueColor` | `string?` | `'red'` | Filled track color |
+| `compact` | `boolean?` | `false` | Slim track and thumb for dense forms. Used by `FieldRange` with `density="compact"`. |
 
 **v-model**: `modelValue: number`
 
@@ -665,6 +666,7 @@ Displays field information on the left and a compact action button on the right.
 | `formatValue` | `(value: number) => string?` | — | Value formatter |
 | `as` | `'label' \| 'div'` | `'label'` | Wrapper element |
 | `defaultValue` | `number?` | — | When set, shows a reset button next to the label that restores this value. Use with `as="div"`. |
+| `density` | `'default' \| 'compact'` | `'default'` | Compact puts label and formatted value on one row, short description under it, and a slim `Range`. |
 
 **v-model**: `modelValue: number`
 

@@ -953,12 +953,108 @@ pages:
             show_less: Mostrar menos
             show_more: Mostrar más
             title: Proveedor
+          windows-voices:
+            title: Voces de Windows
+            description: Elige un idioma. AIRI pide a Windows que lo descargue. Windows puede pedir permiso.
+            filter: Filtro
+            grouped_download_note: 'Nota: como las voces se agrupan por país, cada descarga incluye todas las voces de ese país de una vez'
+            download: Descargar
+            downloading: Descargando…
+            ready: Listo
+            clear_locale: Quitar voces de {language}
+            clearing: Quitando…
+            remove_failed: Windows no quitó estas voces.
+            remove_cancelled: Se canceló la eliminación.
+            failed: Windows no agregó esta voz.
+            cancelled: La descarga se canceló.
+            empty_zone: No hay voces en este grupo de idiomas.
+            examples: 'Windows agrega: {names}'
+            installed_voices: 'En la lista de arriba: {names}'
+            zones:
+              english: Inglés
+              spanish: Español
+              european: Europeo
+              asian: Asiático
           voice-settings:
             input-ssml:
               placeholder: Ingresa texto SSML...
             use-ssml:
               description: Habilitar para ingresar SSML crudo en lugar de texto plano
               label: Usar SSML Personalizado
+          audio-console:
+            title: Consola de audio
+            description: Ajusta cómo suena la voz después de la síntesis y limpia el texto del chat antes de hablar.
+            reset_defaults: Restablecer valores predeterminados
+            sections:
+              distortion:
+                title: Distorsión
+                description: Carácter y movimiento fuertes. Empieza aquí con voces planas del sistema.
+              equalizing:
+                title: Ecualización
+                description: Afinado fino del tono. Puede sonar sutil en algunas voces TTS.
+            ust:
+              title: Limpieza de diálogo
+              description: Quita símbolos de roleplay y acotaciones para que el personaje no los lea en voz alta.
+              custom_strip: Quitar caracteres
+              custom_strip_hint: Estos caracteres se quitan de la línea antes de hablar.
+              strip_emojis: Quitar emojis
+              tilde: Tilde (~)
+              tilde_hint: Sustituye la tilde en el texto. Déjalo vacío para borrarla.
+            fields:
+              pitch:
+                label: Tono / velocidad
+                description: Más alto suena más rápido y brillante. Más bajo, más lento y grave. Cero es lo normal.
+              volume:
+                label: Volumen
+                description: Qué tan fuerte suena tras la síntesis. Se suma al control principal junto al personaje.
+              highpass:
+                label: Pasa-altos
+                description: Recorta el grave abombado. Súbelo si la voz suena turbia en parlantes chicos.
+              eq_bass:
+                label: Graves
+                description: Da calidez y cuerpo, o afina el grave si lo bajas.
+              eq_mid:
+                label: Medios
+                description: Hace las palabras más claras y presentes, o más suaves si los reduces.
+              eq_treble:
+                label: Agudos
+                description: Añade aire y brillo, o quita agudos duros si lo bajas.
+              deesser:
+                label: De-ess
+                description: Suaviza las "s" y "sh" cuando pican en los oídos.
+              limiter:
+                label: Limitador
+                description: Frena picos fuertes con volumen o efectos altos. Útil por encima de 100% de volumen.
+              chorus:
+                label: Chorus
+                description: Añade un brillo móvil y un poco más de ancho. Suele notarse más en voces planas del sistema que solo con EQ.
+              grit:
+                label: Arena
+                description: Saturación áspera y más filo. Hace que una voz robótica suene menos limpia y plástica.
+              gate:
+                label: Puerta de ruido
+                description: Aprieta los silencios entre palabras para que el ruido de fondo baje más rápido.
+              pitch_tone:
+                label: Tono (sin cambiar velocidad)
+                description: Sube o baja el tono sin cambiar la velocidad de la línea. Es distinto de Tono / velocidad. Prueba ±80–100 para notarlo.
+              formant:
+                label: Tamaño del personaje
+                description: Empuja la voz a un cuerpo más grande o más chico. Distinto del tono sin velocidad. Prueba ±80–100.
+              asmr:
+                label: ASMR
+                description: 'Tono más suave y comprimido: cercano y quieto, no estridente.'
+              radio:
+                label: Radio
+                description: Sonido angosto y metálico, como un teléfono viejo o una radio portátil.
+              robot:
+                label: Robótico
+                description: Tono metálico con un eco corto, como si pasara por una máquina.
+              reverb:
+                label: Eco espacio
+                description: Eco de habitación corto detrás de la línea, sin convertirla en un salón enorme.
+              spatial:
+                label: Pan
+                description: Mueve la voz a la izquierda o derecha en estéreo. Centro la deja pareja en ambos oídos.
       title: Habla
     title: Módulos
     vision:

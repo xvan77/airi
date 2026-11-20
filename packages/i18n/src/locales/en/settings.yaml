@@ -1318,6 +1318,28 @@ pages:
             show_less: Show less
             show_more: Show more
             title: Provider
+          windows-voices:
+            title: Windows voices
+            description: Pick a language. AIRI asks Windows to download it. Windows can ask you to allow the download.
+            filter: Filter
+            grouped_download_note: 'Note: as voices are grouped by country, every download includes all the voices for that country at once'
+            download: Download
+            downloading: Downloading…
+            ready: Ready
+            clear_locale: Clear {language} voices
+            clearing: Clearing…
+            remove_failed: Windows did not remove these voices.
+            remove_cancelled: The remove was cancelled.
+            failed: Windows did not add this voice.
+            cancelled: The download was cancelled.
+            empty_zone: No voices in this language group.
+            examples: 'Windows adds: {names}'
+            installed_voices: 'In the list above: {names}'
+            zones:
+              english: English
+              spanish: Spanish
+              european: European
+              asian: Asian
           voice-settings:
             input-ssml:
               placeholder: Enter SSML text...
@@ -1326,17 +1348,78 @@ pages:
               label: Use Custom SSML
           audio-console:
             title: Audio console
-            description: Shape the selected voice with local pitch, filters, and dialogue cleanup.
+            description: Shape how the voice sounds after synthesis, and clean chat text before it is spoken.
+            reset_defaults: Reset to default
+            sections:
+              distortion:
+                title: Distortion
+                description: Strong character and motion. Start here on flat system voices.
+              equalizing:
+                title: Equalizing
+                description: Fine tone shaping. Can sound subtle on some TTS voices.
             ust:
               title: Dialogue cleanup
-              description: Strip roleplay markers and symbols before speech.
+              description: Remove roleplay symbols and stage directions so the character does not read them aloud.
+              custom_strip: Strip chars
+              custom_strip_hint: These characters are removed from the line before speech.
+              strip_emojis: Strip emojis
+              tilde: Tilde (~)
+              tilde_hint: Replace tilde in text. Leave empty to delete it.
             fields:
               pitch:
-                label: Pitch
-                description: Shift pitch through playback rate
-              rate:
-                label: Speed
-                description: Speech rate multiplier
+                label: Pitch / speed
+                description: Higher plays faster and brighter. Lower plays slower and deeper. Zero is the normal voice.
+              volume:
+                label: Volume
+                description: Loudness after synthesis. It stacks with the main volume control next to the character.
+              highpass:
+                label: High-pass
+                description: Cuts boomy low rumble. Turn it up when the voice sounds muddy on laptop speakers.
+              eq_bass:
+                label: Bass
+                description: Adds warmth and weight, or thins the low end if you pull it down.
+              eq_mid:
+                label: Mid
+                description: Makes words feel clearer and more present, or softer if you reduce it.
+              eq_treble:
+                label: Treble
+                description: Adds air and sparkle, or rolls off harsh brightness when you lower it.
+              deesser:
+                label: De-ess
+                description: Softens sharp "s" and "sh" sounds when they bite your ears.
+              limiter:
+                label: Limiter
+                description: Holds down sudden peaks when volume or effects run hot. Useful above 100% volume.
+              chorus:
+                label: Chorus
+                description: Adds a slight widening shimmer and motion. Often easier to hear on flat system voices than EQ alone.
+              grit:
+                label: Grit
+                description: Crunchy saturation and edge. Pushes a robotic voice so it sounds less clean and plastic.
+              gate:
+                label: Noise gate
+                description: Tightens quiet gaps between words so tail noise and room hiss drop faster.
+              pitch_tone:
+                label: Tone (keep speed)
+                description: Raises or lowers pitch without changing how fast the line plays. Separate from Pitch / speed. Try ±80–100 for a clear change.
+              formant:
+                label: Character size
+                description: Pushes the voice toward a bigger or smaller body. Distinct from Tone. Try ±80–100 on system voices.
+              asmr:
+                label: ASMR
+                description: Softer tone with gentle squeeze — close and quiet, not loud and bright.
+              radio:
+                label: Radio
+                description: Narrow, tinny band like an old phone or handheld radio.
+              robot:
+                label: Robotic
+                description: Metallic tone with a tiny echo, as if the voice runs through a machine.
+              reverb:
+                label: Space echo
+                description: Short room echo behind the line, without turning it into a long hall.
+              spatial:
+                label: Pan
+                description: Pushes the voice left or right in stereo. Center keeps it even in both ears.
       title: Speech
     title: Modules
     vision:

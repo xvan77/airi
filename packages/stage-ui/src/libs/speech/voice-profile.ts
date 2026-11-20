@@ -13,6 +13,17 @@ export interface AudioConsoleEffectsSettings {
   pitch: number
   rate: number
   volume: number
+  highpass: number
+  eqBass: number
+  eqMid: number
+  eqTreble: number
+  deesser: number
+  limiter: number
+  chorus: number
+  grit: number
+  gate: number
+  pitchTone: number
+  formant: number
   asmr: number
   radio: number
   robot: number
@@ -31,6 +42,17 @@ export function createDefaultAudioConsoleSettings(): AudioConsoleSettings {
       pitch: 0,
       rate: 1,
       volume: 100,
+      highpass: 0,
+      eqBass: 0,
+      eqMid: 0,
+      eqTreble: 0,
+      deesser: 0,
+      limiter: 0,
+      chorus: 0,
+      grit: 0,
+      gate: 0,
+      pitchTone: 0,
+      formant: 0,
       asmr: 0,
       radio: 0,
       robot: 0,
@@ -57,11 +79,17 @@ export interface VoiceProfile {
     pitch: number
     rate: number
     volume: number
-    equalizer?: {
-      bass: number
-      mid: number
-      treble: number
-    }
+    highpass: number
+    eqBass: number
+    eqMid: number
+    eqTreble: number
+    deesser: number
+    limiter: number
+    chorus: number
+    grit: number
+    gate: number
+    pitchTone: number
+    formant: number
     asmr: number
     radio: number
     robot: number
@@ -88,6 +116,17 @@ export function createDefaultVoiceProfile(id?: string): VoiceProfile {
       pitch: 0,
       rate: 1,
       volume: 100,
+      highpass: 0,
+      eqBass: 0,
+      eqMid: 0,
+      eqTreble: 0,
+      deesser: 0,
+      limiter: 0,
+      chorus: 0,
+      grit: 0,
+      gate: 0,
+      pitchTone: 0,
+      formant: 0,
       asmr: 0,
       radio: 0,
       robot: 0,

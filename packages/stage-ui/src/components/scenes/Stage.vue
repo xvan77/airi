@@ -32,6 +32,7 @@ import StageAvatarModelMissing from './stage-avatar-model-missing.vue'
 import StageRenderError from './stage-render-error.vue'
 
 import { applyVoiceProfileEffects } from '../../composables/audio/audio-effects'
+import { applyHeavyConsoleProcessing } from '../../composables/audio/heavy-audio-processor'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
@@ -422,6 +423,7 @@ watch(speechVolume, (volume) => {
 }, { immediate: true })
 const playback = new Playback(new BrowserPlayback(audioContext, {
   destination: speechAnalysis,
+  transformAudioBuffer: buffer => applyHeavyConsoleProcessing(audioContext, buffer, speechStore.audioConsole.effects),
   onSource: (source) => {
     currentAudioSource.value = source
     playbackEffectsCleanup?.()

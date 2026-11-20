@@ -18,3 +18,5 @@ export { default as TranscriptionPlayground } from './transcription-playground.v
 export { default as TranscriptionProviderSettings } from './transcription-provider-settings.vue'
 
 export { default as VoicevoxFamilySettings } from './voicevox-family-settings.vue'
+export { default as WindowsVoicePackClearLocale } from './windows-voice-pack-clear-locale.vue'
+export { default as WindowsVoicePacks } from './windows-voice-packs.vue'

@@ -28,6 +28,7 @@ export class AudioOutput implements PlayingAudio {
     startAtMs?: number
     onStart?: () => void
     onSource?: (source: AudioBufferSourceNode) => void
+    transformAudioBuffer?: (buffer: AudioBuffer) => Promise<AudioBuffer> | AudioBuffer
   }) {
     this.gain = context.createGain()
     this.gain.connect(destination)
@@ -42,7 +43,7 @@ export class AudioOutput implements PlayingAudio {
     if (audio instanceof Blob) {
       const decoded = await this.context.decodeAudioData(await audio.arrayBuffer())
       if (!this.stopped)
-        this.schedule(decoded)
+        await this.schedule(decoded)
     }
     else {
       this.reader = audio.getReader()
@@ -54,7 +55,7 @@ export class AudioOutput implements PlayingAudio {
           const block = result.value
           const buffer = this.context.createBuffer(block.channels.length, block.channels[0].length, block.sampleRate)
           block.channels.forEach((channel, index) => buffer.copyToChannel(new Float32Array(channel), index))
-          this.schedule(buffer)
+          await this.schedule(buffer)
         }
       }
       finally {
@@ -67,11 +68,14 @@ export class AudioOutput implements PlayingAudio {
       this.finish()
   }
 
-  private schedule(buffer: AudioBuffer) {
+  private async schedule(buffer: AudioBuffer) {
     if (this.stopped || this.settled)
       return
+    const prepared = this.options?.transformAudioBuffer
+      ? await this.options.transformAudioBuffer(buffer)
+      : buffer
     const source = this.context.createBufferSource()
-    source.buffer = buffer
+    source.buffer = prepared
     source.connect(this.gain)
     const start = Math.max(this.context.currentTime, this.nextStart)
     this.nextStart = start + buffer.duration

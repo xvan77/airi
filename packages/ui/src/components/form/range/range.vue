@@ -9,11 +9,14 @@ const props = withDefaults(defineProps<{
   thumbColor?: string
   trackColor?: string
   trackValueColor?: string
+  /** Slim track for dense forms. */
+  compact?: boolean
 }>(), {
   min: 0,
   max: 100,
   step: 1,
   disabled: false,
+  compact: false,
   thumbColor: '#9090906e',
   trackColor: 'gray',
   trackValueColor: 'red',
@@ -62,7 +65,7 @@ function handleInput(e: Event) {
     :min="scaledMin"
     :max="scaledMax"
     :step="scaledStep"
-    class="slider-progress form_input-range"
+    :class="['slider-progress', 'form_input-range', compact && 'form_input-range--compact']"
     @input="handleInput"
   >
 </template>
@@ -354,5 +357,28 @@ https://toughengineer.github.io/demo/slider-styler*/
 
 .form_input-range.slider-progress:active::-ms-fill-lower {
   background: var(--track-value-background-active);
+}
+
+/* Must follow .form_input-range — same element carries both classes; otherwise --height stays at 2em */
+.form_input-range.form_input-range--compact {
+  --height: 0.875rem;
+  --thumb-width: 3px;
+  --thumb-height: 0.875rem;
+  --track-value-padding: 0px;
+  --track-height: 7px;
+  --track-border: solid 1px rgb(238, 238, 238);
+  --track-border-radius: 3px;
+  min-height: 0.875rem;
+}
+
+.dark .form_input-range.form_input-range--compact {
+  --track-border: solid 1px rgb(44, 44, 44);
+}
+
+.form_input-range.form_input-range--compact::-webkit-slider-thumb:hover,
+.form_input-range.form_input-range--compact::-moz-range-thumb:hover,
+.form_input-range.form_input-range--compact::-ms-thumb:hover {
+  width: var(--thumb-width);
+  transform: none;
 }
 </style>

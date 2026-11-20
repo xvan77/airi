@@ -11,13 +11,17 @@ import { exec } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 
 import { defineInvokeHandler } from '@moeru/eventa'
+import { markWindowsVoicePacks, preferDistinctWindowsVoices, windowsVoicePackCapabilityName } from '@proj-airi/stage-shared'
 import { isLinux, isMacOS, isWindows } from 'std-env'
 
 import {
   electronGenerateNativeTts,
   electronGetNativeTtsVoices,
-
+  electronInstallWindowsVoicePack,
+  electronListWindowsVoicePacks,
+  electronRemoveWindowsVoicePack,
 } from '../../../shared/eventa/native-tts'
+import { installTextToSpeechCapability, listOneCoreVoices, removeTextToSpeechCapability, synthesizeOneCoreVoice } from './windows-native-speech'
 
 function execPromise(command: string): Promise<{ stdout: string, stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -30,7 +34,7 @@ function execPromise(command: string): Promise<{ stdout: string, stderr: string 
   })
 }
 
-async function getWindowsVoices(): Promise<NativeTtsVoice[]> {
+async function getWindowsDesktopVoices(): Promise<NativeTtsVoice[]> {
   const tmpDir = os.tmpdir()
   const vbsFile = path.join(tmpDir, `airi_get_voices_${Date.now()}.vbs`)
   const script = `
@@ -49,7 +53,7 @@ For Each v In voice.GetVoices
     Select Case LCase(lang)
         Case "409", "0409": locale = "en-US"
         Case "809", "0809": locale = "en-GB"
-        Case "40a", "040a": locale = "es-ES"
+        Case "40a", "040a", "c0a", "0c0a": locale = "es-ES"
         Case "80a", "080a": locale = "es-MX"
         Case "40c", "040c": locale = "fr-FR"
         Case "407", "0407": locale = "de-DE"
@@ -84,7 +88,22 @@ WScript.StdOut.Write "]"
   }
 }
 
+async function getWindowsVoices(): Promise<NativeTtsVoice[]> {
+  const [desktop, oneCore] = await Promise.all([
+    getWindowsDesktopVoices().catch(() => []),
+    listOneCoreVoices().catch(() => []),
+  ])
+  return preferDistinctWindowsVoices(desktop, oneCore)
+}
+
 async function generateWindowsTts(text: string, voiceId?: string): Promise<Buffer> {
+  // Desktop voices stay on the old engine. Language-pack voices use the newer Windows list.
+  if (voiceId && !voiceId.toLowerCase().endsWith('desktop'))
+    return synthesizeOneCoreVoice(text, voiceId)
+  return generateWindowsDesktopTts(text, voiceId)
+}
+
+async function generateWindowsDesktopTts(text: string, voiceId?: string): Promise<Buffer> {
   const tmpDir = os.tmpdir()
   const vbsFile = path.join(tmpDir, `airi_tts_${Date.now()}_${Math.random().toString(36).slice(2)}.vbs`)
   const outFile = path.join(tmpDir, `airi_tts_${Date.now()}_${Math.random().toString(36).slice(2)}.wav`)
@@ -214,6 +233,36 @@ function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function waitForWindowsLocaleVoices(locale: string, timeoutMs: number): Promise<boolean> {
+  const wanted = locale.toLowerCase()
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const voices = await getWindowsVoices()
+    if (voices.some(voice => voice.lang.toLowerCase() === wanted))
+      return true
+    if (Date.now() >= deadline)
+      return false
+    await sleep(1500)
+  }
+}
+
+async function waitForWindowsLocaleVoicesGone(locale: string, timeoutMs: number): Promise<boolean> {
+  const wanted = locale.toLowerCase()
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const voices = await getWindowsVoices()
+    if (!voices.some(voice => voice.lang.toLowerCase() === wanted))
+      return true
+    if (Date.now() >= deadline)
+      return false
+    await sleep(1500)
+  }
+}
+
 type MainContext = ReturnType<typeof createContext>['context']
 
 export function createNativeTtsService(params: { context: MainContext }): void {
@@ -225,6 +274,48 @@ export function createNativeTtsService(params: { context: MainContext }): void {
     if (isLinux)
       return getLinuxVoices()
     return []
+  })
+
+  defineInvokeHandler(params.context, electronListWindowsVoicePacks, async () => {
+    if (!isWindows)
+      return []
+    const voices = await getWindowsVoices()
+    return markWindowsVoicePacks(voices)
+  })
+
+  defineInvokeHandler(params.context, electronInstallWindowsVoicePack, async (payload) => {
+    if (!isWindows)
+      return { ok: false, code: 'failed' as const }
+    const locale = payload?.locale ?? ''
+    const capability = windowsVoicePackCapabilityName(locale)
+    if (!capability)
+      return { ok: false, code: 'failed' as const }
+
+    const exitCode = await installTextToSpeechCapability(capability)
+    // Registry can lag a few seconds after DISM exits with success.
+    const installed = await waitForWindowsLocaleVoices(locale, exitCode === 0 || exitCode === 3010 ? 45_000 : 6_000)
+    if (installed || exitCode === 0 || exitCode === 3010)
+      return { ok: true, code: 'ready' as const }
+    if (exitCode === 1223)
+      return { ok: false, code: 'cancelled' as const }
+    return { ok: false, code: 'failed' as const }
+  })
+
+  defineInvokeHandler(params.context, electronRemoveWindowsVoicePack, async (payload) => {
+    if (!isWindows)
+      return { ok: false, code: 'failed' as const }
+    const locale = payload?.locale ?? ''
+    const capability = windowsVoicePackCapabilityName(locale)
+    if (!capability)
+      return { ok: false, code: 'failed' as const }
+
+    const exitCode = await removeTextToSpeechCapability(capability)
+    const removed = await waitForWindowsLocaleVoicesGone(locale, exitCode === 0 || exitCode === 3010 ? 45_000 : 6_000)
+    if (removed || exitCode === 0 || exitCode === 3010)
+      return { ok: true, code: 'ready' as const }
+    if (exitCode === 1223)
+      return { ok: false, code: 'cancelled' as const }
+    return { ok: false, code: 'failed' as const }
   })
 
   defineInvokeHandler(params.context, electronGenerateNativeTts, async (payload) => {
