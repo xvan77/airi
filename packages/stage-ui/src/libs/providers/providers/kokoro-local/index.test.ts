@@ -16,6 +16,10 @@ vi.mock('../../../inference/adapters/kokoro', () => ({
   getKokoroAdapter: async () => mocks.adapter,
 }))
 
+vi.mock('../../../inference/kokoro-speech-model-download-state', () => ({
+  isKokoroSpeechModelDownloaded: vi.fn(async () => false),
+}))
+
 function markLoaded(quantization: string, device: string) {
   mocks.adapter.state = 'ready'
   mocks.adapter.manifest = { quantization, device }
@@ -34,6 +38,18 @@ async function requestSpeech(model: string) {
 }
 
 describe('kokoro local speech provider', () => {
+  it('speaks one sentence at a time so the first line can play while the next is made', () => {
+    expect(providerKokoroLocal.capabilities?.speech?.ttsMaxConcurrent).toBe(1)
+  })
+
+  it('breaks a reply at a comma once two words are ready', () => {
+    expect(providerKokoroLocal.capabilities?.speech?.ttsChunk).toEqual({
+      minimumWords: 2,
+      maximumWords: 8,
+      boost: 32,
+    })
+  })
+
   afterEach(() => {
     mocks.adapter.state = 'idle'
     mocks.adapter.manifest = null

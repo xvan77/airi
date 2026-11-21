@@ -79,6 +79,11 @@ export function setupDevtoolsWindow(): DevtoolsWindowManager {
       window.setBounds(bounds)
     }
 
+    if (window.isMinimized())
+      window.restore()
+    window.show()
+    window.focus()
+
     return window
   }
 

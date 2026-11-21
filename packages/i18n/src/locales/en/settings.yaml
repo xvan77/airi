@@ -1244,7 +1244,26 @@ pages:
         filters:
           sort: Sort
         clear_downloads: Clear downloads
+        clear_downloads_for: Clear {model}
         downloaded_chip: Downloaded
+        download_action: Download
+        downloading_action: Downloading
+        ready_action: Ready
+        removing_action: Removing
+        removing_download: Removing download...
+        removing_voices: Removing voices...
+        download_debug_tools: Download debug tools
+        download_debug_tools_description: Show Clear, Cancel, and Kokoro worker task messages. Leave off for normal use. It is buggy but useful for developer work.
+        debug_tasks_title: Kokoro worker tasks
+        debug_tasks_idle: No active Kokoro tasks
+        debug_task_adapter: 'Adapter state: {state}{quant}'
+        debug_task_adapter_quant: ' ({quantization})'
+        debug_task_loading_voices: 'Loading voices for {model}'
+        debug_task_removing: 'Removing download for {model}'
+        debug_task_cancelling: Cancelling download...
+        debug_task_inference: 'Inference status {model}: {state}'
+        debug_task_paused: Catalog load paused after cancel or clear
+        debug_task_awaiting_size: Waiting for a size choice after clear
         sort:
           disk: Download size
           quant: Quantization
@@ -1253,8 +1272,8 @@ pages:
           {note} {quantization} is how much the model is compressed. Lower numbers usually mean a smaller
           download and less memory usage. {wasm} runs on the CPU. {webgpu} uses your graphics card when supported.
         kokoro_disclaimer: >-
-          {label}: when you choose a Kokoro quantization level, a download starts. Wait until it finishes before you
-          choose a voice.
+          {label}: select a quantization level, then press Download. Wait until the size is Ready before you choose a
+          voice.
         progress:
           preparing_download: Preparing download...
           downloading: Downloading model...

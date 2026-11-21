@@ -31,6 +31,8 @@ withDefaults(defineProps<{
   statusChip?: {
     label: string
     active: boolean
+    tone?: 'neutral' | 'download' | 'downloading' | 'ready' | 'removing'
+    interactive?: boolean
   }
 }>(), {
   deprecated: false,
@@ -44,12 +46,44 @@ withDefaults(defineProps<{
   descriptionCollapseLabel: 'Hide',
 })
 
+const emit = defineEmits<{
+  statusChipClick: []
+}>()
 const modelValue = defineModel<string>({ required: true })
-
 const isExpanded = ref(false)
 
 function toggleExpansion() {
   isExpanded.value = !isExpanded.value
+}
+
+function statusChipClass(tone: 'neutral' | 'download' | 'downloading' | 'ready' | 'removing' | undefined) {
+  if (tone === 'download') {
+    return [
+      'rounded px-1.5 py-0.5 text-[10px] font-semibold leading-normal',
+      'bg-primary-100 text-primary-700',
+      'dark:bg-primary-900/40 dark:text-primary-300',
+      'hover:bg-primary-200 dark:hover:bg-primary-900/60',
+    ]
+  }
+  if (tone === 'downloading' || tone === 'removing') {
+    return [
+      'rounded px-1.5 py-0.5 text-[10px] font-semibold leading-normal',
+      'bg-amber-100 text-amber-800',
+      'dark:bg-amber-900/40 dark:text-amber-200',
+    ]
+  }
+  if (tone === 'ready') {
+    return [
+      'rounded px-1.5 py-0.5 text-[10px] font-semibold leading-normal',
+      'bg-neutral-100 text-neutral-500',
+      'dark:bg-neutral-800 dark:text-neutral-400',
+    ]
+  }
+  return [
+    'rounded px-1.5 py-0.5 text-[10px] font-semibold leading-normal',
+    'bg-neutral-100 text-neutral-600',
+    'dark:bg-neutral-800 dark:text-neutral-300',
+  ]
 }
 </script>
 
@@ -135,11 +169,24 @@ function toggleExpansion() {
         <div
           v-if="statusChip?.active"
           class="relative z-10 col-start-2 row-start-2 flex self-start justify-end"
+          @click.stop.prevent
         >
-          <CatalogStatChip
-            :label="statusChip.label"
+          <button
+            v-if="statusChip.interactive"
+            type="button"
+            :class="statusChipClass(statusChip.tone)"
             :title="statusChip.label"
-          />
+            @click="emit('statusChipClick')"
+          >
+            {{ statusChip.label }}
+          </button>
+          <span
+            v-else
+            :class="statusChipClass(statusChip.tone)"
+            :title="statusChip.label"
+          >
+            {{ statusChip.label }}
+          </span>
         </div>
       </div>
 

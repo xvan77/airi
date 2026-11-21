@@ -11,7 +11,12 @@ interface Item {
   deprecated?: boolean
   customizable?: boolean
   badges?: { label: string, title: string }[]
-  statusChip?: { label: string, active: boolean }
+  statusChip?: {
+    label: string
+    active: boolean
+    tone?: 'neutral' | 'download' | 'downloading' | 'ready' | 'removing'
+    interactive?: boolean
+  }
 }
 
 interface Props {
@@ -63,6 +68,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:customValue': [value: string]
+  'statusChipClick': [itemId: string]
 }>()
 
 const modelValue = defineModel<string>({ required: true })
@@ -236,6 +242,7 @@ function updateCustomValue(value: string) {
               name="radio-card-detail-many-select"
               :class="layout.gridItem"
               @update:custom-input-value="updateCustomValue($event)"
+              @status-chip-click="emit('statusChipClick', item.id)"
             />
           </div>
         </div>

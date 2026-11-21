@@ -23,13 +23,16 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import InteractiveArea from './InteractiveArea.vue'
 
+import { electronOpenDevtoolsWindow } from '../../shared/eventa'
+
 import '@unocss/reset/tailwind.css'
 import 'virtual:uno.css'
 
 const openSettings = vi.hoisted(() => vi.fn())
+const openDevtoolsWindow = vi.hoisted(() => vi.fn())
 
 vi.mock('@proj-airi/electron-vueuse', () => ({
-  useElectronEventaInvoke: () => openSettings,
+  useElectronEventaInvoke: (event: unknown) => event === electronOpenDevtoolsWindow ? openDevtoolsWindow : openSettings,
 }))
 
 function createTestI18n() {
@@ -197,14 +200,8 @@ describe('interactive area synchronized state', () => {
   })
 
   it('centers the mobile textarea when no reply preview is visible', async () => {
-    // ROOT CAUSE:
-    //
-    // Without a reply preview, the 40px bubble has spare height around its
-    // 32px textarea and borders. Before the fix, justify-end put all spare
-    // height above the textarea: 6px above and 2px below.
-    //
-    // We fixed this with justify-center. The empty and single-line textarea
-    // now has 4px on each side, and multiline input stays centered.
+    // ROOT CAUSE: Without a reply preview, justify-end put spare height above
+    // the 32px textarea (6px above, 2px below). justify-center keeps equal sides.
     await page.viewport(390, 844)
     const { screen } = await renderArea(MobileInteractiveArea)
     const bubble = screen.getByTestId('mobile-input-bubble').element()
@@ -562,6 +559,19 @@ describe('interactive area synchronized state', () => {
     expect(openSettings).toHaveBeenCalledWith({ route: '/settings/modules/consciousness' })
   })
 
+  it('opens the IO Tracer from the button left of the microphone', async () => {
+    const { screen } = await renderArea()
+
+    await screen.getByTestId('io-tracer-shortcut').click()
+
+    expect(openDevtoolsWindow).toHaveBeenCalledWith({
+      key: 'io-tracer',
+      route: '/devtools/io-tracer',
+      width: 1600,
+      height: 900,
+    })
+  })
+
   // ROOT CAUSE:
   //
   // If no chat provider was selected, the web and mobile composers sent the draft.
@@ -788,12 +798,8 @@ describe('interactive area synchronized state', () => {
   })
 
   // https://github.com/moeru-ai/airi/actions/runs/34448585692/job/102804067154
-  // ROOT CAUSE:
-  //
-  // The test scrolled as soon as the reply started to expand. Each later resize
-  // queued a tail scroll, which could unmount the message selected by the test.
-  // Virtua then retried that tail scroll when older rows were first measured.
-  // Wait for the transition, measurements, and pending scroll before the jitter.
+  // ROOT CAUSE: Early scroll during reply expand queued tail scrolls that could
+  // unmount the selected message. Wait for transition and measure before jitter.
   // A slower transition exposes this race without depending on CI load.
   it.each(['200ms', '1s'])('keeps the history scrollport behind the floating composer (%s reply)', async (duration) => {
     const { chatSession, screen } = await renderArea()

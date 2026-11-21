@@ -82,6 +82,36 @@ function createPlaybackSpy(options?: { autoEnd?: boolean }) {
 }
 
 describe('createSpeechPipeline', () => {
+  it('splits a reply at commas when ttsChunk asks for short pieces', async () => {
+    const { playback } = createPlaybackSpy()
+    const texts: string[] = []
+
+    const pipeline = createSpeechPipeline<string>({
+      ttsChunk: { minimumWords: 2, maximumWords: 8, boost: 32 },
+      playback,
+      async tts(request) {
+        texts.push(request.text)
+        return request.text
+      },
+    })
+
+    const intentFinished = new Promise<void>((resolve) => {
+      pipeline.on('onIntentEnd', () => resolve())
+    })
+
+    const intent = pipeline.openIntent()
+    intent.writeLiteral('Hi! I\'m doing well, thank you for asking.')
+    intent.end()
+
+    await intentFinished
+
+    expect(texts).toEqual([
+      'Hi!',
+      'I\'m doing well,',
+      'thank you for asking.',
+    ])
+  })
+
   it('preserves playback order when TTS completes out of order', async () => {
     const { scheduled, playback } = createPlaybackSpy()
 

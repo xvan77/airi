@@ -65,14 +65,8 @@ describe('speech store helpers', () => {
     expect(toSignedPercent(0)).toBe('0%')
   })
 
-  // ROOT CAUSE:
-  //
-  // The speech store watched its model-list projection even when no UI used
-  // that projection. Each synced provider snapshot invalidated the projection.
-  // The watcher then called getModelsForProvider twice when the cache was empty.
-  //
-  // We fixed this by keeping model selection behind explicit operations. A UI
-  // consumer can still read providerModels when it needs the cached catalog.
+  // ROOT CAUSE: A watcher called getModelsForProvider on every synced provider
+  // snapshot. Model selection now stays behind explicit operations only.
   it('does not query the model cache when only provider state changes', async () => {
     const providersStore = useProviderStore()
     vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
@@ -92,14 +86,9 @@ describe('speech store helpers', () => {
     expect(modelQueries).toBe(0)
   })
 
-  // ROOT CAUSE:
-  //
-  // A synced snapshot replaced the empty voice catalog with another empty
-  // object. The voice watcher then assigned undefined to an undefined ref.
-  // refManualReset reported that no-op assignment as another Pinia mutation.
-  //
-  // Catalog refreshes now stay outside the speech settings snapshot. They
-  // must not publish settings when no selected voice needs an update.
+  // ROOT CAUSE: Replacing an empty voice catalog with another empty object
+  // published a no-op Pinia mutation. Catalog refresh must not publish when
+  // the selected voice needs no update.
   it('does not publish a second mutation for an unresolved voice', async () => {
     const providersStore = useProviderStore()
     vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
@@ -121,15 +110,9 @@ describe('speech store helpers', () => {
     expect(mutations).toBe(0)
   })
 
-  // ROOT CAUSE:
-  //
-  // Synced stores arrive in separate snapshots. The speech store can receive
-  // its selected provider before the matching provider configuration snapshot.
-  // A metadata watcher treated this temporary state as provider deletion and
-  // replaced the synchronized selection with speech-noop.
-  //
-  // We fixed this by keeping provider selection command-driven. A provider
-  // configuration snapshot no longer edits the speech module selection.
+  // ROOT CAUSE: A metadata watcher treated an incomplete provider snapshot as
+  // deletion and reset selection to speech-noop. Provider selection stays
+  // command-driven; config snapshots do not edit it.
   it('keeps the selected provider while provider snapshots are incomplete', async () => {
     const providersStore = useProviderStore()
     const providerConfigStore = useProviderConfigStore()
@@ -567,7 +550,7 @@ describe('single model speech providers', () => {
     expect(speechStore.activeSpeechModel).toBe('')
   })
 
-  it('selects a Kokoro catalog model and mirrors it into provider config', async () => {
+  it('does not auto-pick a Kokoro size in the speech store until chat runtime needs one', async () => {
     const providersStore = useProviderStore()
     const providerConfigStore = useProviderConfigStore()
     const speechStore = useSpeechStore()
@@ -585,8 +568,81 @@ describe('single model speech providers', () => {
 
     speechStore.ensureActiveSpeechModel()
 
+    expect(speechStore.activeSpeechModel).toBe('')
+    expect(providerConfigStore.getProviderConfig('kokoro-local')?.model).toBeUndefined()
+
+    speechStore.ensureKokoroRuntimeSpeechModel()
+
     expect(speechStore.activeSpeechModel).toBe('q4')
     expect(providerConfigStore.getProviderConfig('kokoro-local')?.model).toBe('q4')
+  })
+
+  // ROOT CAUSE:
+  //
+  // Clear downloads wiped the cache, then loadVoicesForProvider reseeded the
+  // default size and started another download with the old UI selection.
+  //
+  // We fixed this by clearKokoroLocalSelection clearing model and voice, and
+  // by kokoroAwaitingSizeChoice blocking reseeds until a size is picked.
+  it('keeps Kokoro unselected after clearKokoroLocalSelection until a size is picked', async () => {
+    const providersStore = useProviderStore()
+    const providerConfigStore = useProviderConfigStore()
+    const speechStore = useSpeechStore()
+    speechStore.activeSpeechProvider = 'kokoro-local'
+    speechStore.activeSpeechModel = 'q4'
+    speechStore.activeSpeechVoiceId = 'af_heart'
+    speechStore.rememberModelForSpeechProvider('kokoro-local', 'q4')
+    speechStore.rememberVoiceForSpeechProvider('kokoro-local', 'af_heart')
+    providersStore.providerRuntimeState['kokoro-local'] = {
+      models: [
+        { id: 'q4', name: 'Q4 (WASM)', provider: 'kokoro-local' },
+        { id: 'q8', name: 'Q8 (WASM)', provider: 'kokoro-local' },
+      ],
+      defaultModel: null,
+      modelStatus: 'ready',
+      modelError: null,
+    }
+    providerConfigStore.ensureProvider('kokoro-local', 'kokoro-local', { model: 'q4' })
+
+    await speechStore.clearKokoroLocalSelection()
+
+    expect(speechStore.activeSpeechModel).toBe('')
+    expect(speechStore.activeSpeechVoiceId).toBe('')
+    expect(speechStore.kokoroAwaitingSizeChoice).toBe(true)
+    expect(speechStore.lastModelForSpeechProvider('kokoro-local')).toBe('')
+    expect(speechStore.lastVoiceForSpeechProvider('kokoro-local')).toBe('')
+    expect(speechStore.availableVoices['kokoro-local'] ?? []).toEqual([])
+    expect(providerConfigStore.getProviderConfig('kokoro-local')?.model).toBe('')
+
+    speechStore.ensureActiveSpeechModel()
+
+    expect(speechStore.activeSpeechModel).toBe('')
+  })
+
+  it('does not load Kokoro voices while awaiting a size after Clear downloads', async () => {
+    const providersStore = useProviderStore()
+    const speechStore = useSpeechStore()
+    const listVoices = vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
+    speechStore.activeSpeechProvider = 'kokoro-local'
+    speechStore.kokoroAwaitingSizeChoice = true
+
+    await speechStore.loadVoicesForProvider('kokoro-local', undefined)
+
+    expect(listVoices).not.toHaveBeenCalled()
+    expect(speechStore.voiceCatalogStatus['kokoro-local']?.loading ?? false).toBe(false)
+  })
+
+  it('loads Kokoro voices when the user picks a size after Clear downloads', async () => {
+    const providersStore = useProviderStore()
+    const speechStore = useSpeechStore()
+    const listVoices = vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
+    speechStore.activeSpeechProvider = 'kokoro-local'
+    speechStore.kokoroAwaitingSizeChoice = true
+    speechStore.kokoroCatalogLoadPaused = true
+
+    await speechStore.loadVoicesForProvider('kokoro-local', 'q4f16')
+
+    expect(listVoices).toHaveBeenCalled()
   })
 })
 

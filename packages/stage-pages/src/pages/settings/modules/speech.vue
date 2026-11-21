@@ -20,9 +20,16 @@ import {
 import { removeInferenceStatus, useAnalytics, useInferenceStatus } from '@proj-airi/stage-ui/composables'
 import { applyVoiceProfileEffects } from '@proj-airi/stage-ui/composables/audio/audio-effects'
 import { formatChatProviderErrorContent } from '@proj-airi/stage-ui/libs/chat-provider-error-message'
-import { clearModelCache, isKokoroSpeechModelDownloaded } from '@proj-airi/stage-ui/libs/inference'
-import { getKokoroAdapter } from '@proj-airi/stage-ui/libs/inference/adapters/kokoro'
-import { formatDownloadSpeed, resolveProgressPercent, smoothDownloadSpeed } from '@proj-airi/stage-ui/libs/inference/protocol'
+import {
+  clearKokoroOnnxForSpeechModel,
+  isKokoroSpeechModelDownloaded,
+  resetKokoroLocalProviderSession,
+  kokoroProgressIsDownloadPhase as resolveKokoroProgressIsDownloadPhase,
+  kokoroProgressMessage as resolveKokoroProgressMessage,
+  resolveKokoroProgressSpeechModelId,
+} from '@proj-airi/stage-ui/libs/inference'
+import { peekKokoroAdapterSnapshot, terminateKokoroAdapter } from '@proj-airi/stage-ui/libs/inference/adapters/kokoro'
+import { formatDownloadSpeed, smoothDownloadSpeed } from '@proj-airi/stage-ui/libs/inference/protocol'
 import { compareProviderCatalogOrder } from '@proj-airi/stage-ui/libs/model-catalog'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } from '@proj-airi/stage-ui/libs/providers/providers/official'
 import { kokoroCatalogSelectItems } from '@proj-airi/stage-ui/libs/speech-catalog'
@@ -70,6 +77,8 @@ const {
   speechProviderError,
   ssmlEnabled,
   availableVoices,
+  kokoroAwaitingSizeChoice,
+  kokoroCatalogLoadPaused,
   kokoroDownloadProgress,
 } = storeToRefs(speechStore)
 
@@ -87,7 +96,15 @@ const kokoroSortKey = ref<SpeechCatalogSortKey>('disk')
 const kokoroSortDirection = ref<SpeechCatalogSortDirection>('asc')
 const kokoroQuantDownloaded = ref<Record<string, boolean>>({})
 const clearingKokoroDownloads = ref(false)
+/** Size id while ONNX delete and voice teardown are still in progress. */
+const kokoroClearingModelId = ref('')
 const isCancellingKokoroDownload = ref(false)
+/** Off by default. Shows Clear, Cancel, and worker task diagnostics. */
+const kokoroDownloadDebugToolsEnabled = ref(false)
+/** Browsing model for the active tab. Runtime updates only after a voice commit. */
+const browsingSpeechModelId = ref('')
+const browsingSpeechVoiceId = ref('')
+const browsingManualModelDraft = ref('')
 const useSSML = ref(false)
 const testText = ref('Hello, my name is AI Assistant')
 const ssmlText = ref('')
@@ -103,13 +120,21 @@ let speechPlaygroundTestGeneration = 0
 
 const { models: inferenceModels } = useInferenceStatus()
 
-const KOKORO_LOADING_STATES = new Set<InferenceModelStatus['state']>([
-  'downloading',
-  'compiling',
-  'warming-up',
-])
+const kokoroProgressLabels = computed(() => ({
+  cancellingDownload: t('settings.pages.modules.speech.model_catalog.progress.cancelling_download'),
+  loadingVoices: t('settings.pages.modules.speech.model_catalog.progress.loading_voices'),
+  downloadingModel: t('settings.pages.modules.speech.model_catalog.progress.downloading_model'),
+  downloadingPercent: (percent: number) => t('settings.pages.modules.speech.model_catalog.progress.downloading_percent', {
+    progress: percent,
+  }),
+  compiling: t('settings.pages.modules.speech.model_catalog.progress.compiling'),
+  warmingUp: t('settings.pages.modules.speech.model_catalog.progress.warming_up'),
+}))
 
 function resolveKokoroInferenceStatus(speechModelId: string): InferenceModelStatus | null {
+  if (!speechModelId.trim())
+    return null
+
   const statusId = kokoroInferenceStatusIdForSpeechModel(speechModelId)
   if (statusId) {
     const match = inferenceModels.value.find(entry => entry.modelId === statusId)
@@ -124,154 +149,125 @@ function resolveKokoroInferenceStatus(speechModelId: string): InferenceModelStat
       return legacy
   }
 
-  return inferenceModels.value.find(entry =>
-    entry.modelId.startsWith('kokoro-')
-    && KOKORO_LOADING_STATES.has(entry.state),
-  ) ?? null
-}
-
-function kokoroDownloadingPercentLabel(percent: number): string {
-  return t('settings.pages.modules.speech.model_catalog.progress.downloading_percent', {
-    progress: Math.round(percent),
-  })
+  return null
 }
 
 function kokoroProgressDownloadFile(
   synced: KokoroDownloadProgressSnapshot | null,
-  activeSpeechModelId: string,
+  speechModelId: string,
   status: InferenceModelStatus | null,
 ): string | undefined {
-  if (synced?.speechModelId === activeSpeechModelId && synced.file)
+  if (synced?.speechModelId === speechModelId && synced.file)
     return synced.file
   if (status?.progress?.file)
     return status.progress.file
   return undefined
 }
 
-function kokoroDownloadingStatusLabel(percent: number, hasByteProgress: boolean): string {
-  if (hasByteProgress || percent > 0)
-    return kokoroDownloadingPercentLabel(percent)
-
-  return t('settings.pages.modules.speech.model_catalog.progress.downloading_model')
-}
-
-function kokoroDownloadProgressMessage(
-  synced: KokoroDownloadProgressSnapshot | null,
-  activeSpeechModelId: string,
-): string | null {
-  if (!synced || synced.speechModelId !== activeSpeechModelId)
-    return null
-
-  if (synced.state === 'downloading') {
-    const hasByteProgress = synced.loaded != null && synced.loaded > 0
-    return kokoroDownloadingStatusLabel(synced.percent, hasByteProgress)
-  }
-
-  if (synced.state === 'compiling')
-    return t('settings.pages.modules.speech.model_catalog.progress.compiling')
-  if (synced.state === 'warming-up')
-    return t('settings.pages.modules.speech.model_catalog.progress.warming_up')
-
-  return null
-}
-
-function kokoroProgressMessage(
-  synced: KokoroDownloadProgressSnapshot | null,
-  activeSpeechModelId: string,
-  status: InferenceModelStatus | null,
-  voicesLoading: boolean,
-  modelOnDisk: boolean,
-  cancelling: boolean,
-): string {
-  if (cancelling)
-    return t('settings.pages.modules.speech.model_catalog.progress.cancelling_download')
-
-  if (voicesLoading && modelOnDisk)
-    return t('settings.pages.modules.speech.model_catalog.progress.loading_voices')
-
-  if (
-    modelOnDisk
-    && status?.state === 'downloading'
-    && (status.progress?.loaded == null || !(status.progress.loaded > 0))
-  ) {
-    return t('settings.pages.modules.speech.model_catalog.progress.loading_voices')
-  }
-
-  const syncedMessage = kokoroDownloadProgressMessage(synced, activeSpeechModelId)
-  if (syncedMessage)
-    return syncedMessage
-
-  if (status && KOKORO_LOADING_STATES.has(status.state)) {
-    if (status.state === 'downloading') {
-      const progress = status.progress
-      const percent = progress ? resolveProgressPercent(progress) : -1
-      const hasByteProgress = progress?.loaded != null && progress.loaded > 0
-      return kokoroDownloadingStatusLabel(percent >= 0 ? percent : 0, hasByteProgress)
-    }
-
-    if (status.state === 'compiling')
-      return t('settings.pages.modules.speech.model_catalog.progress.compiling')
-    if (status.state === 'warming-up')
-      return t('settings.pages.modules.speech.model_catalog.progress.warming_up')
-  }
-
-  if (voicesLoading && !modelOnDisk)
-    return t('settings.pages.modules.speech.model_catalog.progress.downloading_model')
-
-  if (voicesLoading)
-    return t('settings.pages.modules.speech.model_catalog.progress.loading_voices')
-
-  return ''
-}
-
 function kokoroActiveDownloadHasByteProgress(
   synced: KokoroDownloadProgressSnapshot | null,
-  activeSpeechModelId: string,
+  speechModelId: string,
   status: InferenceModelStatus | null,
 ): boolean {
-  if (synced?.speechModelId === activeSpeechModelId && synced.loaded != null && synced.loaded > 0)
+  if (synced?.speechModelId === speechModelId && synced.loaded != null && synced.loaded > 0)
     return true
 
   const progress = status?.progress
   return progress?.loaded != null && progress.loaded > 0
 }
 
-const activeKokoroModelOnDisk = computed(() => {
-  if (!activeSpeechModel.value)
+const kokoroCatalogAwaitingSize = computed(() =>
+  activeSpeechProvider.value === 'kokoro-local'
+  && kokoroAwaitingSizeChoice.value
+  && !browsingSpeechModelId.value?.trim()
+  && !activeSpeechModel.value?.trim(),
+)
+
+const kokoroProgressSpeechModelId = computed(() => resolveKokoroProgressSpeechModelId({
+  syncedSpeechModelId: kokoroDownloadProgress.value?.speechModelId,
+  browsingSpeechModelId: browsingSpeechModelId.value,
+  activeSpeechModelId: activeSpeechModel.value,
+  awaitingSizeChoice: kokoroAwaitingSizeChoice.value,
+}))
+
+const kokoroProgressModelOnDisk = computed(() => {
+  const speechModelId = kokoroProgressSpeechModelId.value
+  if (!speechModelId)
     return false
-  return kokoroQuantDownloaded.value[activeSpeechModel.value] === true
+  return kokoroQuantDownloaded.value[speechModelId] === true
 })
+
+const kokoroProgressStatus = computed(() => resolveKokoroInferenceStatus(kokoroProgressSpeechModelId.value))
+
+const isKokoroSpeechProvider = computed(() => resolvedBrowsingSpeechProviderId() === 'kokoro-local')
+
+const kokoroBrowsingVoicesLoading = computed(() => {
+  const providerId = resolvedBrowsingSpeechProviderId()
+  const status = speechStore.voiceCatalogStatus[providerId]
+  if (!status?.loading)
+    return false
+  if (!isKokoroSpeechProvider.value)
+    return true
+  const browsingModel = browsingSpeechModelId.value.trim()
+  if (!browsingModel)
+    return false
+  return status.model === browsingModel
+})
+
+const kokoroProgressVoicesLoading = computed(() =>
+  isKokoroSpeechProvider.value
+    ? kokoroBrowsingVoicesLoading.value
+    : isLoadingSpeechProviderVoices.value,
+)
 
 const kokoroProgressIsDownloadPhase = computed(() => {
   if (activeSpeechProvider.value !== 'kokoro-local')
     return false
-
-  if (isLoadingSpeechProviderVoices.value && activeKokoroModelOnDisk.value)
+  if (kokoroClearingModelId.value.trim())
+    return true
+  if (kokoroCatalogAwaitingSize.value || !kokoroProgressSpeechModelId.value)
     return false
 
-  const status = resolveKokoroInferenceStatus(activeSpeechModel.value)
-  if (status?.state === 'downloading' && activeKokoroModelOnDisk.value) {
-    const hasByteProgress = status.progress?.loaded != null && status.progress.loaded > 0
-    if (!hasByteProgress)
-      return false
-  }
+  return resolveKokoroProgressIsDownloadPhase({
+    voicesLoading: kokoroProgressVoicesLoading.value,
+    modelOnDisk: kokoroProgressModelOnDisk.value,
+    status: kokoroProgressStatus.value,
+  })
+})
 
-  if (status && KOKORO_LOADING_STATES.has(status.state))
-    return true
-
-  return isLoadingSpeechProviderVoices.value && !activeKokoroModelOnDisk.value
+const kokoroRemovingProgressText = computed(() => {
+  if (activeSpeechProvider.value !== 'kokoro-local')
+    return ''
+  const clearingId = kokoroClearingModelId.value.trim()
+  if (!clearingId)
+    return ''
+  return t('settings.pages.modules.speech.model_catalog.removing_download')
 })
 
 const kokoroProgressText = computed(() => {
   if (activeSpeechProvider.value !== 'kokoro-local')
     return ''
+  if (kokoroRemovingProgressText.value)
+    return kokoroRemovingProgressText.value
+  if (kokoroCatalogLoadPaused.value && !kokoroBrowsingVoicesLoading.value)
+    return ''
+  if (kokoroCatalogAwaitingSize.value || !kokoroProgressSpeechModelId.value)
+    return ''
 
-  return kokoroProgressMessage(
-    kokoroDownloadProgress.value,
-    activeSpeechModel.value,
-    resolveKokoroInferenceStatus(activeSpeechModel.value),
-    isLoadingSpeechProviderVoices.value,
-    activeKokoroModelOnDisk.value,
+  const synced = kokoroDownloadProgress.value
+  if (synced && synced.speechModelId !== kokoroProgressSpeechModelId.value) {
+    return kokoroProgressVoicesLoading.value && !kokoroProgressModelOnDisk.value
+      ? kokoroProgressLabels.value.downloadingModel
+      : ''
+  }
+
+  return resolveKokoroProgressMessage(
+    kokoroProgressLabels.value,
+    synced,
+    kokoroProgressSpeechModelId.value,
+    kokoroProgressStatus.value,
+    kokoroProgressVoicesLoading.value,
+    kokoroProgressModelOnDisk.value,
     isCancellingKokoroDownload.value,
   )
 })
@@ -280,23 +276,29 @@ const kokoroProgressCanCancel = computed(() => {
   if (activeSpeechProvider.value !== 'kokoro-local' || isCancellingKokoroDownload.value)
     return false
 
-  const status = resolveKokoroInferenceStatus(activeSpeechModel.value)
-  if (status?.state === 'downloading')
+  if (kokoroProgressStatus.value?.state === 'downloading')
     return true
 
-  return isLoadingSpeechProviderVoices.value && !activeKokoroModelOnDisk.value
+  return kokoroProgressVoicesLoading.value && !kokoroProgressModelOnDisk.value
 })
+
+function removeAllKokoroInferenceStatuses() {
+  for (const entry of inferenceModels.value) {
+    if (entry.modelId.startsWith('kokoro-'))
+      removeInferenceStatus(entry.modelId)
+  }
+}
 
 const kokoroProgressDownloadFileHint = computed(() => kokoroProgressDownloadFile(
   kokoroDownloadProgress.value,
-  activeSpeechModel.value,
-  resolveKokoroInferenceStatus(activeSpeechModel.value),
+  kokoroProgressSpeechModelId.value,
+  kokoroProgressStatus.value,
 ))
 
 const kokoroDownloadSpeedBps = ref(0)
 let kokoroDownloadSpeedSample: { loaded: number, recordedAt: number } | null = null
 
-watch(activeSpeechModel, () => {
+watch(kokoroProgressSpeechModelId, () => {
   kokoroDownloadSpeedBps.value = 0
   kokoroDownloadSpeedSample = null
 })
@@ -310,7 +312,7 @@ watch(kokoroDownloadProgress, (current) => {
     return
   }
 
-  if (current.speechModelId !== activeSpeechModel.value) {
+  if (current.speechModelId !== kokoroProgressSpeechModelId.value) {
     kokoroDownloadSpeedBps.value = 0
     kokoroDownloadSpeedSample = null
     return
@@ -332,7 +334,7 @@ const kokoroProgressDetailHint = computed(() => {
 
   const synced = kokoroDownloadProgress.value
   if (
-    synced?.speechModelId === activeSpeechModel.value
+    synced?.speechModelId === kokoroProgressSpeechModelId.value
     && synced.loaded != null
     && synced.total != null
     && synced.total > 0
@@ -350,11 +352,10 @@ const kokoroProgressLineText = computed(() => {
   if (!base)
     return ''
 
-  const status = resolveKokoroInferenceStatus(activeSpeechModel.value)
   const hasByteProgress = kokoroActiveDownloadHasByteProgress(
     kokoroDownloadProgress.value,
-    activeSpeechModel.value,
-    status,
+    kokoroProgressSpeechModelId.value,
+    kokoroProgressStatus.value,
   )
   const speed = formatDownloadSpeed(kokoroDownloadSpeedBps.value)
   if (speed && kokoroProgressIsDownloadPhase.value && hasByteProgress)
@@ -450,11 +451,6 @@ const resolvedBrowsingSpeechProvider = computed(() => resolvedBrowsingSpeechProv
 
 const isOfficialSpeechSourceSelected = computed(() => displayedSpeechSource.value === OFFICIAL_SPEECH_PROVIDER_ID)
 
-/** Browsing model for the active tab. Runtime updates only after a voice commit. */
-const browsingSpeechModelId = ref('')
-const browsingSpeechVoiceId = ref('')
-const browsingManualModelDraft = ref('')
-
 function streamingModelOptionId(modelId: string) {
   return `${STREAMING_MODEL_OPTION_PREFIX}${modelId}`
 }
@@ -547,9 +543,19 @@ const lastVoiceOnBrowsingSpeechProvider = computed(() => {
   return ''
 })
 
-const showBrowsingLastVoiceBanner = computed(() =>
-  Boolean(lastVoiceOnBrowsingSpeechProvider.value?.trim()),
-)
+const showBrowsingLastVoiceBanner = computed(() => {
+  if (kokoroCatalogAwaitingSize.value || kokoroClearingModelId.value.trim())
+    return false
+  if (isKokoroSpeechProvider.value) {
+    const model = browsingSpeechModelId.value.trim()
+    const catalogModel = speechStore.voiceCatalogIdentities['kokoro-local']?.model
+    if (!model || catalogModel !== model)
+      return false
+    if ((availableVoices.value['kokoro-local'] ?? []).length === 0)
+      return false
+  }
+  return Boolean(lastVoiceOnBrowsingSpeechProvider.value?.trim())
+})
 
 const playgroundTestModelId = computed(() => {
   const browsingVoiceId = browsingSpeechVoiceId.value?.trim()
@@ -655,22 +661,47 @@ async function selectLastVoiceOnBrowsingSpeechProvider() {
   await selectSpeechVoice(voiceId)
 }
 
+let applyBrowsingSpeechModelTask: Promise<void> | null = null
+
 async function applyBrowsingSpeechModel(modelOptionId: string) {
   const streamingModelId = modelIdFromStreamingOptionId(modelOptionId.trim())
   const resolvedModel = (streamingModelId ?? modelOptionId).trim()
   if (!resolvedModel)
     return
 
-  discardSpeechPlaygroundTest()
-  browsingSpeechModelId.value = resolvedModel
-  browsingManualModelDraft.value = resolvedModel
-  browsingSpeechVoiceId.value = ''
-  rememberProviderForBrowsingModel(resolvedModel, streamingModelId)
+  if (applyBrowsingSpeechModelTask)
+    await applyBrowsingSpeechModelTask
 
-  const voiceProviderId = streamingModelId == null
-    ? resolvedBrowsingSpeechProviderId()
-    : OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
-  await speechStore.loadVoicesForProvider(voiceProviderId, resolvedModel)
+  applyBrowsingSpeechModelTask = (async () => {
+    discardSpeechPlaygroundTest()
+    const voiceProviderId = streamingModelId == null
+      ? resolvedBrowsingSpeechProviderId()
+      : OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
+
+    browsingSpeechModelId.value = resolvedModel
+    browsingManualModelDraft.value = resolvedModel
+    browsingSpeechVoiceId.value = ''
+    rememberProviderForBrowsingModel(resolvedModel, streamingModelId)
+
+    // Kokoro: selecting a size does not start a download. Ready sizes may load voices from cache.
+    if (voiceProviderId === 'kokoro-local') {
+      if (kokoroClearingModelId.value.trim())
+        return
+      speechStore.resumeKokoroBrowseAfterClear(resolvedModel)
+      if (kokoroQuantDownloaded.value[resolvedModel] === true)
+        await speechStore.loadVoicesForProvider(voiceProviderId, resolvedModel)
+      return
+    }
+
+    await speechStore.loadVoicesForProvider(voiceProviderId, resolvedModel)
+  })()
+
+  try {
+    await applyBrowsingSpeechModelTask
+  }
+  finally {
+    applyBrowsingSpeechModelTask = null
+  }
 }
 
 async function commitBrowsingManualModel() {
@@ -698,8 +729,6 @@ const displayedProviderModels = computed(() => {
   ]
 })
 
-const isKokoroSpeechProvider = computed(() => resolvedBrowsingSpeechProviderId() === 'kokoro-local')
-
 function localizeModelDescription(description: string | undefined) {
   if (!description)
     return description
@@ -708,18 +737,157 @@ function localizeModelDescription(description: string | undefined) {
   return description
 }
 
+function isKokoroModelDownloading(modelId: string) {
+  const trimmed = modelId.trim()
+  if (!trimmed)
+    return false
+  if (kokoroClearingModelId.value === trimmed)
+    return false
+  const status = speechStore.voiceCatalogStatus['kokoro-local']
+  if (status?.loading && status.model === trimmed)
+    return true
+  const synced = kokoroDownloadProgress.value
+  return synced?.speechModelId === trimmed && Boolean(synced.state)
+}
+
+function isKokoroModelRemoving(modelId: string) {
+  return kokoroClearingModelId.value === modelId.trim()
+}
+
+function kokoroModelDownloadChip(modelId: string) {
+  if (isKokoroModelRemoving(modelId)) {
+    return {
+      label: t('settings.pages.modules.speech.model_catalog.removing_action'),
+      active: true,
+      tone: 'removing' as const,
+      interactive: false,
+    }
+  }
+  if (isKokoroModelDownloading(modelId)) {
+    return {
+      label: t('settings.pages.modules.speech.model_catalog.downloading_action'),
+      active: true,
+      tone: 'downloading' as const,
+      interactive: false,
+    }
+  }
+  if (kokoroQuantDownloaded.value[modelId] === true) {
+    return {
+      label: t('settings.pages.modules.speech.model_catalog.ready_action'),
+      active: true,
+      tone: 'ready' as const,
+      interactive: false,
+    }
+  }
+  return {
+    label: t('settings.pages.modules.speech.model_catalog.download_action'),
+    active: true,
+    tone: 'download' as const,
+    interactive: true,
+  }
+}
+
+async function waitUntilKokoroModelCacheGone(modelId: string, attempts = 20, delayMs = 150) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (!(await isKokoroSpeechModelDownloaded(modelId)))
+      return true
+    await new Promise(resolve => setTimeout(resolve, delayMs))
+  }
+  return !(await isKokoroSpeechModelDownloaded(modelId))
+}
+
+function kokoroModelLabel(modelId: string) {
+  const trimmed = modelId.trim()
+  if (!trimmed)
+    return trimmed
+  const match = KOKORO_MODELS.find(model => model.id === trimmed)
+  return match?.name ?? trimmed
+}
+
+const kokoroAdapterSnapshot = ref<ReturnType<typeof peekKokoroAdapterSnapshot>>(null)
+let kokoroTaskPollTimer: ReturnType<typeof setInterval> | undefined
+
+function refreshKokoroAdapterSnapshot() {
+  kokoroAdapterSnapshot.value = peekKokoroAdapterSnapshot()
+}
+
+const kokoroActiveDebugTasks = computed(() => {
+  if (!isKokoroSpeechProvider.value || !kokoroDownloadDebugToolsEnabled.value)
+    return [] as string[]
+
+  const tasks: string[] = []
+  const adapter = kokoroAdapterSnapshot.value
+  if (adapter) {
+    const quant = adapter.quantization
+      ? t('settings.pages.modules.speech.model_catalog.debug_task_adapter_quant', { quantization: adapter.quantization })
+      : ''
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_adapter', {
+      state: adapter.state,
+      quant,
+    }))
+  }
+
+  if (isCancellingKokoroDownload.value)
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_cancelling'))
+
+  const clearingId = kokoroClearingModelId.value.trim()
+  if (clearingId) {
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_removing', {
+      model: kokoroModelLabel(clearingId),
+    }))
+  }
+
+  const voiceStatus = speechStore.voiceCatalogStatus['kokoro-local']
+  if (voiceStatus?.loading) {
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_loading_voices', {
+      model: kokoroModelLabel(voiceStatus.model || browsingSpeechModelId.value || 'unknown'),
+    }))
+  }
+
+  for (const entry of inferenceModels.value) {
+    if (!entry.modelId.startsWith('kokoro-'))
+      continue
+    if (entry.state === 'ready' || entry.state === 'idle' || entry.state === 'error')
+      continue
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_inference', {
+      model: entry.modelId,
+      state: entry.state,
+    }))
+  }
+
+  if (kokoroCatalogLoadPaused.value)
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_paused'))
+  if (kokoroAwaitingSizeChoice.value)
+    tasks.push(t('settings.pages.modules.speech.model_catalog.debug_task_awaiting_size'))
+
+  return tasks
+})
+
+watch(
+  () => isKokoroSpeechProvider.value && kokoroDownloadDebugToolsEnabled.value,
+  (enabled) => {
+    if (kokoroTaskPollTimer) {
+      clearInterval(kokoroTaskPollTimer)
+      kokoroTaskPollTimer = undefined
+    }
+    if (!enabled) {
+      kokoroAdapterSnapshot.value = null
+      return
+    }
+    refreshKokoroAdapterSnapshot()
+    kokoroTaskPollTimer = setInterval(refreshKokoroAdapterSnapshot, 500)
+  },
+  { immediate: true },
+)
+
 const speechModelSelectItems = computed(() => {
   const models = displayedProviderModels.value
   if (isKokoroSpeechProvider.value) {
-    const downloadedLabel = t('settings.pages.modules.speech.model_catalog.downloaded_chip')
     return kokoroCatalogSelectItems(models, kokoroSortKey.value, kokoroSortDirection.value).map((item) => {
-      const downloaded = kokoroQuantDownloaded.value[item.id] === true
       return {
         ...item,
         description: localizeModelDescription(item.description),
-        ...(downloaded
-          ? { statusChip: { label: downloadedLabel, active: true } }
-          : {}),
+        statusChip: kokoroModelDownloadChip(item.id),
       }
     })
   }
@@ -747,52 +915,100 @@ async function refreshKokoroDownloadState() {
   kokoroQuantDownloaded.value = Object.fromEntries(entries)
 }
 
-async function clearKokoroDownloads() {
-  if (clearingKokoroDownloads.value)
+const kokoroClearDownloadModelLabel = computed(() => {
+  const modelId = browsingSpeechModelId.value.trim()
+  if (!modelId)
+    return ''
+  const match = speechModelSelectItems.value.find(item => item.id === modelId)
+  return match?.name ?? modelId
+})
+
+async function clearSelectedKokoroModelDownload() {
+  const modelId = browsingSpeechModelId.value.trim()
+  if (!modelId || clearingKokoroDownloads.value || kokoroClearingModelId.value)
     return
 
   clearingKokoroDownloads.value = true
+  kokoroClearingModelId.value = modelId
+  browsingSpeechVoiceId.value = ''
+  // Force the chip off Ready immediately so the UI does not claim the size is still usable.
+  kokoroQuantDownloaded.value = {
+    ...kokoroQuantDownloaded.value,
+    [modelId]: false,
+  }
   try {
-    await clearModelCache()
-    for (const entry of inferenceModels.value) {
-      if (entry.modelId.startsWith('kokoro-'))
-        removeInferenceStatus(entry.modelId)
-    }
-    try {
-      const adapter = await getKokoroAdapter()
-      adapter.terminate()
-    }
-    catch {
-      // Adapter may not exist yet.
-    }
+    await speechStore.clearKokoroBrowsingModelCache(modelId)
+    terminateKokoroAdapter()
+    await clearKokoroOnnxForSpeechModel(modelId)
+    await waitUntilKokoroModelCacheGone(modelId)
+    const statusId = kokoroInferenceStatusIdForSpeechModel(modelId)
+    if (statusId)
+      removeInferenceStatus(statusId)
+    removeInferenceStatus(`kokoro-${modelId}`)
+    resetKokoroLocalProviderSession()
     await refreshKokoroDownloadState()
-    if (activeSpeechProvider.value === 'kokoro-local') {
-      await speechStore.loadVoicesForProvider(
-        activeSpeechProvider.value,
-        activeSpeechModel.value || undefined,
-      )
-    }
   }
   finally {
+    kokoroClearingModelId.value = ''
     clearingKokoroDownloads.value = false
   }
+}
+
+async function downloadKokoroModel(modelId: string) {
+  const trimmed = modelId.trim()
+  if (!trimmed || !isKokoroSpeechProvider.value)
+    return
+  if (kokoroClearingModelId.value)
+    return
+  if (kokoroQuantDownloaded.value[trimmed] === true || isKokoroModelDownloading(trimmed))
+    return
+
+  discardSpeechPlaygroundTest()
+  speechStore.resumeKokoroBrowseAfterClear(trimmed)
+  browsingSpeechModelId.value = trimmed
+  browsingManualModelDraft.value = trimmed
+  browsingSpeechVoiceId.value = ''
+  rememberProviderForBrowsingModel(trimmed, null)
+  await speechStore.prepareKokoroVoiceCatalogLoad()
+  await speechStore.loadVoicesForProvider('kokoro-local', trimmed)
+  await refreshKokoroDownloadState()
 }
 
 async function cancelKokoroDownload() {
   if (!kokoroProgressCanCancel.value || isCancellingKokoroDownload.value)
     return
 
+  const cancellingModelId = kokoroProgressSpeechModelId.value.trim() || browsingSpeechModelId.value.trim()
   isCancellingKokoroDownload.value = true
+  if (cancellingModelId)
+    kokoroClearingModelId.value = cancellingModelId
   try {
     await speechStore.cancelKokoroDownload()
+    // NOTICE: Do not call getKokoroAdapter() here. It recreates a worker after abort.
+    terminateKokoroAdapter()
+    removeAllKokoroInferenceStatuses()
+    resetKokoroLocalProviderSession()
+    browsingSpeechVoiceId.value = ''
+    if (cancellingModelId) {
+      kokoroQuantDownloaded.value = {
+        ...kokoroQuantDownloaded.value,
+        [cancellingModelId]: false,
+      }
+    }
+    if (kokoroAwaitingSizeChoice.value) {
+      browsingSpeechModelId.value = ''
+      browsingManualModelDraft.value = ''
+    }
+    await refreshKokoroDownloadState()
   }
   finally {
+    kokoroClearingModelId.value = ''
     isCancellingKokoroDownload.value = false
   }
 }
 
 watch(
-  () => [kokoroProgressText.value, activeSpeechModel.value] as const,
+  () => [kokoroProgressText.value, kokoroProgressSpeechModelId.value] as const,
   ([progressText]) => {
     if (activeSpeechProvider.value !== 'kokoro-local')
       return
@@ -805,6 +1021,16 @@ watch(isLoadingSpeechProviderVoices, (loading, wasLoading) => {
   if (wasLoading && !loading && activeSpeechProvider.value === 'kokoro-local')
     void refreshKokoroDownloadState()
 })
+
+watch(
+  () => [browsingSpeechModelId.value, speechStore.voiceCatalogStatus['kokoro-local']] as const,
+  ([model, status]) => {
+    if (!isKokoroSpeechProvider.value || !model?.trim())
+      return
+    if (!status?.loading)
+      void refreshKokoroDownloadState()
+  },
+)
 
 const displayedModelsLoading = computed(() => {
   if (!isOfficialSpeechSourceSelected.value)
@@ -833,16 +1059,27 @@ const speechModelCatalogHasCommittedSelection = computed(() =>
 )
 
 const isLoadingBrowsingSpeechVoices = computed(() =>
-  speechStore.voiceCatalogStatus[resolvedBrowsingSpeechProviderId()]?.loading ?? false,
+  kokoroCatalogAwaitingSize.value
+    ? false
+    : kokoroBrowsingVoicesLoading.value,
 )
 
 const displayedVoiceOptions = computed(() => {
   const providerId = resolvedBrowsingSpeechProviderId()
   const model = browsingSpeechModelId.value
+  if (isKokoroSpeechProvider.value && !model?.trim())
+    return []
+  if (isKokoroSpeechProvider.value && kokoroClearingModelId.value.trim())
+    return []
+  if (isKokoroSpeechProvider.value) {
+    const catalogModel = speechStore.voiceCatalogIdentities['kokoro-local']?.model
+    if (!catalogModel || catalogModel !== model.trim())
+      return []
+  }
   return (availableVoices.value[providerId] ?? [])
     .filter((voice) => {
       if (!model)
-        return true
+        return false
       return !voice.compatibleModels || voice.compatibleModels.includes(model)
     })
     .map(voice => ({
@@ -1089,6 +1326,8 @@ watch(displayedProviderModels, async (models, previous) => {
     return
   if (previous?.length)
     return
+  if (activeSpeechProvider.value === 'kokoro-local' && kokoroCatalogLoadPaused.value)
+    return
 
   try {
     speechStore.ensureActiveSpeechModel()
@@ -1281,6 +1520,10 @@ function stopTestAudio(clearUrl = true) {
 
 // Clean up when component is unmounted
 onUnmounted(() => {
+  if (kokoroTaskPollTimer) {
+    clearInterval(kokoroTaskPollTimer)
+    kokoroTaskPollTimer = undefined
+  }
   discardSpeechPlaygroundTest()
   if (audioUrl.value) {
     URL.revokeObjectURL(audioUrl.value)
@@ -1583,9 +1826,41 @@ async function handleDeleteProvider(providerId: string) {
                   v-model:sort-key="kokoroSortKey"
                   v-model:sort-direction="kokoroSortDirection"
                   class="min-w-0 flex-1"
-                  :disable-clear-downloads="clearingKokoroDownloads"
-                  @clear-downloads="clearKokoroDownloads"
+                  :show-clear-downloads="kokoroDownloadDebugToolsEnabled"
+                  :clear-downloads-model-name="kokoroClearDownloadModelLabel"
+                  :disable-clear-downloads="clearingKokoroDownloads || Boolean(kokoroClearingModelId)"
+                  @clear-downloads="clearSelectedKokoroModelDownload"
                 />
+              </div>
+              <div
+                v-if="isKokoroSpeechProvider && kokoroDownloadDebugToolsEnabled"
+                :class="[
+                  'rounded-lg border border-amber-500/30 bg-amber-50/80 p-3 text-xs',
+                  'dark:border-amber-500/25 dark:bg-amber-950/30',
+                ]"
+              >
+                <div :class="['mb-1.5 font-semibold text-amber-900 dark:text-amber-200']">
+                  {{ t('settings.pages.modules.speech.model_catalog.debug_tasks_title') }}
+                </div>
+                <ul
+                  v-if="kokoroActiveDebugTasks.length > 0"
+                  :class="['flex flex-col gap-1 text-amber-950 dark:text-amber-100']"
+                >
+                  <li
+                    v-for="task in kokoroActiveDebugTasks"
+                    :key="task"
+                    :class="['flex items-start gap-1.5']"
+                  >
+                    <span aria-hidden="true">•</span>
+                    <span>{{ task }}</span>
+                  </li>
+                </ul>
+                <p
+                  v-else
+                  :class="['text-amber-800/80 dark:text-amber-200/70']"
+                >
+                  {{ t('settings.pages.modules.speech.model_catalog.debug_tasks_idle') }}
+                </p>
               </div>
               <RadioCardManySelect
                 v-model:search-query="modelSearchQuery"
@@ -1607,6 +1882,7 @@ async function handleDeleteProvider(providerId: string) {
                 expanded-class="mb-12"
                 @update:model-value="selectSpeechModel"
                 @update:custom-value="updateCustomModelName"
+                @status-chip-click="downloadKokoroModel"
               />
             </template>
           </div>
@@ -1664,13 +1940,13 @@ async function handleDeleteProvider(providerId: string) {
                     ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
                     : 'border-primary-500/10 bg-primary-500/5 text-primary-500',
                 ]"
-                :title="kokoroProgressDetailHint"
+                :title="kokoroClearingModelId ? t('settings.pages.modules.speech.model_catalog.removing_voices') : kokoroProgressDetailHint"
               >
                 <div class="i-solar:refresh-line-duotone shrink-0 animate-spin text-sm" />
-                <span>{{ kokoroProgressLineText }}</span>
+                <span>{{ kokoroClearingModelId ? kokoroProgressText : kokoroProgressLineText }}</span>
               </div>
               <button
-                v-if="kokoroProgressCanCancel"
+                v-if="kokoroDownloadDebugToolsEnabled && kokoroProgressCanCancel && !kokoroClearingModelId"
                 type="button"
                 class="shrink-0 border border-red-500/25 rounded-full bg-red-500/10 px-2.5 py-1 text-sm text-red-600 font-medium transition-colors hover:bg-red-500/15 dark:text-red-300"
                 @click="cancelKokoroDownload"
@@ -1758,6 +2034,12 @@ async function handleDeleteProvider(providerId: string) {
                 v-model="ssmlEnabled"
                 label="Enable SSML"
                 description="Enable Speech Synthesis Markup Language for more control over speech output"
+              />
+              <FieldCheckbox
+                v-if="isKokoroSpeechProvider"
+                v-model="kokoroDownloadDebugToolsEnabled"
+                :label="t('settings.pages.modules.speech.model_catalog.download_debug_tools')"
+                :description="t('settings.pages.modules.speech.model_catalog.download_debug_tools_description')"
               />
             </div>
 

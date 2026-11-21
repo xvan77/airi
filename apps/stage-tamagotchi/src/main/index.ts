@@ -52,6 +52,7 @@ import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
 import { setupCatalogCachePersistence } from './services/electron/catalog-cache-persistence'
 import { setupCatalogUrlFetch } from './services/electron/catalog-url-fetch'
+import { setupCrossOriginIsolation } from './services/electron/cross-origin-isolation'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupLocalLlmService } from './services/electron/local-llm'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
@@ -240,6 +241,7 @@ app.whenReady().then(async () => {
   setupSherpawModelAssets(createContext(ipcMain).context)
   setupLocalLlmService(createContext(ipcMain).context)
   setupPermissionHandlers(session.defaultSession, hasSelectedScreenCaptureSource)
+  setupCrossOriginIsolation(session.defaultSession)
 
   // Initialize file logger and register the hook
   fileLogger = await setupFileLogger()
@@ -365,7 +367,7 @@ app.whenReady().then(async () => {
   })
 
   const chatWindow = injeca.provide('windows:chat', {
-    dependsOn: { widgetsManager, serverChannel, mcpManager, i18n },
+    dependsOn: { widgetsManager, serverChannel, mcpManager, i18n, devtoolsWindow: devtoolsMarkdownStressWindow },
     build: ({ dependsOn }) => setupChatWindowManager({
       ...dependsOn,
       getMainWindow: () => userFacingMainWindow,

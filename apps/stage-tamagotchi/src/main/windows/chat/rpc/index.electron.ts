@@ -4,12 +4,13 @@ import type { BrowserWindow } from 'electron'
 import type { I18n } from '../../../libs/i18n'
 import type { ServerChannel } from '../../../services/airi/channel-server'
 import type { McpManager } from '../../../services/airi/mcp-servers'
+import type { DevtoolsWindowManager } from '../../devtools'
 import type { SettingsWindowManager } from '../../settings'
 import type { WidgetsWindowManager } from '../../widgets'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 
-import { electronOpenMainDevtools, electronOpenSettings } from '../../../../shared/eventa'
+import { electronOpenDevtoolsWindow, electronOpenMainDevtools, electronOpenSettings } from '../../../../shared/eventa'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
@@ -23,6 +24,7 @@ export async function setupChatWindowElectronInvokes(params: {
   mcpManager: McpManager
   i18n: I18n
   openSettingsWindow: SettingsWindowManager['openWindow']
+  devtoolsWindow: DevtoolsWindowManager
 }) {
   const { context } = params
 
@@ -33,4 +35,7 @@ export async function setupChatWindowElectronInvokes(params: {
 
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
   defineInvokeHandler(context, electronOpenSettings, payload => params.openSettingsWindow(payload?.route))
+  defineInvokeHandler(context, electronOpenDevtoolsWindow, async (payload) => {
+    await params.devtoolsWindow.openWindow(payload)
+  })
 }

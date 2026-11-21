@@ -42,6 +42,23 @@ describe('chunkTtsInput boost', () => {
 
     expect(chunks[0]).toMatchObject({ text: 'I really want to tell you something,', reason: 'boost' })
   })
+
+  it('splits a reply at each comma when the minimum is two words', async () => {
+    const chunks: TtsInputChunk[] = []
+    for await (const chunk of chunkTtsInput('Hi! I\'m doing well, thank you for asking.', {
+      minimumWords: 2,
+      maximumWords: 8,
+      boost: 32,
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks.map(chunk => chunk.text)).toEqual([
+      'Hi!',
+      'I\'m doing well,',
+      'thank you for asking.',
+    ])
+  })
 })
 
 describe('tTS Chunker Logic Cleanup', () => {

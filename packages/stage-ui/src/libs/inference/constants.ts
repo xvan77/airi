@@ -28,8 +28,9 @@ export const MODEL_NAMES = {
 // ---------------------------------------------------------------------------
 
 export const TIMEOUTS = {
-  /** Kokoro model load timeout */
-  KOKORO_LOAD: 120_000,
+  // Hugging Face downloads can take longer than two minutes on a slow link.
+  /** Kokoro model load and first download timeout */
+  KOKORO_LOAD: 600_000,
   /** Kokoro audio generation timeout */
   KOKORO_GENERATE: 120_000,
 

@@ -1,6 +1,7 @@
 import type { Eventa } from '@moeru/eventa'
 
 import type { SpeechPipelineEventName } from './eventa'
+import type { TtsInputChunkOptions } from './processors/tts-chunker'
 import type {
   IntentHandle,
   IntentOptions,
@@ -29,6 +30,11 @@ export interface SpeechPipelineOptions<TAudio> {
    * @default 4
    */
   ttsMaxConcurrent?: number
+  /**
+   * How the default segmenter splits a reply.
+   * Omit it to keep the shared defaults.
+   */
+  ttsChunk?: TtsInputChunkOptions
   playback: {
     schedule: (item: PlaybackItem<TAudio>) => void
     stopAll: (reason: string) => void
@@ -65,7 +71,7 @@ function createId(prefix: string) {
 export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAudio>) {
   const logger = options.logger ?? console
   const priorityResolver = options.priority ?? createPriorityResolver()
-  const segmenter = options.segmenter ?? createTtsSegmentStream
+  const segmenter = options.segmenter ?? ((tokens, meta) => createTtsSegmentStream(tokens, meta, options.ttsChunk))
   const ttsMaxConcurrent = Math.max(1, options.ttsMaxConcurrent ?? 4)
   const context = createContext()
   const timeline = createTimeline()

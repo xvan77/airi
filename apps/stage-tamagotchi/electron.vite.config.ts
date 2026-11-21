@@ -21,6 +21,8 @@ import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
 import { resolveModelEndpoint, Sherpaw } from '@proj-airi/vite-plugin-sherpaw'
 import { defineConfig } from 'electron-vite'
 
+import { crossOriginIsolationHeaders } from './src/shared/cross-origin-isolation'
+
 const stageUIAssetsRoot = resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'assets'))
 const sharedCacheDir = resolve(join(import.meta.dirname, '..', '..', '.cache'))
 const sherpawModels = [paraformerBilingualZhEn, zipformerMultilingual, xAsrBilingualZhEnInt8]
@@ -177,6 +179,7 @@ export default defineConfig({
     },
 
     server: {
+      headers: crossOriginIsolationHeaders,
       fs: {
         // To mute errors like:
         //   The request id ".../node_modules/@fontsource/sniglet/files/sniglet-latin-400-normal.woff" is outside of Vite serving allow list.

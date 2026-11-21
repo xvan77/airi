@@ -419,6 +419,18 @@ export interface ProviderDefinition<TConfig = Record<string, unknown>, TId exten
        * Omit to use the speech pipeline default of 4.
        */
       ttsMaxConcurrent?: number
+      /**
+       * How this provider splits a reply into spoken pieces.
+       * Omit it to keep the shared defaults. A comma break needs 4 words, and only the first 2 commas may break.
+       */
+      ttsChunk?: {
+        /** How many comma breaks may start a new spoken piece. */
+        boost?: number
+        /** Shortest clause that may break at a comma. */
+        minimumWords?: number
+        /** Longest clause kept before a later comma starts a new piece. */
+        maximumWords?: number
+      }
     }
   }
   /**

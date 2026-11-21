@@ -1,4 +1,4 @@
-import type { AudioPlayback, IntentHandle, PcmBlock, PlaybackGroup, PlaybackItem, PlaybackReceipt, SpeechPipelineEvents, SpeechPipelineOptions } from '@proj-airi/pipelines-audio'
+import type { AudioPlayback, IntentHandle, PcmBlock, PlaybackGroup, PlaybackItem, PlaybackReceipt, SpeechPipelineEvents, SpeechPipelineOptions, TtsInputChunkOptions } from '@proj-airi/pipelines-audio'
 
 import type { Outcome } from '@proj-airi/stream-kit'
 
@@ -48,6 +48,8 @@ export type SpeechOutput = {
    * Omit to use the speech pipeline default of 4.
    */
   readonly ttsMaxConcurrent?: number
+  /** How this output splits a reply. Omit it to keep the shared chunk size. */
+  readonly ttsChunk?: Pick<TtsInputChunkOptions, 'boost' | 'minimumWords' | 'maximumWords'>
 } & ({
   readonly synthesize: SpeechPipelineOptions<Blob>['tts']
 } | {
@@ -123,6 +125,7 @@ export class SpeechStream {
 
     const pipeline = createSpeechPipeline<Blob>({
       ttsMaxConcurrent: output.ttsMaxConcurrent,
+      ttsChunk: output.ttsChunk,
       tts: async (request, signal) => {
         try {
           const audio = await output.synthesize(request, AbortSignal.any([signal, this.signal, response.signal]))

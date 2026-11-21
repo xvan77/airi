@@ -79,7 +79,7 @@ interface SpeechAnalytics {
 
 // Request status belongs to this renderer's RPC wait, not to replicated speech settings.
 const useSpeechCatalogRequests = defineStore('speech-catalog-requests', () => {
-  const status = refManualReset<Record<string, { loading: boolean, error: string | null }>>(() => ({}))
+  const status = refManualReset<Record<string, { loading: boolean, error: string | null, model?: string }>>(() => ({}))
   return { status }
 })
 
@@ -119,6 +119,16 @@ export const useSpeechStore = defineStore('speech', () => {
   const modelBySpeechProvider = useLocalStorageManualReset<Record<string, string>>('settings/speech/model-by-provider', {}, persistenceOptions)
   /** Last voice picked for each speech provider. Browsing another provider tab must not auto-apply it. */
   const voiceBySpeechProvider = useLocalStorageManualReset<Record<string, string>>('settings/speech/voice-by-provider', {}, persistenceOptions)
+  /**
+   * After Clear downloads, Kokoro stays unselected until the user picks a size.
+   * Without this flag, ensureCatalogSpeechModel and loadVoiceCatalog reseed a default and start another download.
+   */
+  const kokoroAwaitingSizeChoice = useLocalStorageManualReset<boolean>('settings/speech/kokoro-awaiting-size-choice', false, persistenceOptions)
+  /**
+   * Blocks silent Kokoro catalog reloads after cancel or clear until the user picks a size again.
+   * Progress clearing used to wake retry watchers that restarted downloads in the background.
+   */
+  const kokoroCatalogLoadPaused = useLocalStorageManualReset<boolean>('settings/speech/kokoro-catalog-load-paused', false, persistenceOptions)
   const activeSpeechVoiceId = useLocalStorageManualReset<string>('settings/speech/voice', '', persistenceOptions)
   const activeSpeechVoice = refManualReset<VoiceInfo | undefined>(undefined)
 
@@ -213,20 +223,63 @@ export const useSpeechStore = defineStore('speech', () => {
   // Only leader loads own these counters. Older responses for a provider cannot
   // replace its newer catalog. Caller request status has separate local ownership.
   let voiceLoadSequence = 0
-  const latestVoiceLoads = new Map<string, number>()
+  const latestVoiceLoads = new Map<string, { sequence: number, model?: string }>()
+
+  function isStaleVoiceCatalogLoad(provider: string, loadSequence: number, model?: string) {
+    const latest = latestVoiceLoads.get(provider)
+    if (!latest || latest.sequence !== loadSequence)
+      return true
+    if (resolveProviderDefinitionId(provider) === 'kokoro-local' && latest.model !== model)
+      return true
+    return false
+  }
+
+  function abortKokoroVoiceCatalogWork() {
+    cancelKokoroModelLoad()
+    cancelCatalogRequests()
+    publishKokoroDownloadProgress(null)
+  }
 
   let localRequestSequence = 0
   let disposed = false
   const localRequests = new Map<string, { sequence: number, model?: string }>()
   const cancelPending = new Set<() => void>()
 
+  function kokoroVoiceLoadBlocked(provider: string, model?: string) {
+    if (resolveProviderDefinitionId(provider) !== 'kokoro-local')
+      return false
+    // A catalog card click passes an explicit model and must start a fresh load after Clear downloads.
+    if (model?.trim())
+      return false
+    return kokoroAwaitingSizeChoice.value || kokoroCatalogLoadPaused.value
+  }
+
+  /** Ends the post-clear idle state when the user picks a quantization size on the settings page. */
+  function resumeKokoroBrowseAfterClear(model: string) {
+    if (!model.trim())
+      return
+    kokoroAwaitingSizeChoice.value = false
+    kokoroCatalogLoadPaused.value = false
+  }
+
+  function kokoroRuntimeTtsBlocked(provider: string) {
+    return resolveProviderDefinitionId(provider) === 'kokoro-local'
+      && (kokoroAwaitingSizeChoice.value || kokoroCatalogLoadPaused.value)
+  }
+
   /** Captures configuration and tracks this renderer's cancelable RPC wait. */
   async function loadVoicesForProvider(provider: string, model?: string): Promise<VoiceInfo[]> {
     if (!provider || disposed)
       return []
+    if (kokoroVoiceLoadBlocked(provider, model))
+      return []
     const sequence = ++localRequestSequence
     localRequests.set(provider, { sequence, model })
-    voiceCatalogStatus.value = { ...voiceCatalogStatus.value, [provider]: { loading: true, error: null } }
+    const requestedModel = model?.trim() || undefined
+    voiceCatalogStatus.value = {
+      ...voiceCatalogStatus.value,
+      [provider]: { loading: true, error: null, model: requestedModel },
+    }
     let cancel!: () => void
     const interrupted = new Promise<VoiceInfo[]>((resolve) => {
       cancel = () => resolve([])
@@ -302,10 +355,84 @@ export const useSpeechStore = defineStore('speech', () => {
     cancelCatalogRequests()
   })
 
+  /** Stops an in-flight Kokoro download before a new browse size or user cancel. */
+  async function prepareKokoroVoiceCatalogLoad() {
+    abortKokoroVoiceCatalogWork()
+  }
+
   async function cancelKokoroDownload() {
-    cancelKokoroModelLoad()
-    cancelCatalogRequests()
-    publishKokoroDownloadProgress(null)
+    abortKokoroVoiceCatalogWork()
+    if (resolveProviderDefinitionId(activeSpeechProvider.value) !== 'kokoro-local')
+      return
+    kokoroCatalogLoadPaused.value = true
+    if (!activeSpeechModel.value?.trim()) {
+      kokoroAwaitingSizeChoice.value = true
+      discardVoiceCatalog('kokoro-local')
+    }
+  }
+
+  function resumeKokoroCatalogLoad() {
+    kokoroCatalogLoadPaused.value = false
+  }
+
+  /**
+   * Stops Kokoro work for one size and drops its voice catalog.
+   * Keeps catalog load paused until the user presses Download again.
+   * Clears the active runtime model when it matches so chat cannot keep that size alive.
+   */
+  async function clearKokoroBrowsingModelCache(model: string) {
+    const trimmed = model.trim()
+    if (!trimmed)
+      return
+    abortKokoroVoiceCatalogWork()
+    kokoroCatalogLoadPaused.value = true
+    discardVoiceCatalog('kokoro-local')
+
+    const nextModels = { ...modelBySpeechProvider.value }
+    if (nextModels['kokoro-local'] === trimmed)
+      delete nextModels['kokoro-local']
+    modelBySpeechProvider.value = nextModels
+
+    if (activeSpeechProvider.value === 'kokoro-local' && activeSpeechModel.value === trimmed) {
+      kokoroAwaitingSizeChoice.value = true
+      activeSpeechModel.value = ''
+      clearVoiceSelection()
+      const config = providerStore.getProviderConfig('kokoro-local')
+      if (config && typeof config.model === 'string')
+        config.model = ''
+    }
+  }
+
+  /**
+   * Clears Kokoro size and voice selection after the user clears the model cache.
+   * Leaves the catalog empty until the user picks a quantization size again.
+   */
+  async function clearKokoroLocalSelection() {
+    await cancelKokoroDownload()
+    kokoroAwaitingSizeChoice.value = true
+    kokoroCatalogLoadPaused.value = true
+    discardVoiceCatalog('kokoro-local')
+
+    const nextModels = { ...modelBySpeechProvider.value }
+    delete nextModels['kokoro-local']
+    modelBySpeechProvider.value = nextModels
+
+    const nextVoices = { ...voiceBySpeechProvider.value }
+    delete nextVoices['kokoro-local']
+    voiceBySpeechProvider.value = nextVoices
+
+    const config = providerStore.getProviderConfig('kokoro-local')
+    if (config && typeof config.model === 'string')
+      config.model = ''
+
+    if (activeSpeechProvider.value !== 'kokoro-local')
+      return
+
+    activeSpeechModel.value = ''
+    clearVoiceSelection()
+    catalog.$patch((state) => {
+      state.resetGeneration++
+    })
   }
 
   /** Executes a caller's immutable catalog request in the synchronization leader. */
@@ -331,8 +458,16 @@ export const useSpeechStore = defineStore('speech', () => {
       definitionId: configuration.definitionId,
       config: structuredClone(toRaw(configuration.config)),
     }
-    if (!model && resolveProviderDefinitionId(provider) === 'kokoro-local')
-      model = defaultKokoroModelId()
+    if (resolveProviderDefinitionId(provider) === 'kokoro-local') {
+      if (model) {
+        kokoroAwaitingSizeChoice.value = false
+        kokoroCatalogLoadPaused.value = false
+      }
+      else if (kokoroAwaitingSizeChoice.value || !model) {
+        availableVoices.value = { ...availableVoices.value, [provider]: [] }
+        return []
+      }
+    }
     if (model)
       catalogConfiguration.config.model = model
 
@@ -343,14 +478,14 @@ export const useSpeechStore = defineStore('speech', () => {
     }
 
     const loadSequence = ++voiceLoadSequence
-    latestVoiceLoads.set(provider, loadSequence)
+    latestVoiceLoads.set(provider, { sequence: loadSequence, model })
     if (voiceCatalogIdentities.value[provider]?.model !== model) {
       discardVoiceCatalog(provider)
     }
     const identity = await providersStore.getVoiceCatalogIdentity(model, catalogConfiguration)
     // Hashing yields. Reset, a newer request, or provider ownership changes
     // during that work must not clear or replace a newer catalog.
-    if (latestVoiceLoads.get(provider) !== loadSequence || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
+    if (isStaleVoiceCatalogLoad(provider, loadSequence, model) || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
       return []
     // Keep valid choices during a refresh. A model or configuration change
     // invalidates them before auto-pick can select from the previous catalog.
@@ -373,7 +508,7 @@ export const useSpeechStore = defineStore('speech', () => {
     }
     // Undefined is an expired session. A cleared sequence also rejects work
     // from an outgoing leader or a reset, even if its network response arrives.
-    if (latestVoiceLoads.get(provider) !== loadSequence || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
+    if (isStaleVoiceCatalogLoad(provider, loadSequence, model) || identity.owner !== providersStore.voiceCatalogOwners[identity.definitionId])
       return []
     if (voices === undefined) {
       // Session expiry also rejects persisted choices without a cached identity.
@@ -512,7 +647,30 @@ export const useSpeechStore = defineStore('speech', () => {
       return
     }
 
-    const definition = getDefinedProvider(resolveProviderDefinitionId(providerId))
+    const definitionId = resolveProviderDefinitionId(providerId)
+    if (definitionId === 'kokoro-local') {
+      if (kokoroAwaitingSizeChoice.value)
+        return
+      const models = providersStore.getModelsForProvider(providerId)
+      if (!models.length)
+        return
+      const configModel = typeof providerStore.getProviderConfig(providerId)?.model === 'string'
+        ? providerStore.getProviderConfig(providerId)?.model as string
+        : ''
+      const hasValidSelection = !!activeSpeechModel.value && models.some(model => model.id === activeSpeechModel.value)
+      if (hasValidSelection) {
+        mirrorSpeechModelToProviderConfig(providerId, activeSpeechModel.value)
+        return
+      }
+      const fromConfig = configModel && models.some(model => model.id === configModel) ? configModel : ''
+      if (fromConfig && activeSpeechModel.value !== fromConfig) {
+        activeSpeechModel.value = fromConfig
+        mirrorSpeechModelToProviderConfig(providerId, fromConfig)
+      }
+      return
+    }
+
+    const definition = getDefinedProvider(definitionId)
     if (definition?.requiresCredentials !== false)
       return
 
@@ -543,6 +701,37 @@ export const useSpeechStore = defineStore('speech', () => {
     activeSpeechModel.value = nextModel
     mirrorSpeechModelToProviderConfig(providerId, nextModel)
     clearVoiceSelection()
+  }
+
+  /** Picks a Kokoro size for chat TTS when the user never chose one on the settings page. */
+  function ensureKokoroRuntimeSpeechModel() {
+    const providerId = activeSpeechProvider.value
+    if (resolveProviderDefinitionId(providerId) !== 'kokoro-local')
+      return
+    if (activeSpeechModel.value?.trim() || kokoroAwaitingSizeChoice.value || kokoroCatalogLoadPaused.value)
+      return
+
+    const models = providersStore.getModelsForProvider(providerId)
+    if (!models.length)
+      return
+
+    const configModel = typeof providerStore.getProviderConfig(providerId)?.model === 'string'
+      ? providerStore.getProviderConfig(providerId)?.model as string
+      : ''
+    const defaultModel = providersStore.getDefaultModelForProvider(providerId)
+    const fromConfig = configModel && models.some(model => model.id === configModel) ? configModel : ''
+    const kokoroDefault = defaultKokoroModelId()
+    const nextModel = fromConfig
+      || (defaultModel && models.some(model => model.id === defaultModel) ? defaultModel : '')
+      || (models.some(model => model.id === kokoroDefault) ? kokoroDefault : '')
+      || models[0]?.id
+      || ''
+
+    if (!nextModel)
+      return
+
+    activeSpeechModel.value = nextModel
+    mirrorSpeechModelToProviderConfig(providerId, nextModel)
   }
 
   function ensureActiveSpeechModel() {
@@ -625,6 +814,8 @@ export const useSpeechStore = defineStore('speech', () => {
     activeSpeechModel.value = model
     if (changed)
       clearVoiceSelection()
+    else if (voiceId !== undefined && voiceId === activeSpeechVoiceId.value)
+      return { provider: activeSpeechProvider.value, model: activeSpeechModel.value }
     ensureActiveSpeechModel()
     if (activeSpeechModel.value)
       mirrorSpeechModelToProviderConfig(provider, activeSpeechModel.value)
@@ -644,6 +835,8 @@ export const useSpeechStore = defineStore('speech', () => {
   // belongs to the provider boundary, so this module stays auth-agnostic.
   watch([activeSpeechProvider, activeSpeechModel], async ([newProvider, newModel], _, onCleanup) => {
     if (!newProvider)
+      return
+    if (kokoroVoiceLoadBlocked(newProvider, newModel || undefined))
       return
     let stale = false
     onCleanup(() => {
@@ -681,6 +874,8 @@ export const useSpeechStore = defineStore('speech', () => {
 
   async function retryKokoroVoiceCatalogIfEmpty() {
     if (disposed || activeSpeechProvider.value !== 'kokoro-local')
+      return
+    if (kokoroAwaitingSizeChoice.value || kokoroCatalogLoadPaused.value)
       return
     const model = activeSpeechModel.value
     if (!model || voiceCatalogStatus.value['kokoro-local']?.loading)
@@ -755,8 +950,11 @@ export const useSpeechStore = defineStore('speech', () => {
     const provider = activeSpeechProvider.value
     if (!provider || provider === 'speech-noop' || provider === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
       return
+    if (kokoroRuntimeTtsBlocked(provider))
+      return
 
     ensureActiveSpeechModel()
+    ensureKokoroRuntimeSpeechModel()
     const model = activeSpeechModel.value
     if (model)
       await loadVoicesForProvider(provider, model)
@@ -956,8 +1154,10 @@ export const useSpeechStore = defineStore('speech', () => {
       throw new Error('Speech requires a model and voice')
     const provider = providersStore.getProviderInstance<SpeechProviderWithExtraOptions<string, Record<string, unknown>>>(providerId)
     // Gemini free TTS refuses overlapping segment requests. Test Voice sends one.
-    const ttsMaxConcurrent = getDefinedProvider(resolveProviderDefinitionId(providerId))?.capabilities?.speech?.ttsMaxConcurrent
-    return { ...output, ttsMaxConcurrent, synthesize: async (request, signal) => {
+    const speechCapability = getDefinedProvider(resolveProviderDefinitionId(providerId))?.capabilities?.speech
+    const ttsMaxConcurrent = speechCapability?.ttsMaxConcurrent
+    const ttsChunk = speechCapability?.ttsChunk
+    return { ...output, ttsMaxConcurrent, ttsChunk, synthesize: async (request, signal) => {
       signal.throwIfAborted()
       beginPlaybackAudioConsole()
       const client = await provider
@@ -1088,6 +1288,8 @@ export const useSpeechStore = defineStore('speech', () => {
     cancelCatalogRequests()
     activeSpeechProvider.reset()
     activeSpeechModel.reset()
+    kokoroAwaitingSizeChoice.reset()
+    kokoroCatalogLoadPaused.reset()
     activeSpeechVoiceId.reset()
     activeSpeechVoice.reset()
     pitch.reset()
@@ -1119,6 +1321,8 @@ export const useSpeechStore = defineStore('speech', () => {
     // State
     configured,
     activeSpeechProvider,
+    kokoroAwaitingSizeChoice,
+    kokoroCatalogLoadPaused,
     activeSpeechModel,
     activeSpeechVoice,
     activeSpeechVoiceId,
@@ -1163,6 +1367,11 @@ export const useSpeechStore = defineStore('speech', () => {
     loadVoiceCatalog,
     cancelCatalogRequests,
     cancelKokoroDownload,
+    prepareKokoroVoiceCatalogLoad,
+    resumeKokoroCatalogLoad,
+    resumeKokoroBrowseAfterClear,
+    clearKokoroBrowsingModelCache,
+    clearKokoroLocalSelection,
     invalidateVoiceCatalogs,
     selectProviderModel,
     commitSpeechSelection,
@@ -1175,6 +1384,7 @@ export const useSpeechStore = defineStore('speech', () => {
     getVoicesForProvider,
     ensureStreamingDefaultModel,
     ensureActiveSpeechModel,
+    ensureKokoroRuntimeSpeechModel,
     generateSSML,
     resolveSpeechInput,
     transformTextForSpeech,
@@ -1186,7 +1396,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 }, {
   synced: {
-    actions: ['loadVoiceCatalog', 'invalidateVoiceCatalogs', 'selectProviderModel', 'commitSpeechSelection', 'ensureActiveSpeechVoice', 'resetSettings', 'cancelKokoroDownload'],
+    actions: ['loadVoiceCatalog', 'invalidateVoiceCatalogs', 'selectProviderModel', 'commitSpeechSelection', 'ensureActiveSpeechVoice', 'resetSettings', 'cancelKokoroDownload', 'prepareKokoroVoiceCatalogLoad', 'clearKokoroBrowsingModelCache', 'clearKokoroLocalSelection'],
     state: true,
   },
 })

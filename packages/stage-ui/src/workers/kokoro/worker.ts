@@ -21,32 +21,35 @@ import { errorMessageFromValue } from '@proj-airi/stage-shared'
 import { KokoroTTS } from 'kokoro-js'
 
 import { MODEL_IDS, MODEL_NAMES } from '../../libs/inference/constants'
+import {
+  isCorruptKokoroOnnxError,
+  kokoroOnnxCacheUrlsForQuantization,
+} from '../../libs/inference/kokoro-speech-model-download-state'
 import { classifyError, isRecoverable } from '../../libs/inference/protocol'
 
 env.allowLocalModels = false
 env.useBrowserCache = true
 env.backends.onnx.logLevel = 'error'
 
-// NOTICE: Limit WASM thread count so Kokoro does not starve the renderer on low-end CPUs.
-// Legacy Patch 1.01.
-if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
-  env.backends.onnx.wasm!.numThreads = Math.min(4, Math.max(1, Math.floor(navigator.hardwareConcurrency / 2)))
-}
-else {
-  env.backends.onnx.wasm!.numThreads = 2
-}
+// Four threads is the default. ONNX uses one thread until the window is cross-origin isolated.
+const hardwareThreads = typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency
+env.backends.onnx.wasm!.numThreads = Math.min(4, Math.max(1, hardwareThreads || 4))
 
 const TRANSFORMERS_CACHE_NAME = 'transformers-cache'
 
-async function configureRemoteModelAccessForLoad(): Promise<void> {
-  try {
-    if (typeof caches === 'undefined')
-      return
+async function listTransformersCacheUrls(): Promise<string[]> {
+  if (typeof caches === 'undefined')
+    return []
 
-    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
-    const keys = await cache.keys()
-    const isCached = keys.some(request => request.url.includes(MODEL_IDS.KOKORO))
-    if (isCached) {
+  const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+  const keys = await cache.keys()
+  return keys.map(request => request.url)
+}
+
+async function configureRemoteModelAccessForLoad(quantization: string): Promise<void> {
+  try {
+    const onnxUrls = kokoroOnnxCacheUrlsForQuantization(await listTransformersCacheUrls(), quantization)
+    if (onnxUrls.length > 0) {
       console.info('[Kokoro Worker] Model files found in cache. Disabling remote checks to load offline.')
       env.allowLocalModels = true
       env.allowRemoteModels = false
@@ -59,6 +62,25 @@ async function configureRemoteModelAccessForLoad(): Promise<void> {
   }
   catch (error) {
     console.warn('[Kokoro Worker] Cache check failed, proceeding with default settings:', errorMessageFromValue(error))
+  }
+}
+
+async function deleteCachedKokoroOnnx(quantization: string): Promise<void> {
+  if (typeof caches === 'undefined')
+    return
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    const drop = new Set(kokoroOnnxCacheUrlsForQuantization(keys.map(request => request.url), quantization))
+    await Promise.all(
+      keys
+        .filter(request => drop.has(request.url))
+        .map(request => cache.delete(request)),
+    )
+  }
+  catch (error) {
+    console.warn('[Kokoro Worker] Could not delete the damaged voice file:', errorMessageFromValue(error))
   }
 }
 
@@ -157,14 +179,22 @@ function sendError(requestId: string, error: unknown, phase?: 'load' | 'inferenc
   globalThis.postMessage(msg)
 }
 
+interface KokoroDownloadProgress {
+  progress?: number
+  status?: string
+  file?: string
+  loaded?: number
+  total?: number
+}
+
 async function loadModel(request: LoadModelRequest): Promise<void> {
   const { requestId, device, dtype } = request
   const quantization = dtype ?? 'fp32'
-
-  await configureRemoteModelAccessForLoad()
+  const modelQuantization = quantization.endsWith('-webgpu')
+    ? quantization.slice(0, -'-webgpu'.length)
+    : quantization
 
   try {
-    // Check if we already have the correct model loaded
     if (ttsModel && currentQuantization === quantization && currentDevice === device) {
       if (isCancelled(requestId)) {
         clearCancelled(requestId)
@@ -181,10 +211,7 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
       return
     }
 
-    // Map webgpu variants to their base dtype (e.g., 'fp16-webgpu' → 'fp16', 'fp32-webgpu' → 'fp32')
-    const modelQuantization = quantization.endsWith('-webgpu')
-      ? quantization.slice(0, -'-webgpu'.length)
-      : quantization
+    await configureRemoteModelAccessForLoad(modelQuantization)
 
     // Build ordered list of (dtype, device) pairs to attempt
     const attempts: Array<{ dtype: string, device: string }> = [
@@ -195,15 +222,20 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
     for (const fallbackDevice of (DEVICE_FALLBACK[device] ?? []))
       attempts.push({ dtype: modelQuantization, device: fallbackDevice })
 
+    const retriedCorruptLoads = new Set<string>()
     let lastError: unknown
-    for (const attempt of attempts) {
+    for (let index = 0; index < attempts.length; index += 1) {
+      const attempt = attempts[index]
+      if (!attempt)
+        continue
+
       try {
         ttsModel = await KokoroTTS.from_pretrained(
           MODEL_IDS.KOKORO,
           {
             dtype: attempt.dtype as 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16',
             device: attempt.device as 'wasm' | 'webgpu' | 'cpu',
-            progress_callback: (progress: any) => {
+            progress_callback: (progress: KokoroDownloadProgress) => {
               const rawProgress = progress?.progress
               const normalizedPercent = rawProgress == null || rawProgress < 0
                 ? -1
@@ -250,12 +282,27 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
       }
       catch (error) {
         lastError = error
+        const message = errorMessageFromValue(error)
+        const retryKey = `${attempt.dtype}:${attempt.device}`
+        // NOTICE:
+        // Delete a broken ONNX file before the same size is tried again.
+        // transformers.js keeps the cached file after remote downloads turn back on.
+        // Console 2322: protobuf parsing failed on q4f16. Cancel stopped the redownload.
+        // Remove this when the loader rejects a bad cache entry.
+        if (isCorruptKokoroOnnxError(message) && !retriedCorruptLoads.has(retryKey)) {
+          retriedCorruptLoads.add(retryKey)
+          console.info('[Kokoro Worker] Saved voice file is damaged. Deleting it and downloading the same size again.')
+          await deleteCachedKokoroOnnx(attempt.dtype)
+          env.allowRemoteModels = true
+          env.allowLocalModels = false
+          attempts.splice(index + 1, 0, attempt)
+          continue
+        }
+
         console.warn(
           `[Kokoro Worker] Failed with dtype=${attempt.dtype} device=${attempt.device}, trying next fallback...`,
-          errorMessageFromValue(error),
+          message,
         )
-        // NOTICE: Corrupted cache entries can leave remote fetches disabled. Re-enable
-        // remote downloads so the next attempt can repair files. Legacy Patch 2.00.
         if (!env.allowRemoteModels) {
           console.info('[Kokoro Worker] Load failed with remote models disabled. Re-enabling remote models to repair or redownload files.')
           env.allowRemoteModels = true

@@ -327,4 +327,30 @@ describe('voiceController output', () => {
     expect(maxInFlight).toBe(1)
     await controller.close()
   })
+
+  it('splits a reply at commas when the speech output asks for short chunks', async () => {
+    const texts: string[] = []
+    const playback = new Playback({ nowMs: () => 0, play: () => ({ done: Promise.resolve({ throughMs: 1 }), stop: async () => ({ throughMs: 0 }) }) })
+    const controller = new VoiceController({
+      speech: () => ({
+        playback,
+        ttsChunk: { minimumWords: 2, maximumWords: 8, boost: 32 },
+        synthesize: async (request) => {
+          texts.push(request.text)
+          return new Blob([request.text])
+        },
+      }),
+    })
+    const response = controller.openResponse({ sessionId: 'alice', turnId: 'short-chunks' })
+    const speech = response.openSpeech({ purpose: 'answer' })
+    await speech.write('Hi! I\'m doing well, thank you for asking.')
+    speech.end()
+    await response.finish()
+    expect(texts).toEqual([
+      'Hi!',
+      'I\'m doing well,',
+      'thank you for asking.',
+    ])
+    await controller.close()
+  })
 })

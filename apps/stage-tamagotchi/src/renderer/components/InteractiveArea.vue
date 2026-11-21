@@ -28,7 +28,7 @@ import { useI18n } from 'vue-i18n'
 import JournalToolCallBlock from './chat-tool-renderers/journal-tool-call-block.vue'
 import ChatViewportLayout from './chat-viewport-layout.vue'
 
-import { electronOpenSettings } from '../../shared/eventa'
+import { electronOpenDevtoolsWindow, electronOpenSettings } from '../../shared/eventa'
 import { useHearingInputChannel } from '../composables/use-hearing-input-channel'
 import { computerUseToolReferences, useToolSelectionStore, widgetToolReferences } from '../stores/tools'
 import { COMPUTER_USE_READ_IMAGE_TOOL_NAME, COMPUTER_USE_TOOL_NAME } from '../stores/tools/builtin/computer-use'
@@ -101,6 +101,11 @@ const { activeTurns, backgroundTasks } = storeToRefs(chatStore)
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { chatReady, chatSetupBlocker, activeProvider } = storeToRefs(useConsciousnessStore())
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
+const openDevtoolsWindow = useElectronEventaInvoke(electronOpenDevtoolsWindow)
+
+function openIoTracer() {
+  void openDevtoolsWindow({ key: 'io-tracer', route: '/devtools/io-tracer', width: 1600, height: 900 })
+}
 
 function openChatSetup() {
   if (chatSetupBlocker.value === 'provider-credentials' && activeProvider.value) {
@@ -576,6 +581,16 @@ defineExpose({
           <!-- The voice control shows its recording status here, so the composer keeps its height. -->
           <div ref="voice-status" :class="['min-w-0 flex flex-1 items-center px-1']" />
           <div :class="['flex shrink-0 items-center gap-1']">
+            <GhostButton
+              data-testid="io-tracer-shortcut"
+              size="unset"
+              :class="['size-9']"
+              :aria-label="t('tamagotchi.settings.devtools.pages.io-tracer.title')"
+              :title="t('tamagotchi.settings.devtools.pages.io-tracer.title')"
+              @click="openIoTracer"
+            >
+              <span :class="['i-solar:chart-2-bold-duotone size-5 shrink-0']" />
+            </GhostButton>
             <VoiceInputButton
               ref="voice-button"
               v-model="messageInput"

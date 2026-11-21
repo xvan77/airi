@@ -98,6 +98,29 @@ export function cacheUrlMatchesKokoroQuantization(url: string, quantization: str
     || lower.includes(`/${quant}/`)
 }
 
+/**
+ * True when ONNX refused the file because the saved bytes are not a model.
+ * The loader must delete that cache entry and download the same size again.
+ */
+export function isCorruptKokoroOnnxError(message: string): boolean {
+  return message.toLowerCase().includes('protobuf parsing failed')
+}
+
+/**
+ * Cache URLs for one Kokoro size. Only ONNX weights match.
+ * Shared files such as the tokenizer stay in the cache.
+ */
+export function kokoroOnnxCacheUrlsForQuantization(urls: string[], quantization: string): string[] {
+  return urls.filter((url) => {
+    const lower = url.toLowerCase()
+    if (!lower.includes('.onnx'))
+      return false
+    if (!isKokoroCacheUrl(url))
+      return false
+    return cacheUrlMatchesKokoroQuantization(url, quantization)
+  })
+}
+
 function cacheUrlMatchesKokoroSpeechModel(url: string, model: KokoroModel): boolean {
   if (!isKokoroCacheUrl(url))
     return false
@@ -131,4 +154,55 @@ export async function listKokoroSpeechModelsDownloaded(): Promise<string[]> {
   return KOKORO_MODELS
     .filter(model => urls.some(url => cacheUrlMatchesKokoroSpeechModel(url, model)))
     .map(model => model.id)
+}
+
+/** Deletes cached ONNX for one Kokoro speech model size. */
+export async function clearKokoroOnnxForSpeechModel(speechModelId: string): Promise<void> {
+  const model = KOKORO_MODELS.find(entry => entry.id === speechModelId)
+  if (!model)
+    return
+
+  if (typeof caches === 'undefined')
+    return
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    const urls = keys.map(request => request.url)
+    const drop = new Set(kokoroOnnxCacheUrlsForQuantization(urls, model.quantization))
+    await Promise.all(
+      keys
+        .filter(request => drop.has(request.url))
+        .map(request => cache.delete(request)),
+    )
+  }
+  catch {
+    // Cache API may be unavailable in some embedded contexts.
+  }
+}
+
+/** Deletes Kokoro ONNX entries from the transformers browser cache without touching shared tokenizer files. */
+export async function clearAllKokoroOnnxFromTransformersCache(): Promise<void> {
+  if (typeof caches === 'undefined')
+    return
+
+  try {
+    const cache = await caches.open(TRANSFORMERS_CACHE_NAME)
+    const keys = await cache.keys()
+    const urls = keys.map(request => request.url)
+    const drop = new Set<string>()
+    const dedupedQuants = [...new Set(KOKORO_MODELS.map(model => model.quantization))]
+    for (const quantization of dedupedQuants) {
+      for (const url of kokoroOnnxCacheUrlsForQuantization(urls, quantization))
+        drop.add(url)
+    }
+    await Promise.all(
+      keys
+        .filter(request => drop.has(request.url))
+        .map(request => cache.delete(request)),
+    )
+  }
+  catch {
+    // Cache API may be unavailable in some embedded contexts.
+  }
 }

@@ -1,3 +1,4 @@
+export { resetKokoroLocalProviderSession } from '../providers/providers/kokoro-local'
 // Constants
 export {
   MAX_RESTARTS,
@@ -25,7 +26,18 @@ export type {
 } from './gpu-resource-coordinator'
 // Cache utilities
 export {
+  KOKORO_LOADING_STATES,
+  kokoroProgressIsDownloadPhase,
+  kokoroProgressMessage,
+  resolveKokoroProgressSpeechModelId,
+} from './kokoro-progress-message'
+export type {
+  KokoroProgressLabels,
+} from './kokoro-progress-message'
+export {
   cacheUrlMatchesKokoroQuantization,
+  clearAllKokoroOnnxFromTransformersCache,
+  clearKokoroOnnxForSpeechModel,
   isKokoroSpeechModelDownloaded,
   listKokoroSpeechModelsDownloaded,
 } from './kokoro-speech-model-download-state'

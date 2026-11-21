@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 import { getDefaultKokoroModel, KOKORO_MODELS, kokoroModelsToModelInfo } from '../../../../workers/kokoro/constants'
 import { getKokoroAdapter } from '../../../inference/adapters/kokoro'
+import { isKokoroSpeechModelDownloaded } from '../../../inference/kokoro-speech-model-download-state'
 import { defineProvider } from '../registry'
 
 interface KokoroVoice {
@@ -82,6 +83,11 @@ function resolveConfiguredModelId(
 
 let lastLoadedModelId: string | null = null
 
+/** Drops cached Kokoro adapter state in this renderer after cache clear or cancel. */
+export function resetKokoroLocalProviderSession() {
+  lastLoadedModelId = null
+}
+
 export const providerKokoroLocal = defineProvider({
   id: 'kokoro-local',
   name: 'Kokoro TTS',
@@ -91,6 +97,19 @@ export const providerKokoroLocal = defineProvider({
   tasks: ['text-to-speech'],
   icon: 'i-lobe-icons:speaker',
   requiresCredentials: false,
+  capabilities: {
+    speech: {
+      transport: 'rest',
+      // One piece at a time. The finished piece plays while the next piece is built.
+      ttsMaxConcurrent: 1,
+      // A comma starts the next piece once two words are ready.
+      ttsChunk: {
+        minimumWords: 2,
+        maximumWords: 8,
+        boost: 32,
+      },
+    },
+  },
   createProviderConfig: () => {
     const capabilities = getWebGpuState()
     return z.object({
@@ -176,6 +195,10 @@ export const providerKokoroLocal = defineProvider({
     listVoices: async (config, _provider, speechModel) => {
       try {
         const modelId = resolveConfiguredModelId(config, speechModel)
+        const modelOnDisk = await isKokoroSpeechModelDownloaded(modelId)
+        if (!modelOnDisk)
+          lastLoadedModelId = null
+
         const adapter = await getKokoroAdapter()
         if (adapter.state !== 'ready' || modelId !== lastLoadedModelId) {
           const model = assertModelSupported(modelId)

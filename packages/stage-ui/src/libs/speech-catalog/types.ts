@@ -29,5 +29,9 @@ export interface SpeechModelSelectItem {
   statusChip?: {
     label: string
     active: boolean
+    /** Visual tone for Kokoro download actions. */
+    tone?: 'neutral' | 'download' | 'downloading' | 'ready' | 'removing'
+    /** When true, the chip is a button and emits status-chip-click. */
+    interactive?: boolean
   }
 }

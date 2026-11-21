@@ -6,8 +6,12 @@ import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(defineProps<{
   disableClearDownloads?: boolean
+  clearDownloadsModelName?: string
+  showClearDownloads?: boolean
 }>(), {
   disableClearDownloads: false,
+  clearDownloadsModelName: '',
+  showClearDownloads: false,
 })
 const emit = defineEmits<{
   clearDownloads: []
@@ -56,6 +60,7 @@ function selectSort(option: SpeechCatalogSortKey) {
         </div>
       </div>
       <button
+        v-if="props.showClearDownloads"
         type="button"
         :class="[
           'shrink-0 rounded-md border px-2.5 py-0.5 font-medium transition-all',
@@ -65,10 +70,14 @@ function selectSort(option: SpeechCatalogSortKey) {
           'dark:hover:border-amber-400/45 dark:hover:bg-amber-900/40',
           'disabled:cursor-not-allowed disabled:opacity-50',
         ]"
-        :disabled="props.disableClearDownloads"
+        :disabled="props.disableClearDownloads || !props.clearDownloadsModelName"
         @click="emit('clearDownloads')"
       >
-        {{ t('settings.pages.modules.speech.model_catalog.clear_downloads') }}
+        {{
+          props.clearDownloadsModelName
+            ? t('settings.pages.modules.speech.model_catalog.clear_downloads_for', { model: props.clearDownloadsModelName })
+            : t('settings.pages.modules.speech.model_catalog.clear_downloads')
+        }}
       </button>
     </div>
   </div>

@@ -511,6 +511,31 @@ export function cancelKokoroModelLoad(reason?: string): void {
   activeLoadAbort?.abort(reason ?? 'Download cancelled by user')
 }
 
+/** Reads the current singleton without creating a worker. */
+export function peekKokoroAdapterSnapshot(): {
+  state: KokoroAdapter['state']
+  quantization: string | null
+} | null {
+  if (!globalAdapter)
+    return null
+  return {
+    state: globalAdapter.state,
+    quantization: globalAdapter.manifest?.quantization ?? null,
+  }
+}
+
+/**
+ * Aborts the active load and destroys the singleton worker.
+ * Does not create a replacement adapter.
+ */
+export function terminateKokoroAdapter(): void {
+  cancelKokoroModelLoad('terminated by settings')
+  if (!globalAdapter)
+    return
+  globalAdapter.terminate()
+  globalAdapter = null
+}
+
 /**
  * Get the global Kokoro adapter instance.
  * Creates and starts the worker on first call.
