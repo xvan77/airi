@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { listPricingPageSources } from './pricing-source'
 import {
   resolveModelPricingTier,
+  resolveModelPricingTiers,
   resolvePricingTierFromEvidence,
+  resolvePricingTiersFromEvidence,
   tierFromGeminiPriceCells,
   tierFromListingRates,
 } from './resolve-pricing-tier'
@@ -30,8 +32,14 @@ describe('resolvePricingTierFromEvidence', () => {
     expect(resolvePricingTierFromEvidence({ freePath: 'unmetered', paidPath: false })).toBe('free')
   })
 
-  it('maps unmetered with paid path to limited', () => {
-    expect(resolvePricingTierFromEvidence({ freePath: 'unmetered', paidPath: true })).toBe('limited')
+  it('maps unmetered with paid path to free for primary sort', () => {
+    expect(resolvePricingTierFromEvidence({ freePath: 'unmetered', paidPath: true })).toBe('free')
+  })
+
+  it('lists every pricing bucket from evidence', () => {
+    expect(resolvePricingTiersFromEvidence({ freePath: 'quota', paidPath: true })).toEqual(['limited', 'paid'])
+    expect(resolvePricingTiersFromEvidence({ freePath: 'unmetered', paidPath: true })).toEqual(['free', 'paid'])
+    expect(resolvePricingTiersFromEvidence({ freePath: 'unmetered', paidPath: false })).toEqual(['free'])
   })
 })
 
@@ -68,6 +76,12 @@ describe('resolveModelPricingTier', () => {
       providerId: 'google-generative-ai',
       tierTables: tables,
     })).toBe('limited')
+
+    expect(resolveModelPricingTiers({
+      modelId: 'models/gemini-3.8-flash',
+      providerId: 'google-generative-ai',
+      tierTables: tables,
+    })).toEqual(['limited', 'paid'])
 
     expect(resolveModelPricingTier({
       modelId: 'meta-llama/test',

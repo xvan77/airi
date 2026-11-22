@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { InferenceModelStatus, VoiceType } from '@proj-airi/stage-ui/composables'
 import type { KokoroDownloadProgressSnapshot } from '@proj-airi/stage-ui/libs/inference/kokoro-download-progress'
+import type {
+  ModelCatalogDeploymentFilter,
+  ModelCatalogPricingFilter,
+  ModelCatalogSortDirection,
+  ModelCatalogSortKey,
+} from '@proj-airi/stage-ui/libs/model-catalog'
 import type { SpeechCatalogSortDirection, SpeechCatalogSortKey } from '@proj-airi/stage-ui/libs/speech-catalog'
 import type { VoiceInfo } from '@proj-airi/stage-ui/stores/providers/provider'
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
@@ -9,6 +15,7 @@ import { errorMessageFrom } from '@moeru/std'
 import {
   Alert,
   ErrorContainer,
+  ModelCatalogFilters,
   RadioCardManySelect,
   RadioCardSimple,
   SettingsSplitPane,
@@ -26,7 +33,7 @@ import { formatChatProviderErrorContent } from '@proj-airi/stage-ui/libs/chat-pr
 import { clearModelCache, isKokoroSpeechModelDownloaded } from '@proj-airi/stage-ui/libs/inference'
 import { getKokoroAdapter } from '@proj-airi/stage-ui/libs/inference/adapters/kokoro'
 import { formatDownloadSpeed, resolveProgressPercent, smoothDownloadSpeed } from '@proj-airi/stage-ui/libs/inference/protocol'
-import { compareProviderCatalogOrder } from '@proj-airi/stage-ui/libs/model-catalog'
+import { compareProviderCatalogOrder, ensurePricingSourcesFresh, selectModelCatalogItems } from '@proj-airi/stage-ui/libs/model-catalog'
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } from '@proj-airi/stage-ui/libs/providers/providers/official'
 import { kokoroCatalogSelectItems } from '@proj-airi/stage-ui/libs/speech-catalog'
 import { VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '@proj-airi/stage-ui/libs/speech/voice-profile'
@@ -88,6 +95,10 @@ const {
 const voiceSearchQuery = ref('')
 const kokoroSortKey = ref<SpeechCatalogSortKey>('disk')
 const kokoroSortDirection = ref<SpeechCatalogSortDirection>('asc')
+const speechModelFilterPricing = ref<ModelCatalogPricingFilter>('all')
+const speechModelFilterDeployment = ref<ModelCatalogDeploymentFilter>('all')
+const speechModelSortKey = ref<ModelCatalogSortKey>('default')
+const speechModelSortDirection = ref<ModelCatalogSortDirection>('asc')
 const kokoroQuantDownloaded = ref<Record<string, boolean>>({})
 const clearingKokoroDownloads = ref(false)
 const windowsVoiceDownloadingLocale = ref('')
@@ -714,6 +725,11 @@ function localizeModelDescription(description: string | undefined) {
   return description
 }
 
+const speechCatalogFilters = computed(() => ({
+  pricing: speechModelFilterPricing.value,
+  deployment: speechModelFilterDeployment.value,
+}))
+
 const speechModelSelectItems = computed(() => {
   const models = displayedProviderModels.value
   if (isKokoroSpeechProvider.value) {
@@ -730,11 +746,48 @@ const speechModelSelectItems = computed(() => {
     })
   }
 
-  return models.map(model => ({
-    id: model.id,
-    name: model.name,
-    description: model.description,
-    deprecated: model.deprecated,
+  if (isOfficialSpeechSourceSelected.value) {
+    const regularModels = providersStore.getModelsForProvider(OFFICIAL_SPEECH_PROVIDER_ID)
+    const streamingModels = providersStore.getModelsForProvider(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
+    const regularItems = selectModelCatalogItems(
+      regularModels,
+      { providerId: OFFICIAL_SPEECH_PROVIDER_ID, catalogKind: 'any' },
+      speechCatalogFilters.value,
+      speechModelSortKey.value,
+      speechModelSortDirection.value,
+      modelSearchQuery.value,
+    )
+    const streamingItems = selectModelCatalogItems(
+      streamingModels,
+      { providerId: OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, catalogKind: 'any' },
+      speechCatalogFilters.value,
+      speechModelSortKey.value,
+      speechModelSortDirection.value,
+      modelSearchQuery.value,
+    ).map(item => ({
+      ...item,
+      id: streamingModelOptionId(item.id),
+      description: localizeModelDescription(item.description) || 'Low-latency streaming TTS',
+    }))
+    return [
+      ...regularItems.map(item => ({
+        ...item,
+        description: localizeModelDescription(item.description),
+      })),
+      ...streamingItems,
+    ]
+  }
+
+  return selectModelCatalogItems(
+    models,
+    { providerId: resolvedBrowsingSpeechProviderId(), catalogKind: 'any' },
+    speechCatalogFilters.value,
+    speechModelSortKey.value,
+    speechModelSortDirection.value,
+    modelSearchQuery.value,
+  ).map(item => ({
+    ...item,
+    description: localizeModelDescription(item.description),
   }))
 })
 
@@ -1008,6 +1061,7 @@ async function syncOpenAICompatibleSettings() {
 
 onMounted(async () => {
   try {
+    void ensurePricingSourcesFresh()
     if (activeSpeechProvider.value === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
       await speechStore.selectProviderModel('speech-noop', '')
     await providersStore.loadModelsForConfiguredProviders()
@@ -1592,6 +1646,14 @@ async function handleDeleteProvider(providerId: string) {
                 class="min-w-0 flex-1"
                 :disable-clear-downloads="clearingKokoroDownloads"
                 @clear-downloads="clearKokoroDownloads"
+              />
+              <ModelCatalogFilters
+                v-else
+                v-model:pricing="speechModelFilterPricing"
+                v-model:deployment="speechModelFilterDeployment"
+                v-model:sort-key="speechModelSortKey"
+                v-model:sort-direction="speechModelSortDirection"
+                class="min-w-0 flex-1"
               />
               <RadioCardManySelect
                 v-model:search-query="modelSearchQuery"

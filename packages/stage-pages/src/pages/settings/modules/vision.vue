@@ -1,13 +1,21 @@
 <script setup lang="ts">
-import { Alert, ErrorContainer, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
+import type {
+  ModelCatalogDeploymentFilter,
+  ModelCatalogPricingFilter,
+  ModelCatalogSortDirection,
+  ModelCatalogSortKey,
+} from '@proj-airi/stage-ui/libs/model-catalog'
+
+import { Alert, ErrorContainer, ModelCatalogFilters, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { ensurePricingSourcesFresh, selectModelCatalogItems } from '@proj-airi/stage-ui/libs/model-catalog'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useVisionActivityStore, useVisionProcessingStore, useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { FieldCheckbox, FieldRange, SettingsCard } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
@@ -46,12 +54,35 @@ const {
 const { t, locale } = useI18n()
 const { trackProviderClick } = useAnalytics()
 
+const visionModelFilterPricing = ref<ModelCatalogPricingFilter>('all')
+const visionModelFilterDeployment = ref<ModelCatalogDeploymentFilter>('all')
+const visionModelSortKey = ref<ModelCatalogSortKey>('default')
+const visionModelSortDirection = ref<ModelCatalogSortDirection>('asc')
+
+const visionModelSelectItems = computed(() =>
+  selectModelCatalogItems(
+    providerModels.value,
+    { providerId: activeProvider.value, catalogKind: 'any' },
+    {
+      pricing: visionModelFilterPricing.value,
+      deployment: visionModelFilterDeployment.value,
+    },
+    visionModelSortKey.value,
+    visionModelSortDirection.value,
+    modelSearchQuery.value,
+  ),
+)
+
 watch(activeProvider, async (provider) => {
   if (!provider)
     return
 
   await visionStore.loadModelsForProvider(provider)
 }, { immediate: true })
+
+onMounted(() => {
+  void ensurePricingSourcesFresh()
+})
 
 async function selectProvider(provider: string) {
   await airiCardStore.selectActiveCardVisionProvider(provider)
@@ -285,11 +316,22 @@ function formatRelativeTime(timestamp: number | null) {
         </Alert>
 
         <template v-else-if="providerModels.length > 0">
+          <ModelCatalogFilters
+            v-model:pricing="visionModelFilterPricing"
+            v-model:deployment="visionModelFilterDeployment"
+            v-model:sort-key="visionModelSortKey"
+            v-model:sort-direction="visionModelSortDirection"
+            class="mb-3 min-w-0"
+          />
           <RadioCardManySelect
             v-model="activeModel"
             v-model:search-query="modelSearchQuery"
-            :items="providerModels.sort((a, b) => a.id === activeModel ? -1 : b.id === activeModel ? 1 : 0)"
+            :items="visionModelSelectItems"
             :searchable="true"
+            :provider-id="activeProvider"
+            :description-collapsed-by-default="true"
+            :description-toggle-label="t('settings.pages.modules.consciousness.model_catalog.description_show')"
+            :description-collapse-label="t('settings.pages.modules.consciousness.model_catalog.description_hide')"
             :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
             :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
             :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: modelSearchQuery })"

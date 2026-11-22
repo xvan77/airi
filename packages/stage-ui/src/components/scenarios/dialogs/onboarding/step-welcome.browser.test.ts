@@ -10,6 +10,7 @@ import { createI18n } from 'vue-i18n'
 
 import StepWelcome from './step-welcome.vue'
 
+import { useOnboardingDefaultCardLanguageSync } from '../../../../composables/use-onboarding-language-card-sync'
 import { AIRI_FLUX_URL, AIRI_TERMS_URL } from '../../../../constants/public-links'
 import { useAuthStore } from '../../../../stores/auth'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
@@ -122,6 +123,7 @@ describe('onboarding language choice', () => {
     const App = defineComponent({
       setup() {
         // The card store creates its runtime stores in the setup of the app, where they can bind i18n.
+        useOnboardingDefaultCardLanguageSync()
         void useAiriCardStore().initialize()
         return () => h(StepWelcome, { customProviderSetupEnabled: true, localSetupEnabled: false, onStartSetup: vi.fn(), onNext: vi.fn() })
       },

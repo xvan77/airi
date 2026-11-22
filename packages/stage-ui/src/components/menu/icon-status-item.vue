@@ -13,6 +13,7 @@ const props = defineProps<{
   configured?: boolean
   syncState?: 'synced' | 'pending' | 'not-uploaded'
   pricing?: ProviderPricing
+  pricingTiers?: readonly ProviderPricing[]
   deployment?: ProviderDeployment
   beginnerRecommended?: boolean
 }>()
@@ -33,6 +34,15 @@ const syncIcons = {
 } as const
 
 const syncIcon = computed(() => props.syncState ? syncIcons[props.syncState] : undefined)
+
+const pricingLabels = computed(() => {
+  const tiers = props.pricingTiers?.length
+    ? props.pricingTiers
+    : props.pricing
+      ? [props.pricing]
+      : []
+  return [...new Set(tiers)]
+})
 </script>
 
 <template>
@@ -46,45 +56,69 @@ const syncIcon = computed(() => props.syncState ? syncIcons[props.syncState] : u
     h-full w-full cursor-pointer of-hidden rounded-xl
   >
     <RouterLink
-      flex="~ row"
-      class="menu-icon-status-item-link"
-      bg="white dark:neutral-900"
-      transition="all ease-in-out duration-400"
-      relative w-full flex-1 items-start overflow-hidden rounded-lg p-5 text-left
-      :to=" props.to"
+      :class="[
+        'menu-icon-status-item-link',
+        'relative flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg p-3.5 text-left',
+        'bg-white dark:bg-neutral-900',
+        'transition-all duration-400 ease-in-out',
+      ]"
+      :to="props.to"
     >
-      <div z-1 flex-1>
+      <div :class="['z-1', 'flex min-h-0 flex-1 flex-col']">
         <div
-          text-lg font-normal
-          class="menu-icon-status-item-title"
-          transition="all ease-in-out duration-400"
+          :class="[
+            'menu-icon-status-item-title',
+            'text-base font-normal',
+            'transition-all duration-400 ease-in-out',
+          ]"
         >
           {{ props.title }}
         </div>
         <div
-          text="sm neutral-500 dark:neutral-400"
-          class="menu-icon-status-item-description"
-          transition="all ease-in-out duration-400"
+          :class="[
+            'menu-icon-status-item-description',
+            'text-xs text-neutral-500 leading-snug dark:text-neutral-400',
+            'transition-all duration-400 ease-in-out',
+          ]"
         >
           <span>{{ props.description || '' }}</span>
         </div>
 
-        <div v-if="props.pricing || props.deployment || props.beginnerRecommended" mt-2 flex flex-wrap gap-1.5>
-          <div
-            v-if="props.beginnerRecommended"
-            text="[10px] white" rounded-md bg-green-500 px-1.5 py-0.5 font-bold tracking-wider uppercase
-          >
-            {{ $t('settings.pages.providers.labels.recommended') }}
-          </div>
-          <div
-            v-if="props.pricing"
-            text="[10px] neutral-600 dark:neutral-300" border="1 neutral-200 dark:neutral-700" rounded-md px-1.5 py-0.5 font-bold tracking-wider uppercase
-          >
-            {{ $t(`settings.pages.providers.filters.${props.pricing}`) }}
+        <div
+          v-if="pricingLabels.length || props.deployment || props.beginnerRecommended"
+          :class="[
+            'mt-auto flex w-full items-end gap-1 pt-2',
+          ]"
+        >
+          <div class="min-w-0 flex flex-1 flex-wrap items-center gap-1">
+            <div
+              v-if="props.beginnerRecommended"
+              :class="[
+                'rounded-md bg-green-500 px-1.5 py-0.5',
+                'text-[10px] font-bold tracking-wider text-white uppercase',
+              ]"
+            >
+              {{ $t('settings.pages.providers.labels.recommended') }}
+            </div>
+            <div
+              v-for="tier in pricingLabels"
+              :key="tier"
+              :class="[
+                'rounded-md border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 dark:border-neutral-600 dark:bg-neutral-800/80',
+                'text-[10px] font-bold tracking-wider text-neutral-600 uppercase dark:text-neutral-300',
+              ]"
+              :title="$t(`settings.pages.providers.filters.${tier}`)"
+            >
+              {{ $t(`settings.pages.providers.filters.${tier}`) }}
+            </div>
           </div>
           <div
             v-if="props.deployment"
-            text="[10px] neutral-600 dark:neutral-300" border="1 neutral-200 dark:neutral-700" rounded-md px-1.5 py-0.5 font-bold tracking-wider uppercase
+            :class="[
+              'ml-1 shrink-0 rounded-md border border-primary-300/60 bg-primary-500/10 px-1.5 py-0.5 dark:border-primary-500/40 dark:bg-primary-500/15',
+              'text-[10px] font-bold tracking-wider text-primary-700 uppercase dark:text-primary-300',
+            ]"
+            :title="$t(`settings.pages.providers.filters.${props.deployment}`)"
           >
             {{ $t(`settings.pages.providers.filters.${props.deployment}`) }}
           </div>
@@ -131,7 +165,7 @@ const syncIcon = computed(() => props.syncState ? syncIcons[props.syncState] : u
         'text-neutral-400 dark:text-neutral-500',
       ]"
     />
-    <div p-2>
+    <div class="p-1.5">
       <div v-if="props.configured" size-4 bg="green-500" rounded-full shadow="lg" />
       <div v-else size-4 border="2 neutral-200 dark:neutral-700" rounded-full bg="white dark:neutral-900" />
     </div>

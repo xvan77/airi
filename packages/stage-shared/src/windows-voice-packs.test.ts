@@ -6,6 +6,7 @@ import {
   filterWindowsVoicePacksByZone,
   markWindowsVoicePacks,
   parseOneCoreRegistryListing,
+  pickPreferredAppLocalSpeechVoice,
   preferDistinctWindowsVoices,
   windowsVoicePackCapabilityName,
   windowsVoicePackZone,
@@ -84,19 +85,37 @@ HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Speech_OneCore\\Voices\\Tokens\\MSTTS_V
     ])
     expect(english.filter(entry => entry.locale === 'en-AU').every(entry => !entry.installed)).toBe(true)
     expect(english[0]?.installed).toBe(true)
-    const uninstalledEnglish = english.filter(entry => !entry.installed)
-    expect(uninstalledEnglish.map(entry => entry.locale)).toEqual([
-      'en-AU',
-      'en-AU',
-      'en-CA',
-      'en-CA',
-      'en-GB',
-      'en-GB',
-      'en-GB',
-      'en-IE',
-      'en-IN',
-      'en-IN',
+    const uninstalledOnlyCatalog = filterWindowsVoiceCatalogByZone(
+      buildWindowsVoiceCatalog(markWindowsVoicePacks([]), []),
+      'english',
+    )
+    expect(uninstalledOnlyCatalog.map(entry => entry.locale).slice(0, 3)).toEqual([
+      'en-US',
+      'en-US',
+      'en-US',
     ])
+  })
+
+  it('lists American English voices before other English locales in the English zone', () => {
+    const packs = markWindowsVoicePacks([
+      { name: 'Microsoft Catherine', lang: 'en-AU' },
+      { name: 'Microsoft Zira Desktop', lang: 'en-US' },
+    ])
+    const catalog = buildWindowsVoiceCatalog(packs, [
+      { id: 'Microsoft Catherine', name: 'Microsoft Catherine', lang: 'en-AU' },
+      { id: 'Microsoft Zira Desktop', name: 'Microsoft Zira Desktop', lang: 'en-US' },
+    ])
+    const english = filterWindowsVoiceCatalogByZone(catalog, 'english')
+    expect(english[0]?.name).toContain('Zira')
+    expect(english[1]?.name).toContain('Catherine')
+  })
+
+  it('picks en-US Zira for App (Local) defaults when available', () => {
+    const picked = pickPreferredAppLocalSpeechVoice([
+      { id: 'Microsoft Catherine', name: 'Microsoft Catherine', lang: 'en-AU' },
+      { id: 'Microsoft Zira Desktop', name: 'Microsoft Zira Desktop', lang: 'en-US' },
+    ])
+    expect(picked?.id).toBe('Microsoft Zira Desktop')
   })
 
   it('keeps Zira and drops the desktop copy when the same voice exists', () => {

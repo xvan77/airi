@@ -4,7 +4,7 @@ import type { TachieValidationReport } from '@proj-airi/stage-ui-tachie'
 
 import type { DisplayModel } from '../../../../stores/display-models'
 
-import { LIVE2D_THUMBNAIL_SOURCE_STORAGE_KEY, LIVE2D_THUMBNAIL_SOURCE_VALUES, validateLive2DZip } from '@proj-airi/stage-ui-live2d'
+import { LIVE2D_THUMBNAIL_SOURCE_STORAGE_KEY, LIVE2D_THUMBNAIL_SOURCE_VALUES, packLive2DDirectoryFiles, validateLive2DZip } from '@proj-airi/stage-ui-live2d'
 import { TACHIE_ARCHIVE_SUFFIX, validateTachieZip } from '@proj-airi/stage-ui-tachie'
 import { Button } from '@proj-airi/ui'
 import { useFileDialog, useLocalStorage } from '@vueuse/core'
@@ -74,15 +74,10 @@ watch(() => props.selectedModel?.id, (modelId) => {
   highlightDisplayModelCard.value = modelId
 }, { immediate: true })
 
-async function handleAddLive2DModel(file: FileList | null) {
-  if (file === null || file.length === 0)
-    return
-  if (!file[0].name.endsWith('.zip'))
-    return
-
-  const report = await validateLive2DZip(file[0])
+async function beginLive2DImport(file: File) {
+  const report = await validateLive2DZip(file)
   validationReport.value = report
-  pendingFile.value = file[0]
+  pendingFile.value = file
 
   if (report.status === 'INVALID') {
     showReportModal.value = true
@@ -90,6 +85,28 @@ async function handleAddLive2DModel(file: FileList | null) {
   }
 
   await confirmImport()
+}
+
+async function handleAddLive2DModel(file: FileList | null) {
+  if (file === null || file.length === 0)
+    return
+  if (!file[0].name.endsWith('.zip'))
+    return
+
+  await beginLive2DImport(file[0])
+}
+
+async function handleAddLive2DFolder(fileList: FileList | null) {
+  if (fileList === null || fileList.length === 0)
+    return
+
+  try {
+    const packed = await packLive2DDirectoryFiles(Array.from(fileList))
+    await beginLive2DImport(packed)
+  }
+  catch (error) {
+    console.error('[model-selector] failed to pack Live2D folder:', error)
+  }
 }
 
 async function confirmImport() {
@@ -233,12 +250,14 @@ const mapFormatRenderer: Record<DisplayModelFormat, string> = {
 }
 
 const live2dDialog = useFileDialog({ accept: '.zip', multiple: false, reset: true })
+const live2dFolderDialog = useFileDialog({ directory: true, multiple: true, reset: true })
 const vrmDialog = useFileDialog({ accept: '.vrm', multiple: false, reset: true })
 const spineDialog = useFileDialog({ accept: '.zip', multiple: false, reset: true })
 const tachieDialog = useFileDialog({ accept: TACHIE_ARCHIVE_SUFFIX, multiple: false, reset: true })
 const mmdDialog = useFileDialog({ accept: '.zip,.pmx,.pmd', multiple: false, reset: true })
 
 live2dDialog.onChange(handleAddLive2DModel)
+live2dFolderDialog.onChange(handleAddLive2DFolder)
 vrmDialog.onChange(handleAddVRMModel)
 spineDialog.onChange(handleAddSpineModel)
 tachieDialog.onChange(handleAddTachieModel)
@@ -317,9 +336,21 @@ mmdDialog.onChange(handleAddMMDModel)
                   'data-[highlighted]:text-primary-400 dark:data-[highlighted]:text-primary-200',
                 ]"
                 transition="colors duration-200 ease-in-out"
+                @click="live2dFolderDialog.open()"
+              >
+                {{ t('settings.model-select.select-model.import-live2d-folder') }}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                :class="[
+                  'data-[disabled]:text-mauve8 relative flex cursor-pointer select-none items-center rounded-md px-3 py-2 leading-none outline-none data-[disabled]:pointer-events-none',
+                  'text-base sm:text-sm',
+                  'data-[highlighted]:bg-primary-300/20 dark:data-[highlighted]:bg-primary-100/20',
+                  'data-[highlighted]:text-primary-400 dark:data-[highlighted]:text-primary-200',
+                ]"
+                transition="colors duration-200 ease-in-out"
                 @click="live2dDialog.open()"
               >
-                Live2D
+                {{ t('settings.model-select.select-model.import-live2d-zip') }}
               </DropdownMenuItem>
               <DropdownMenuItem
                 :class="[

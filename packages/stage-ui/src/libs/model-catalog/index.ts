@@ -8,8 +8,10 @@ export {
   prepareModelCatalogRows,
   resolveModelDeployment,
   resolveModelPricing,
+  selectModelCatalogItems,
   sortModelCatalogRows,
 } from './catalog'
+export type { ModelCatalogSelectItem } from './catalog'
 export {
   formatContextChip,
   formatDiskChip,

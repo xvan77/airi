@@ -9,10 +9,11 @@ import type {
   ProviderConfigData,
 } from './types'
 
-import { isCustomProvidersDisabled, isStageTamagotchi } from '@proj-airi/stage-shared'
+import { isCustomProvidersDisabled, isStageTamagotchi, pickPreferredAppLocalSpeechVoice } from '@proj-airi/stage-shared'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 
+import StepLanguageSelection from './step-language-selection.vue'
 import StepLocalChatTtsOffer from './step-local-chat-tts-offer.vue'
 import StepLocalLlmSetup from './step-local-llm-setup.vue'
 import StepModelSelection from './step-model-selection.vue'
@@ -21,6 +22,7 @@ import StepProviderSelection from './step-provider-selection.vue'
 import StepWelcome from './step-welcome.vue'
 
 import { useAnalytics } from '../../../../composables/use-analytics'
+import { useOnboardingDefaultCardLanguageSync } from '../../../../composables/use-onboarding-language-card-sync'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useConsciousnessStore } from '../../../../stores/modules/consciousness'
 import { useSpeechStore } from '../../../../stores/modules/speech'
@@ -145,7 +147,8 @@ async function enableLocalSpeechProvider() {
   await providersStore.forceProviderConfigured(LOCAL_SPEECH_PROVIDER_ID)
   await speechStore.selectProviderModel(LOCAL_SPEECH_PROVIDER_ID, LOCAL_SPEECH_MODEL_ID, '')
   const voices = await speechStore.loadVoicesForProvider(LOCAL_SPEECH_PROVIDER_ID, LOCAL_SPEECH_MODEL_ID)
-  const defaultVoiceId = voices[0]?.id
+  const defaultVoice = pickPreferredAppLocalSpeechVoice(voices)
+  const defaultVoiceId = defaultVoice?.id
   if (defaultVoiceId)
     await speechStore.selectProviderModel(LOCAL_SPEECH_PROVIDER_ID, LOCAL_SPEECH_MODEL_ID, defaultVoiceId)
 }
@@ -170,6 +173,10 @@ async function persistActiveCardModuleSelections() {
 
 const allSteps = computed<OnboardingStep[]>(() => {
   const steps: OnboardingStep[] = [
+    {
+      id: 'language',
+      component: StepLanguageSelection,
+    },
     {
       id: 'welcome',
       component: StepWelcome,
@@ -301,6 +308,8 @@ async function navigatePrevious() {
   direction.value = 'previous'
   step.value--
 }
+
+useOnboardingDefaultCardLanguageSync()
 
 onMounted(() => {
   trackOnboardingStarted({ entry: 'app_start' })

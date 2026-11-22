@@ -20,12 +20,16 @@ export interface ModelCatalogBadge {
   label: string
   /** Full meaning for hover and screen readers. */
   title: string
+  /** Distinguishes price chips from size or quant stats. */
+  tone?: 'pricing' | 'stat'
 }
 
 export interface ModelCatalogRow {
   model: ModelInfo
   /** `null` means a pricing page lists tiers and this model id is absent. */
   pricing: ProviderPricing | null
+  /** Every filter bucket that applies to this model. */
+  pricingTiers: readonly ProviderPricing[]
   deployment: ProviderDeployment
   parameterBillions: number | null
   contextTokens: number | null
@@ -41,6 +45,11 @@ export interface ModelCatalogRow {
 
 export interface ModelCatalogContext {
   providerId: string
+  /**
+   * `chat` drops speech, image, and other non-chat ids.
+   * `any` keeps the full provider list for Speech, Vision, and Transcription.
+   */
+  catalogKind?: 'chat' | 'any'
   /** Filename or catalog id → download size in bytes when known. */
   diskSizeByModelId?: Readonly<Record<string, number>>
   /**

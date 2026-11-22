@@ -151,6 +151,17 @@ export function buildWindowsVoiceCatalog(
   return entries
 }
 
+function catalogLocaleSortRank(locale: string, zone: WindowsVoicePackZone | null): number {
+  const inEnglishZone = zone === 'english' || windowsVoicePackZone(locale) === 'english'
+  if (!inEnglishZone)
+    return 2
+  if (locale.toLowerCase() === 'en-us')
+    return 0
+  if (locale.toLowerCase().startsWith('en-'))
+    return 1
+  return 2
+}
+
 export function filterWindowsVoiceCatalogByZone(
   entries: readonly WindowsVoiceCatalogEntry[],
   zone: WindowsVoicePackZone | null,
@@ -161,11 +172,41 @@ export function filterWindowsVoiceCatalogByZone(
   return filtered.sort((left, right) => {
     if (left.installed !== right.installed)
       return left.installed ? -1 : 1
+    const localeRank = catalogLocaleSortRank(left.locale, zone) - catalogLocaleSortRank(right.locale, zone)
+    if (localeRank !== 0)
+      return localeRank
     const localeCompare = left.locale.localeCompare(right.locale)
     if (localeCompare !== 0)
       return localeCompare
     return left.name.localeCompare(right.name)
   })
+}
+
+/** Picks American English first, then Zira when present, for App (Local) onboarding defaults. */
+export function pickPreferredAppLocalSpeechVoice<T extends {
+  id: string
+  name: string
+  lang?: string
+  languages?: readonly { code: string }[]
+}>(voices: readonly T[]): T | undefined {
+  if (voices.length === 0)
+    return undefined
+
+  const resolveLang = (voice: T) => voice.lang || voice.languages?.[0]?.code || ''
+
+  const enUsVoices = voices.filter(voice => resolveLang(voice).toLowerCase() === 'en-us')
+  const englishVoices = voices.filter(voice => windowsVoicePackZone(resolveLang(voice)) === 'english')
+  const pool = enUsVoices.length > 0
+    ? enUsVoices
+    : englishVoices.length > 0
+      ? englishVoices
+      : [...voices]
+
+  const zira = pool.find(voice => desktopVoiceKey(voice.name).includes('zira'))
+  if (zira)
+    return zira
+
+  return pool[0]
 }
 
 export function markWindowsVoicePacks(voices: readonly { name: string, lang: string }[]): WindowsVoicePackState[] {

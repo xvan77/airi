@@ -8,6 +8,7 @@ import CatalogStatChip from './catalog-stat-chip.vue'
 export interface RadioCardDetailBadge {
   label: string
   title: string
+  tone?: 'pricing' | 'stat'
 }
 
 withDefaults(defineProps<{
@@ -130,6 +131,7 @@ function toggleExpansion() {
             :key="`${badge.label}-${badge.title}`"
             :label="badge.label"
             :title="badge.title"
+            :tone="badge.tone"
           />
         </div>
         <div

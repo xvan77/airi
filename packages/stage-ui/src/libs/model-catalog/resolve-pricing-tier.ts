@@ -20,16 +20,25 @@ export interface PricingTierEvidence {
  * Maps provider evidence to Consciousness pricing chips.
  * Returns null when the evidence is incomplete.
  */
-export function resolvePricingTierFromEvidence(evidence: PricingTierEvidence): ProviderPricing | null {
+export function resolvePricingTiersFromEvidence(evidence: PricingTierEvidence): readonly ProviderPricing[] {
   if (evidence.freePath === 'none')
-    return 'paid'
+    return ['paid']
+
+  const tiers: ProviderPricing[] = []
   if (evidence.freePath === 'quota')
-    return 'limited'
-  if (evidence.freePath === 'unmetered' && !evidence.paidPath)
-    return 'free'
-  if (evidence.freePath === 'unmetered' && evidence.paidPath)
-    return 'limited'
-  return null
+    tiers.push('limited')
+  if (evidence.freePath === 'unmetered')
+    tiers.push('free')
+  if (evidence.paidPath)
+    tiers.push('paid')
+  return tiers.length > 0 ? tiers : ['paid']
+}
+
+export function resolvePricingTierFromEvidence(evidence: PricingTierEvidence): ProviderPricing | null {
+  const tiers = resolvePricingTiersFromEvidence(evidence)
+  if (tiers.length === 0)
+    return null
+  return tiers.reduce((best, tier) => pricingRankForSort(best) <= pricingRankForSort(tier) ? best : tier)
 }
 
 /**
@@ -55,11 +64,19 @@ export function tierFromExplicitCatalogLabel(label: ProviderPricing): ProviderPr
   return resolvePricingTierFromEvidence({ freePath: 'unmetered', paidPath: false }) ?? 'free'
 }
 
-export function tierFromListingRates(units: ReadonlyArray<unknown> | undefined): ProviderPricing | null {
-  if (!units?.length)
-    return null
+function unitRateIsZero(unit: unknown): boolean {
+  if (unit && typeof unit === 'object' && 'rate' in unit) {
+    const rate = (unit as { rate?: unknown }).rate
+    return typeof rate === 'number' && rate <= 0
+  }
+  return false
+}
 
-  const paid = units.some((unit) => {
+export function tiersFromListingRates(units: ReadonlyArray<unknown> | undefined): readonly ProviderPricing[] {
+  if (!units?.length)
+    return []
+
+  const hasPositiveRate = units.some((unit) => {
     if (unit && typeof unit === 'object' && 'rate' in unit) {
       const rate = (unit as { rate?: unknown }).rate
       if (typeof rate === 'number')
@@ -67,10 +84,21 @@ export function tierFromListingRates(units: ReadonlyArray<unknown> | undefined):
     }
     return true
   })
-  if (paid)
-    return 'paid'
+  const hasZeroRate = units.some(unit => unitRateIsZero(unit))
 
-  return resolvePricingTierFromEvidence({ freePath: 'unmetered', paidPath: false })
+  if (hasPositiveRate && hasZeroRate)
+    return resolvePricingTiersFromEvidence({ freePath: 'unmetered', paidPath: true })
+  if (hasPositiveRate)
+    return ['paid']
+
+  return resolvePricingTiersFromEvidence({ freePath: 'unmetered', paidPath: false })
+}
+
+export function tierFromListingRates(units: ReadonlyArray<unknown> | undefined): ProviderPricing | null {
+  const tiers = tiersFromListingRates(units)
+  if (tiers.length === 0)
+    return null
+  return tiers.reduce((best, tier) => pricingRankForSort(best) <= pricingRankForSort(tier) ? best : tier)
 }
 
 export interface ResolveModelPricingTierInput {
@@ -85,18 +113,48 @@ export interface ResolveModelPricingTierInput {
  * Single catalog path for free, limited, paid, and unknown tiers.
  */
 export function resolveModelPricingTier(input: ResolveModelPricingTierInput): ProviderPricing | null {
+  const tiers = resolveModelPricingTiers(input)
+  if (tiers.length === 0)
+    return null
+  return tiers.reduce((best, tier) => pricingRankForSort(best) <= pricingRankForSort(tier) ? best : tier)
+}
+
+/**
+ * Every pricing label that applies to a model for catalog filters and chips.
+ */
+export function expandCatalogPricingTiers(primary: ProviderPricing | null): readonly ProviderPricing[] {
+  if (primary === null)
+    return []
+  if (primary === 'limited')
+    return resolvePricingTiersFromEvidence({ freePath: 'quota', paidPath: true })
+  if (primary === 'free')
+    return ['free']
+  if (primary === 'paid')
+    return ['paid']
+  return [primary]
+}
+
+export function resolveModelPricingTiers(input: ResolveModelPricingTierInput): readonly ProviderPricing[] {
   const { modelId, providerId, providerDefault, listingRateUnits, tierTables } = input
 
   if (modelId.includes(':free'))
-    return 'free'
+    return ['free']
 
   const fromPage = tierFromTables(tierTables, providerId, modelId)
   if (fromPage !== undefined)
-    return fromPage
+    return expandCatalogPricingTiers(fromPage)
 
-  const fromListing = tierFromListingRates(listingRateUnits)
-  if (fromListing !== null)
+  const fromListing = tiersFromListingRates(listingRateUnits)
+  if (fromListing.length > 0)
     return fromListing
 
-  return providerDefault ?? 'paid'
+  return expandCatalogPricingTiers(providerDefault ?? 'paid')
+}
+
+function pricingRankForSort(tier: ProviderPricing): number {
+  if (tier === 'free')
+    return 0
+  if (tier === 'limited')
+    return 1
+  return 2
 }

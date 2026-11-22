@@ -1,17 +1,13 @@
 import messages from '@proj-airi/i18n/locales'
 
-import { createFallbackOptions, resolveSupportedLocale } from '@proj-airi/i18n'
+import { createFallbackOptions, resolveInitialUserLocale } from '@proj-airi/i18n'
 import { createI18n } from 'vue-i18n'
 
 function getLocale() {
-  let language = localStorage.getItem('settings/language')
-
-  if (!language) {
-    // Fallback to browser language
-    language = navigator.language || 'en'
-  }
-
-  return resolveSupportedLocale(language, Object.keys(messages!))
+  return resolveInitialUserLocale(
+    localStorage.getItem('settings/language'),
+    Object.keys(messages!),
+  )
 }
 
 export const i18n = createI18n({

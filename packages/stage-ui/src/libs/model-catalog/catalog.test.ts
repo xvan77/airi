@@ -64,7 +64,7 @@ describe('prepareModelCatalogRows', () => {
 })
 
 describe('model catalog ordering', () => {
-  it('sorts free local models before paid cloud models, then by parameter size', () => {
+  it('sorts free in-app models before paid cloud models, then by parameter size', () => {
     const rows = [
       buildModelCatalogRow(model({ id: 'paid-cloud', name: 'Cloud 70B' }), { providerId: 'openrouter-ai' }),
       buildModelCatalogRow(model({ id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B' }), { providerId: 'openrouter-ai' }),
@@ -90,10 +90,12 @@ describe('model catalog ordering', () => {
     expect(desc).toEqual(['large', 'small'])
   })
 
-  it('always exposes five stat chips for cloud models', () => {
+  it('exposes pricing tier chips plus five stat chips for cloud models', () => {
     const row = buildModelCatalogRow(model({ id: 'vendor/model', name: 'Vendor Model 7B' }), { providerId: 'openrouter-ai' })
-    expect(row.badges).toHaveLength(5)
-    expect(row.badges[4]?.label).toBe('—')
+    expect(row.pricingTiers).toEqual(['paid'])
+    expect(row.badges).toHaveLength(6)
+    expect(row.badges[0]?.label).toBe('PAID')
+    expect(row.badges[5]?.label).toBe('—')
   })
 
   it('filters pricing and deployment buckets', () => {
@@ -102,8 +104,41 @@ describe('model catalog ordering', () => {
       buildModelCatalogRow(model({ id: 'gemma-3-270m-it-Q4_K_M.gguf', name: 'Gemma 3 270M IT' }), { providerId: 'local-llm' }),
     ]
 
-    expect(filterModelCatalogRows(rows, { pricing: 'free', deployment: 'local' }).map(row => row.model.id)).toEqual([
+    expect(filterModelCatalogRows(rows, { pricing: 'free', deployment: 'in-app' }).map(row => row.model.id)).toEqual([
       'gemma-3-270m-it-Q4_K_M.gguf',
+    ])
+  })
+
+  it('labels Google flash from bundled tier tables when context omits tierTables', () => {
+    const flash = buildModelCatalogRow(
+      model({ id: 'models/gemini-3.8-flash', name: 'Gemini 3.8 Flash', provider: 'google-generative-ai' }),
+      { providerId: 'google-generative-ai' },
+    )
+    expect(flash.pricing).toBe('limited')
+    expect(flash.pricingTiers).toEqual(['limited', 'paid'])
+    expect(flash.badges[0]?.label).toBe('LIM')
+  })
+
+  it('labels Gemini TTS models for the speech provider via the Google pricing page alias', () => {
+    const flashTts = buildModelCatalogRow(
+      model({ id: 'gemini-2.5-flash-preview-tts', name: 'Gemini 2.5 Flash Preview TTS', provider: 'google-gemini-audio-speech' }),
+      { providerId: 'google-gemini-audio-speech', catalogKind: 'any' },
+    )
+    expect(flashTts.pricing).toBe('limited')
+    expect(flashTts.pricingTiers).toEqual(['limited', 'paid'])
+  })
+
+  it('keeps speech models when catalogKind is any', () => {
+    const models = [
+      model({ id: 'gemini-2.5-flash-preview-tts', name: 'Gemini 2.5 Flash Preview TTS' }),
+      model({ id: 'chat-model', name: 'Chat' }),
+    ]
+    expect(prepareModelCatalogRows(models, { providerId: 'google-gemini-audio-speech', catalogKind: 'any' }).map(row => row.model.id)).toEqual([
+      'gemini-2.5-flash-preview-tts',
+      'chat-model',
+    ])
+    expect(prepareModelCatalogRows(models, { providerId: 'google-generative-ai' }).map(row => row.model.id)).toEqual([
+      'chat-model',
     ])
   })
 
@@ -126,6 +161,7 @@ describe('model catalog ordering', () => {
     )
 
     expect(flash.pricing).toBe('limited')
+    expect(flash.pricingTiers).toEqual(['limited', 'paid'])
     expect(argon.pricing).toBe('paid')
     expect(gemma.pricing).toBe('free')
     expect(unlisted.pricing).toBeNull()
@@ -133,6 +169,7 @@ describe('model catalog ordering', () => {
       'models/gemini-3.8-flash',
     ])
     expect(filterModelCatalogRows([flash, argon, gemma, unlisted], { pricing: 'paid', deployment: 'all' }).map(entry => entry.model.id)).toEqual([
+      'models/gemini-3.8-flash',
       'gemini-4-argon',
     ])
     expect(filterModelCatalogRows([flash, argon, gemma, unlisted], { pricing: 'free', deployment: 'all' }).map(entry => entry.model.id)).toEqual([

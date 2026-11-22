@@ -1,14 +1,20 @@
 <script setup lang="ts">
+import type { SpeechModelRecentEntry } from '../../../composables/chat/popover-model-recents'
+
 import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
+import {
+
+  speechModelSelectionKey,
+  useSpeechModelRecents,
+} from '../../../composables/chat/popover-model-recents'
 import { openTamagotchiEventaSession } from '../../../composables/chat/tamagotchi-eventa-session'
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
 import { useSpeechStore } from '../../../stores/modules/speech'
-import { useProviderStore } from '../../../stores/providers/provider'
 
 withDefaults(defineProps<{
   /** Tooltip for the main button */
@@ -21,18 +27,13 @@ withDefaults(defineProps<{
 
 // Store bindings
 const speechStore = useSpeechStore()
-const providersStore = useProviderStore()
 const airiCardStore = useAiriCardStore()
 
 const { activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId } = storeToRefs(speechStore)
 const { cards } = storeToRefs(airiCardStore)
-const { availableSpeechProvidersMetadata } = storeToRefs(speechStore)
 
-const favoriteSpeechProviders = computed(() => {
-  return availableSpeechProvidersMetadata.value.filter(prov => prov.id !== 'speech-noop')
-})
-
-const showAddForm = ref(false)
+const showRecentsPanel = ref(false)
+const speechRecents = useSpeechModelRecents()
 
 interface FavoriteSpeechModel {
   id: string
@@ -45,16 +46,6 @@ interface FavoriteSpeechModel {
 // Persistent Storage for Favorites
 const favorites = useLocalStorage<FavoriteSpeechModel[]>('airi:speech-model-favorites', [])
 const deletedKeys = useLocalStorage<string[]>('airi:speech-model-deleted-keys', [])
-
-// Form state for adding new favorite
-const newName = ref('')
-const newProvider = ref('')
-const newModel = ref('')
-const newVoiceId = ref('')
-const availableModels = ref<any[]>([])
-const availableVoices = ref<any[]>([])
-const isLoadingModels = ref(false)
-const isLoadingVoices = ref(false)
 
 // Seeding default favorites reactively to perfectly handle asynchronous card store hydration
 watch(cards, (newCards) => {
@@ -113,64 +104,115 @@ const isSpeechActive = computed(() => {
   return speechStore.configured
 })
 
-onMounted(() => {
-  if (favoriteSpeechProviders.value.length > 0) {
-    newProvider.value = favoriteSpeechProviders.value[0].id
-  }
+const isActiveInFavorites = computed(() => {
+  if (!activeSpeechProvider.value || !activeSpeechVoiceId.value)
+    return false
+  return favorites.value.some(
+    fav => fav.provider === activeSpeechProvider.value
+      && fav.model === (activeSpeechModel.value || '')
+      && fav.voiceId === activeSpeechVoiceId.value,
+  )
 })
 
-// Dynamically fetch and load models/voices when provider changes in form
-watch(newProvider, async (provider) => {
-  if (!provider) {
-    availableModels.value = []
-    availableVoices.value = []
+function resolveDisplayNameForSpeech(provider: string, model: string, voiceId: string) {
+  for (const card of cards.value.values()) {
+    const cardProv = card.extensions?.airi?.modules?.speech?.provider
+    const cardModel = card.extensions?.airi?.modules?.speech?.model || ''
+    const cardVoiceId = card.extensions?.airi?.modules?.speech?.voice_id
+    if (cardProv === provider && cardModel === model && cardVoiceId === voiceId) {
+      const modelPart = model ? `${model.split('/').pop() || model} - ` : ''
+      return `${card.name} (${modelPart}${voiceId})`
+    }
+  }
+  const modelPart = model ? `${model.split('/').pop() || model} - ` : ''
+  return `${modelPart}${voiceId}`
+}
+
+function ensureSpeechFavoriteAdded(favorite: FavoriteSpeechModel) {
+  const key = speechModelSelectionKey(favorite.provider, favorite.model, favorite.voiceId)
+  deletedKeys.value = deletedKeys.value.filter(deletedKey => deletedKey !== key)
+  if (favorites.value.some(
+    fav => fav.provider === favorite.provider
+      && fav.model === favorite.model
+      && fav.voiceId === favorite.voiceId,
+  )) {
     return
-  }
-
-  isLoadingModels.value = true
-  isLoadingVoices.value = true
-  try {
-    await Promise.all([
-      providersStore.fetchModelsForProvider(provider),
-      speechStore.loadVoicesForProvider(provider),
-    ])
-    availableModels.value = providersStore.getModelsForProvider(provider)
-    availableVoices.value = speechStore.getVoicesForProvider(provider)
-  }
-  catch (err) {
-    console.error('[ChatSpeechPopover] Failed to load models/voices for provider:', provider, err)
-    availableModels.value = []
-    availableVoices.value = []
-  }
-  finally {
-    isLoadingModels.value = false
-    isLoadingVoices.value = false
-  }
-}, { immediate: true })
-
-async function handleAddFavorite() {
-  if (!newVoiceId.value)
-    return
-
-  const fallbackName = `${newModel.value ? `${newModel.value.split('/').pop() || newModel.value} - ` : ''}${newVoiceId.value}`
-  const displayName = newName.value.trim() || fallbackName
-
-  const favorite: FavoriteSpeechModel = {
-    id: String(Date.now()),
-    name: displayName,
-    provider: newProvider.value,
-    model: newModel.value,
-    voiceId: newVoiceId.value,
   }
   favorites.value.push(favorite)
+}
 
-  // Reset inputs & hide form
-  newName.value = ''
-  newModel.value = ''
-  newVoiceId.value = ''
-  showAddForm.value = false
+function handleAddActiveToFavorites() {
+  if (!activeSpeechProvider.value || !activeSpeechVoiceId.value || isActiveInFavorites.value)
+    return
 
-  await handleSelectFavorite(favorite)
+  ensureSpeechFavoriteAdded({
+    id: `fav-${activeSpeechProvider.value}-${activeSpeechVoiceId.value}-${Date.now()}`,
+    name: resolveDisplayNameForSpeech(
+      activeSpeechProvider.value,
+      activeSpeechModel.value || '',
+      activeSpeechVoiceId.value,
+    ),
+    provider: activeSpeechProvider.value,
+    model: activeSpeechModel.value || '',
+    voiceId: activeSpeechVoiceId.value,
+  })
+}
+
+function isRecentInFavorites(entry: SpeechModelRecentEntry) {
+  return favorites.value.some(
+    fav => fav.provider === entry.provider
+      && fav.model === entry.model
+      && fav.voiceId === entry.voiceId,
+  )
+}
+
+async function handleSelectRecent(entry: SpeechModelRecentEntry) {
+  await handleSelectFavorite({
+    id: `recent-${entry.provider}-${entry.voiceId}`,
+    name: resolveDisplayNameForSpeech(entry.provider, entry.model, entry.voiceId),
+    provider: entry.provider,
+    model: entry.model,
+    voiceId: entry.voiceId,
+  })
+}
+
+function handleAddRecentToFavorites(entry: SpeechModelRecentEntry) {
+  if (isRecentInFavorites(entry))
+    return
+  ensureSpeechFavoriteAdded({
+    id: `fav-${entry.provider}-${entry.voiceId}-${Date.now()}`,
+    name: resolveDisplayNameForSpeech(entry.provider, entry.model, entry.voiceId),
+    provider: entry.provider,
+    model: entry.model,
+    voiceId: entry.voiceId,
+  })
+}
+
+function findFavoriteForRecent(entry: SpeechModelRecentEntry) {
+  return favorites.value.find(
+    fav => fav.provider === entry.provider
+      && fav.model === entry.model
+      && fav.voiceId === entry.voiceId,
+  )
+}
+
+function handleToggleRecentFavorite(entry: SpeechModelRecentEntry) {
+  if (isRecentInFavorites(entry)) {
+    const favorite = findFavoriteForRecent(entry)
+    if (favorite)
+      handleDeleteFavorite(favorite)
+    return
+  }
+  handleAddRecentToFavorites(entry)
+}
+
+function handleToggleFavoriteStar(fav: FavoriteSpeechModel) {
+  handleDeleteFavorite(fav)
+}
+
+function formatRecentSubtitle(entry: SpeechModelRecentEntry) {
+  const modelPart = entry.model ? `${entry.model.split('/').pop() || entry.model} / ` : ''
+  return `${entry.provider} / ${modelPart}${entry.voiceId}`
 }
 
 function handleDeleteFavorite(fav: FavoriteSpeechModel) {
@@ -251,8 +293,8 @@ function handleGoToSettings() {
           <span :class="['rounded bg-primary-500/10 px-1.5 py-0.5 text-[9px] text-primary-500 font-bold font-mono uppercase dark:bg-primary-500/20']">Speech</span>
         </div>
 
-        <!-- Sleek, Compact Active Status Badge -->
-        <div :class="['mb-3.5 flex items-center justify-between gap-2 border border-neutral-200/30 rounded-xl bg-neutral-50/50 px-2.5 py-1.5 text-[10px] dark:border-neutral-800/60 dark:bg-neutral-800/20']">
+        <!-- Active voice -->
+        <div :class="['mb-3.5 flex flex-col gap-1.5 border border-neutral-200/30 rounded-xl bg-neutral-50/50 px-2.5 py-2 text-[10px] dark:border-neutral-800/60 dark:bg-neutral-800/20']">
           <div :class="['flex items-center gap-1.5']">
             <span
               :class="[
@@ -264,9 +306,26 @@ function handleGoToSettings() {
               {{ isSpeechActive ? 'Active' : 'Inactive' }}
             </span>
           </div>
-          <span :class="['max-w-48 truncate text-neutral-700 font-semibold font-mono dark:text-neutral-300']">
-            {{ activeSpeechProvider }} / {{ activeSpeechVoiceId || 'None' }}
-          </span>
+          <div :class="['flex flex-col gap-1']">
+            <span :class="['truncate text-neutral-700 font-semibold font-mono dark:text-neutral-300']">
+              {{ activeSpeechProvider }} / {{ activeSpeechVoiceId || 'None' }}
+            </span>
+            <button
+              v-if="activeSpeechProvider && activeSpeechVoiceId"
+              type="button"
+              :class="['inline-flex w-fit items-center gap-1 rounded-lg border border-neutral-200/60 bg-white/60 px-2 py-0.5 text-[10px] text-neutral-600 font-semibold transition-all disabled:opacity-50 dark:border-neutral-700/60 dark:bg-neutral-900/40 dark:text-neutral-300 hover:border-primary-300 hover:text-primary-600 dark:hover:border-primary-700 dark:hover:text-primary-300']"
+              :disabled="isActiveInFavorites"
+              @click="handleAddActiveToFavorites"
+            >
+              <div
+                :class="[
+                  'text-xs',
+                  isActiveInFavorites ? 'i-solar:star-bold text-primary-500' : 'i-solar:star-linear',
+                ]"
+              />
+              <span>{{ isActiveInFavorites ? 'In favorites' : 'Add to favorites' }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Favorites List -->
@@ -293,13 +352,11 @@ function handleGoToSettings() {
               @click="handleSelectFavorite(fav)"
             >
               <div :class="['flex flex-1 items-center gap-2 overflow-hidden']">
-                <div
-                  :class="[
-                    'text-sm shrink-0',
-                    fav.provider === activeSpeechProvider && fav.model === activeSpeechModel && fav.voiceId === activeSpeechVoiceId
-                      ? 'text-primary-500 i-solar:star-bold'
-                      : 'text-neutral-300 group-hover:text-primary-400 i-solar:star-linear',
-                  ]"
+                <button
+                  type="button"
+                  :class="['shrink-0 text-sm text-primary-500 transition-all i-solar:star-bold hover:text-primary-600']"
+                  title="Remove from favorites"
+                  @click.stop="handleToggleFavoriteStar(fav)"
                 />
                 <div :class="['flex flex-col overflow-hidden']">
                   <span :class="['truncate text-xs text-neutral-800 font-semibold dark:text-neutral-200']">
@@ -309,20 +366,6 @@ function handleGoToSettings() {
                     {{ fav.provider }} / {{ fav.model ? `${fav.model} / ` : '' }}{{ fav.voiceId }}
                   </span>
                 </div>
-              </div>
-
-              <div :class="['flex shrink-0 items-center gap-1 pl-2']">
-                <div
-                  v-if="fav.provider === activeSpeechProvider && fav.model === activeSpeechModel && fav.voiceId === activeSpeechVoiceId"
-                  :class="['i-solar:check-circle-bold text-sm text-primary-500']"
-                />
-                <button
-                  :class="['rounded p-1 text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100']"
-                  title="Remove Favorite"
-                  @click.stop="handleDeleteFavorite(fav)"
-                >
-                  <div :class="['i-solar:trash-bin-trash-bold-duotone text-xs']" />
-                </button>
               </div>
             </div>
           </div>
@@ -339,7 +382,7 @@ function handleGoToSettings() {
           </div>
         </div>
 
-        <!-- Add Favorite Form Trigger / Inline Collapse -->
+        <!-- Recently used voices -->
         <div :class="['border-t border-neutral-100 pt-3.5 dark:border-neutral-800']">
           <Transition
             enter-active-class="transition-all duration-200 ease-out"
@@ -350,90 +393,70 @@ function handleGoToSettings() {
             leave-to-class="opacity-0 -translate-y-1 scale-95"
             mode="out-in"
           >
-            <!-- Toggle Button -->
             <button
-              v-if="!showAddForm"
-              :class="['w-full flex items-center justify-center gap-1.5 border border-neutral-200 rounded-xl border-dashed py-2 text-xs text-neutral-500 font-semibold transition-all active:scale-98 dark:border-neutral-800 hover:border-primary-300 hover:text-primary-500 dark:hover:border-primary-800']"
-              @click="showAddForm = true"
+              v-if="!showRecentsPanel"
+              type="button"
+              :class="['w-full flex items-center justify-start gap-2 rounded-xl border border-neutral-200/90 bg-neutral-50/90 px-3 py-2.5 text-xs text-neutral-700 font-semibold transition-all active:scale-[0.98] dark:border-neutral-600/90 dark:bg-neutral-800/70 dark:text-neutral-100 hover:border-primary-400/70 hover:bg-primary-50/50 dark:hover:border-primary-600/60 dark:hover:bg-primary-950/30']"
+              @click="showRecentsPanel = true"
             >
-              <div class="i-solar:add-circle-linear text-sm" />
-              <span>Add New Favorite</span>
+              <div class="i-solar:history-bold text-base text-primary-500 dark:text-primary-400" />
+              <span>Recently used models</span>
             </button>
 
-            <!-- Form -->
-            <div v-else :class="['space-y-2.5']">
+            <div v-else :class="['space-y-2']">
               <div :class="['flex items-center justify-between']">
-                <span :class="['text-[10px] text-neutral-400 font-bold tracking-wider uppercase']">Add Favorite</span>
+                <span :class="['text-[10px] text-neutral-400 font-bold tracking-wider uppercase']">Recently used</span>
                 <button
+                  type="button"
                   :class="['text-[10px] text-neutral-400 font-semibold hover:text-neutral-600 dark:hover:text-neutral-200']"
-                  @click="showAddForm = false"
+                  @click="showRecentsPanel = false"
                 >
-                  Cancel
+                  Close
                 </button>
               </div>
 
-              <!-- Custom Label Name -->
-              <input
-                v-model="newName"
-                type="text"
-                placeholder="Name (e.g. Kokoro Sweet)"
-                :class="['w-full border border-neutral-200/60 rounded-lg bg-transparent px-2.5 py-1.5 text-xs text-neutral-800 outline-none transition-all dark:border-neutral-800 focus:border-primary-500 dark:text-neutral-200 placeholder:text-neutral-400/60 focus:ring-1 focus:ring-primary-500/20']"
+              <div
+                v-if="speechRecents.length === 0"
+                :class="['border border-neutral-200 rounded-xl border-dashed py-3 text-center text-[11px] text-neutral-400 dark:border-neutral-800']"
               >
-
-              <!-- Provider Selection -->
-              <select
-                v-model="newProvider"
-                :class="['w-full border border-neutral-200/60 rounded-lg bg-white px-2 py-1.5 text-xs text-neutral-800 outline-none transition-all dark:border-neutral-800 focus:border-primary-500 dark:bg-neutral-900 dark:text-neutral-200 focus:ring-1 focus:ring-primary-500/20']"
-              >
-                <option v-for="prov in favoriteSpeechProviders" :key="prov.id" :value="prov.id">
-                  {{ prov.name || prov.id }}
-                </option>
-              </select>
-
-              <!-- Model & Voice Selectors -->
-              <div :class="['flex gap-2']">
-                <!-- Model Selection (if applicable) -->
-                <div :class="['flex-1']">
-                  <select
-                    v-model="newModel"
-                    :class="['w-full border border-neutral-200/60 rounded-lg bg-white px-2 py-1.5 text-xs text-neutral-800 outline-none transition-all dark:border-neutral-800 focus:border-primary-500 dark:bg-neutral-900 dark:text-neutral-200 focus:ring-1 focus:ring-primary-500/20']"
-                    :disabled="isLoadingModels || availableModels.length === 0"
-                  >
-                    <option value="">
-                      {{ isLoadingModels ? 'Loading...' : 'No Model' }}
-                    </option>
-                    <option v-for="model in availableModels" :key="model.id" :value="model.id">
-                      {{ model.name || model.id.split('/').pop() || model.id }}
-                    </option>
-                  </select>
-                </div>
-
-                <!-- Voice Selection -->
-                <div :class="['flex-1']">
-                  <select
-                    v-model="newVoiceId"
-                    :class="['w-full border border-neutral-200/60 rounded-lg bg-white px-2 py-1.5 text-xs text-neutral-800 outline-none transition-all dark:border-neutral-800 focus:border-primary-500 dark:bg-neutral-900 dark:text-neutral-200 focus:ring-1 focus:ring-primary-500/20']"
-                    :disabled="isLoadingVoices || availableVoices.length === 0"
-                  >
-                    <option value="" disabled selected>
-                      {{ isLoadingVoices ? 'Loading...' : availableVoices.length === 0 ? 'No Voices' : 'Select Voice' }}
-                    </option>
-                    <option v-for="voice in availableVoices" :key="voice.id" :value="voice.id">
-                      {{ voice.name || voice.id }}
-                    </option>
-                  </select>
-                </div>
+                Switch voices in Speech or pick a favorite to build this list.
               </div>
 
-              <!-- Add Button -->
-              <button
-                :class="['w-full flex items-center justify-center gap-1.5 rounded-xl bg-primary-500 px-3 py-2 text-xs text-white font-bold tracking-wider uppercase shadow-md shadow-primary-500/10 transition-all disabled:pointer-events-none active:scale-[0.98] disabled:scale-100 hover:scale-[1.02] hover:bg-primary-600 disabled:opacity-40']"
-                :disabled="!newVoiceId"
-                @click="handleAddFavorite"
-              >
-                <div class="i-solar:add-circle-bold-duotone text-sm" />
-                <span>Save Favorite</span>
-              </button>
+              <div v-else :class="['max-h-36 overflow-y-auto scrollbar-thin space-y-1.5']">
+                <div
+                  v-for="entry in speechRecents"
+                  :key="`${entry.provider}:${entry.model}:${entry.voiceId}:${entry.usedAt}`"
+                  :class="[
+                    'group flex cursor-pointer items-center justify-between rounded-xl border p-2 text-left transition-all',
+                    entry.provider === activeSpeechProvider && entry.model === (activeSpeechModel || '') && entry.voiceId === activeSpeechVoiceId
+                      ? 'border-primary-200/50 bg-primary-50/50 dark:border-primary-800/50 dark:bg-primary-950/20'
+                      : 'border-neutral-100 bg-white/40 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/40 dark:hover:bg-neutral-800/40',
+                  ]"
+                  @click="handleSelectRecent(entry)"
+                >
+                  <div :class="['flex min-w-0 flex-1 items-center gap-2 overflow-hidden']">
+                    <button
+                      type="button"
+                      :class="[
+                        'shrink-0 text-sm transition-all',
+                        isRecentInFavorites(entry)
+                          ? 'text-primary-500 i-solar:star-bold hover:text-primary-600'
+                          : 'text-neutral-400 i-solar:star-linear hover:text-primary-500',
+                      ]"
+                      :title="isRecentInFavorites(entry) ? 'Remove from favorites' : 'Add to favorites'"
+                      @click.stop="handleToggleRecentFavorite(entry)"
+                    />
+                    <div :class="['flex min-w-0 flex-col overflow-hidden']">
+                      <span :class="['truncate text-xs text-neutral-800 font-semibold dark:text-neutral-200']">
+                        {{ resolveDisplayNameForSpeech(entry.provider, entry.model, entry.voiceId) }}
+                      </span>
+                      <span :class="['truncate text-[9px] text-neutral-400 font-mono dark:text-neutral-500']">
+                        {{ formatRecentSubtitle(entry) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </Transition>
         </div>

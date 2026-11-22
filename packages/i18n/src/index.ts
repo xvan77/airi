@@ -51,5 +51,34 @@ export function resolveSupportedLocale(
     : fallbackLocale
 }
 
+const ONBOARDING_COMPLETED_KEY = 'onboarding/completed'
+const ONBOARDING_SKIPPED_KEY = 'onboarding/skipped'
+
+/** True when the user finished or skipped first-run onboarding. */
+export function hasCompletedFirstRunSetup(): boolean {
+  if (typeof localStorage === 'undefined')
+    return true
+  return localStorage.getItem(ONBOARDING_COMPLETED_KEY) === 'true'
+    || localStorage.getItem(ONBOARDING_SKIPPED_KEY) === 'true'
+}
+
+/**
+ * Picks the UI locale on startup. Before first-run setup, default to English so
+ * the built-in AIRI card is not tied to the OS language until the user chooses.
+ */
+export function resolveInitialUserLocale(
+  storedLanguage: string | null | undefined,
+  supportedLocales: readonly string[],
+  browserLanguage = typeof navigator !== 'undefined' ? navigator.language : 'en',
+): string {
+  if (storedLanguage?.trim())
+    return resolveSupportedLocale(storedLanguage, supportedLocales)
+
+  if (!hasCompletedFirstRunSetup())
+    return resolveSupportedLocale('en', supportedLocales)
+
+  return resolveSupportedLocale(browserLanguage, supportedLocales)
+}
+
 export { createFallbackOptions } from './fallback'
 export { serializeStartupFallbackLocales } from './startup-fallback'

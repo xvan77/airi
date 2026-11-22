@@ -9,6 +9,10 @@ import type {
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ProviderCatalogFilterGlossary from './provider-catalog-filter-glossary.vue'
+
+import { PROVIDER_DEPLOYMENT_FILTER_OPTIONS } from '../../libs/providers/attributes'
+
 const pricing = defineModel<ModelCatalogPricingFilter>('pricing', { required: true })
 const deployment = defineModel<ModelCatalogDeploymentFilter>('deployment', { required: true })
 const sortKey = defineModel<ModelCatalogSortKey>('sortKey', { required: true })
@@ -17,7 +21,7 @@ const sortDirection = defineModel<ModelCatalogSortDirection>('sortDirection', { 
 const { t } = useI18n()
 
 const pricingOptions = ['all', 'free', 'limited', 'paid'] as const satisfies readonly ModelCatalogPricingFilter[]
-const deploymentOptions = ['all', 'local', 'cloud'] as const satisfies readonly ModelCatalogDeploymentFilter[]
+const deploymentOptions = ['all', ...PROVIDER_DEPLOYMENT_FILTER_OPTIONS] as const satisfies readonly ModelCatalogDeploymentFilter[]
 const sortOptions = ['default', 'params', 'context', 'disk', 'quant', 'price'] as const satisfies readonly ModelCatalogSortKey[]
 
 const sortDirectionMark = computed(() => sortDirection.value === 'asc' ? '↑' : '↓')
@@ -34,8 +38,8 @@ function selectSort(option: ModelCatalogSortKey) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 text-xs">
-    <div class="flex flex-row flex-wrap items-center gap-3">
+  <div class="flex flex-col gap-1.5 text-xs">
+    <div class="flex flex-row flex-wrap items-center gap-2">
       <div class="flex flex-row flex-wrap items-center gap-2">
         <span class="text-neutral-400 font-medium dark:text-neutral-500">
           {{ t('settings.pages.modules.consciousness.model_catalog.filters.pricing') }}
@@ -97,8 +101,8 @@ function selectSort(option: ModelCatalogSortKey) {
         </button>
       </div>
     </div>
-    <p class="max-w-3xl text-neutral-500 leading-snug dark:text-neutral-400">
-      {{ t('settings.pages.modules.consciousness.model_catalog.limited_tier_note') }}
-    </p>
+    <div class="mt-3 pt-0.5">
+      <ProviderCatalogFilterGlossary />
+    </div>
   </div>
 </template>

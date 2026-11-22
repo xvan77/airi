@@ -41,14 +41,22 @@ describe('store settings-general', () => {
   // flushed to disk. On next startup, getLanguage() finds no persisted value
   // and falls back to navigator.language (OS locale), ignoring the user's
   // previous selection.
-  it('issue #1658: falls back to navigator.language when localStorage is empty', () => {
-    // Simulate Electron restart where localStorage for language is lost
+  it('uses English before first-run onboarding when language is not saved', () => {
+    vi.stubGlobal('navigator', { language: 'es-ES' })
+
+    const settingsStore = useSettingsGeneral()
+    const resolvedLanguage = settingsStore.getLanguage()
+
+    expect(resolvedLanguage).toBe('en')
+  })
+
+  it('issue #1658: falls back to navigator.language when localStorage is empty after onboarding', () => {
+    store['onboarding/completed'] = 'true'
     vi.stubGlobal('navigator', { language: 'zh-CN' })
 
     const settingsStore = useSettingsGeneral()
     const resolvedLanguage = settingsStore.getLanguage()
 
-    // navigator.language 'zh-CN' gets remapped to 'zh-Hans'
     expect(resolvedLanguage).toBe('zh-Hans')
     expect(localStorageMock.getItem).toHaveBeenCalledWith('settings/language')
   })

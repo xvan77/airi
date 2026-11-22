@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import type { VoicePluginHandle } from '@proj-airi/core-agent'
+import type {
+  ModelCatalogDeploymentFilter,
+  ModelCatalogPricingFilter,
+  ModelCatalogSortDirection,
+  ModelCatalogSortKey,
+} from '@proj-airi/stage-ui/libs/model-catalog'
 
 import { errorMessageFrom } from '@moeru/std'
 import { encodeWav } from '@proj-airi/audio/encoding'
-import { Alert, ErrorContainer, LevelMeter, RadioCardManySelect, RadioCardSimple, TestDummyMarker, ThresholdMeter, TimeSeriesChart } from '@proj-airi/stage-ui/components'
+import { Alert, ErrorContainer, LevelMeter, ModelCatalogFilters, RadioCardManySelect, RadioCardSimple, TestDummyMarker, ThresholdMeter, TimeSeriesChart } from '@proj-airi/stage-ui/components'
 import { useAnalytics, useHearingPlaygroundSegments } from '@proj-airi/stage-ui/composables'
 import { useVoiceController } from '@proj-airi/stage-ui/composables/audio/voice-controller'
 import { hearingProviderViewContextKey } from '@proj-airi/stage-ui/libs'
+import { ensurePricingSourcesFresh, selectModelCatalogItems } from '@proj-airi/stage-ui/libs/model-catalog'
 import { createVoiceActivityPlugin } from '@proj-airi/stage-ui/libs/voice/voice-activity-plugin'
 import { CONFIDENCE_THRESHOLD_DISABLED, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
@@ -15,7 +22,7 @@ import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { SileroVad } from '@proj-airi/stage-ui/workers/vad/silero-vad'
 import { Button, FieldCheckbox, FieldCombobox, FieldInput, FieldRange, SettingsCard } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, defineAsyncComponent, onMounted, onUnmounted, provide, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, provide, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import HearingPlaygroundTranscripts from '../components/hearing-playground-transcripts.vue'
@@ -70,15 +77,24 @@ const useVADThreshold = shallowRef(0.6) // 0.1 - 0.9
 const useVolumeThreshold = shallowRef(10) // 1 - 80
 const useVADMinSilenceDurationMs = shallowRef(800)
 const useVADModel = shallowRef(true) // Toggle between VAD and volume-based detection
-const sortedProviderModels = computed(() => {
-  return providerModels.value.toSorted((left, right) => {
-    if (left.id === activeTranscriptionModel.value)
-      return -1
-    if (right.id === activeTranscriptionModel.value)
-      return 1
-    return 0
-  })
-})
+const transcriptionModelFilterPricing = ref<ModelCatalogPricingFilter>('all')
+const transcriptionModelFilterDeployment = ref<ModelCatalogDeploymentFilter>('all')
+const transcriptionModelSortKey = ref<ModelCatalogSortKey>('default')
+const transcriptionModelSortDirection = ref<ModelCatalogSortDirection>('asc')
+
+const transcriptionModelSelectItems = computed(() =>
+  selectModelCatalogItems(
+    providerModels.value,
+    { providerId: activeTranscriptionProvider.value, catalogKind: 'any' },
+    {
+      pricing: transcriptionModelFilterPricing.value,
+      deployment: transcriptionModelFilterDeployment.value,
+    },
+    transcriptionModelSortKey.value,
+    transcriptionModelSortDirection.value,
+    transcriptionModelSearchQuery.value,
+  ),
+)
 
 function formatVADThreshold(value: number) {
   return value.toFixed(2)
@@ -335,6 +351,7 @@ watch(activeTranscriptionProvider, async (provider) => {
 
 // Opening this page does not request microphone permission. Monitoring requests it when the user starts it.
 onMounted(() => {
+  void ensurePricingSourcesFresh()
   syncOpenAICompatibleSettings()
 })
 
@@ -489,11 +506,22 @@ onUnmounted(() => {
 
             <!-- Using the new RadioCardManySelect component for providers with models -->
             <template v-else-if="providerModels.length > 0 && supportsModelListing">
+              <ModelCatalogFilters
+                v-model:pricing="transcriptionModelFilterPricing"
+                v-model:deployment="transcriptionModelFilterDeployment"
+                v-model:sort-key="transcriptionModelSortKey"
+                v-model:sort-direction="transcriptionModelSortDirection"
+                class="mb-3 min-w-0"
+              />
               <RadioCardManySelect
                 v-model="activeTranscriptionModel"
                 v-model:search-query="transcriptionModelSearchQuery"
-                :items="sortedProviderModels"
+                :items="transcriptionModelSelectItems"
                 :searchable="true"
+                :provider-id="activeTranscriptionProvider"
+                :description-collapsed-by-default="true"
+                :description-toggle-label="t('settings.pages.modules.consciousness.model_catalog.description_show')"
+                :description-collapse-label="t('settings.pages.modules.consciousness.model_catalog.description_hide')"
                 :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
                 :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
                 :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: transcriptionModelSearchQuery })"

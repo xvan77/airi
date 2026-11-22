@@ -18,6 +18,7 @@ import { useI18n } from 'vue-i18n'
 import { toXml } from 'xast-util-to-xml'
 import { x } from 'xastscript'
 
+import { recordSpeechModelRecent } from '../../composables/chat/popover-model-recents'
 import { useInferenceStatus } from '../../composables/use-inference-status'
 import { cancelKokoroModelLoad } from '../../libs/inference/adapters/kokoro'
 import { publishKokoroDownloadProgress, registerKokoroDownloadProgressSetter } from '../../libs/inference/kokoro-download-progress'
@@ -636,6 +637,10 @@ export const useSpeechStore = defineStore('speech', () => {
       rememberModelForSpeechProvider(provider, model)
     if (provider && voiceId)
       rememberVoiceForSpeechProvider(provider, voiceId)
+
+    const committedVoice = activeSpeechVoiceId.value || voiceId || ''
+    if (provider && committedVoice)
+      recordSpeechModelRecent(provider, activeSpeechModel.value || model, committedVoice)
   }
 
   /** Commits an explicit selection in the leader before watchers request its catalog. An omitted voice preserves an unchanged selection. */

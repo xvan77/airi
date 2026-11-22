@@ -84,6 +84,9 @@ async function handleModelPick(selectedModel: DisplayModel | undefined) {
           <template #zip>
             <code>.zip</code>
           </template>
+          <template #folder>
+            <strong>{{ t('settings.model-select.select-model.import-live2d-folder') }}</strong>
+          </template>
           <template #vrm>
             <code>.vrm</code>
           </template>

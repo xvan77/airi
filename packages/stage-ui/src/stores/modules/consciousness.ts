@@ -13,11 +13,8 @@ import { refManualReset } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, watch } from 'vue'
 
-import {
-  filterModelCatalogRows,
-  prepareModelCatalogRows,
-  sortModelCatalogRows,
-} from '../../libs/model-catalog'
+import { recordChatModelRecent } from '../../composables/chat/popover-model-recents'
+import { selectModelCatalogItems } from '../../libs/model-catalog'
 import { useAuthStore } from '../auth'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
@@ -97,52 +94,38 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   const activeTemperature = computed(() => settingsStore.temperatureEnabled ? temperature.value : undefined)
   const activeTopP = computed(() => settingsStore.topPEnabled ? topP.value : undefined)
 
-  function catalogRowsForModels(
+  function catalogSelectItemsForModels(
     models: readonly ModelInfo[],
     diskSizeByModelId?: Readonly<Record<string, number>>,
     providerId: string = activeProvider.value,
   ) {
-    const query = modelSearchQuery.value.toLowerCase().trim()
-    const rows = sortModelCatalogRows(
-      filterModelCatalogRows(
-        prepareModelCatalogRows(models, {
-          providerId,
-          diskSizeByModelId,
-        }),
-        {
-          pricing: modelFilterPricing.value,
-          deployment: modelFilterDeployment.value,
-        },
-      ),
+    return selectModelCatalogItems(
+      models,
+      {
+        providerId,
+        diskSizeByModelId,
+      },
+      {
+        pricing: modelFilterPricing.value,
+        deployment: modelFilterDeployment.value,
+      },
       modelSortKey.value,
       modelSortDirection.value,
-    )
-
-    if (!query)
-      return rows
-
-    return rows.filter(row =>
-      row.model.name.toLowerCase().includes(query)
-      || row.model.id.toLowerCase().includes(query)
-      || (row.model.description && row.model.description.toLowerCase().includes(query)),
+      modelSearchQuery.value,
     )
   }
 
-  const filteredModels = computed(() => catalogRowsForModels(providerModels.value).map(row => row.model))
-
-  function catalogSelectItemsForModels(
-    models: readonly ModelInfo[],
-    diskSizeByModelId?: Readonly<Record<string, number>>,
-    providerId?: string,
-  ) {
-    return catalogRowsForModels(models, diskSizeByModelId, providerId).map(row => ({
-      id: row.model.id,
-      name: row.model.name,
-      description: row.model.description,
-      deprecated: row.model.deprecated,
-      badges: row.badges,
-    }))
-  }
+  const filteredModels = computed(() =>
+    catalogSelectItemsForModels(providerModels.value).map(item =>
+      providerModels.value.find(model => model.id === item.id) ?? {
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        deprecated: item.deprecated,
+        provider: activeProvider.value,
+      },
+    ),
+  )
 
   function rememberModelForProvider(provider: string, model: string) {
     if (!provider || !model)
@@ -176,8 +159,10 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
     if (provider === 'local-llm')
       void settingsStore.ensureCompactRequestsForOnDeviceProvider(provider)
 
-    if (provider && model)
+    if (provider && model) {
       rememberModelForProvider(provider, model)
+      recordChatModelRecent(provider, model)
+    }
   }
 
   function resetModelSelection() {

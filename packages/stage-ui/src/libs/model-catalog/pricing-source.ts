@@ -86,6 +86,15 @@ export function normalizeCatalogModelId(modelId: string): string {
   return trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed
 }
 
+/** Maps module provider ids onto a pricing-page owner when they share that page. */
+const PRICING_TABLE_PROVIDER_ALIASES: Readonly<Record<string, string>> = {
+  'google-gemini-audio-speech': 'google-generative-ai',
+}
+
+export function resolvePricingTableProviderId(providerId: string): string {
+  return PRICING_TABLE_PROVIDER_ALIASES[providerId] ?? providerId
+}
+
 /**
  * Resolves a model tier from pricing-page tables.
  * `undefined` means this provider has no page result, so the caller keeps the usual label.
@@ -96,7 +105,7 @@ export function tierFromTables(
   providerId: string,
   modelId: string,
 ): ProviderPricing | null | undefined {
-  const table = tables?.[providerId]
+  const table = tables?.[resolvePricingTableProviderId(providerId)]
   if (!table)
     return undefined
   if (table.uniform)

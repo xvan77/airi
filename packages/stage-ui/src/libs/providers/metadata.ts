@@ -42,6 +42,7 @@ export interface ProviderMetadata extends Pick<ProviderDefinition, ProviderMetad
     supportsStreamInput: boolean
   }
   pricing?: ProviderPricing
+  pricingTiers?: readonly ProviderPricing[]
   deployment?: ProviderDeployment
   beginnerRecommended?: boolean
 }

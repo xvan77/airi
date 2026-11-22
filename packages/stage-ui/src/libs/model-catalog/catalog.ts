@@ -10,7 +10,7 @@ import type {
   ModelCatalogSortKey,
 } from './types'
 
-import { resolveProviderAttributes } from '../providers/attributes'
+import { providerPricingChipLabel, resolveProviderAttributes } from '../providers/attributes'
 import { isExcludedFromConsciousnessCatalog } from './consciousness-catalog-exclusions'
 import {
   formatContextChip,
@@ -24,7 +24,7 @@ import {
   resolvePromptPricePerMillion,
 } from './parse'
 import { currentPricingTierTables } from './pricing-source'
-import { resolveModelPricingTier } from './resolve-pricing-tier'
+import { expandCatalogPricingTiers, resolveModelPricingTier, resolveModelPricingTiers } from './resolve-pricing-tier'
 
 import './pricing-page-google'
 import './pricing-page-groq'
@@ -57,7 +57,11 @@ function pricingRank(pricing: ProviderPricing | null): number {
 }
 
 function deploymentRank(deployment: ProviderDeployment): number {
-  return deployment === 'local' ? 0 : 1
+  if (deployment === 'in-app')
+    return 0
+  if (deployment === 'other-app')
+    return 1
+  return 2
 }
 
 function compareNullableNumbers(a: number | null, b: number | null): number {
@@ -90,17 +94,36 @@ export function resolveModelDeployment(providerId: string): ProviderDeployment {
   return resolveProviderAttributes({ id: providerId }).deployment ?? 'cloud'
 }
 
+function resolveProviderDefaultPricing(providerId: string): ProviderPricing | undefined {
+  const providerAttributes = resolveProviderAttributes({ id: providerId })
+  if (providerAttributes.pricingTiers?.length === 1)
+    return providerAttributes.pricingTiers[0]
+  if (providerAttributes.pricingTiers && providerAttributes.pricingTiers.length > 1)
+    return undefined
+  return providerAttributes.pricing
+}
+
 export function resolveModelPricing(
   model: ModelInfo,
   providerId: string,
   tables?: Readonly<Record<string, ProviderTierTable>>,
 ): ProviderPricing | null {
-  const providerPricing = resolveProviderAttributes({ id: providerId }).pricing
-  return resolvePricingBucket(model, providerPricing, providerId, tables ?? currentPricingTierTables())
+  return resolvePricingBucket(model, resolveProviderDefaultPricing(providerId), providerId, tables ?? currentPricingTierTables())
 }
 
 export function buildModelCatalogRow(model: ModelInfo, context: ModelCatalogContext): ModelCatalogRow {
-  const pricing = resolveModelPricing(model, context.providerId, context.tierTables)
+  const tierTables = context.tierTables ?? currentPricingTierTables()
+  const providerDefault = resolveProviderDefaultPricing(context.providerId)
+  const pricing = resolveModelPricing(model, context.providerId, tierTables)
+  let pricingTiers = resolveModelPricingTiers({
+    modelId: model.id,
+    providerId: context.providerId,
+    providerDefault,
+    listingRateUnits: model.metadata?.pricing?.units,
+    tierTables,
+  })
+  if (pricingTiers.length === 0 && pricing !== null)
+    pricingTiers = expandCatalogPricingTiers(pricing)
   const deployment = resolveModelDeployment(context.providerId)
   const parameterBillions = parseParameterBillionsFromModel(model)
   const contextTokens = model.contextLength ?? null
@@ -114,7 +137,18 @@ export function buildModelCatalogRow(model: ModelInfo, context: ModelCatalogCont
   if (diskSizeBytes == null && deployment === 'cloud')
     diskSizeBytes = 0
 
+  const pricingTierBadges: ModelCatalogBadge[] = pricingTiers.map(tier => ({
+    label: providerPricingChipLabel(tier),
+    title: tier === 'free'
+      ? 'Free tier'
+      : tier === 'limited'
+        ? 'Limited free quota'
+        : 'Paid tier',
+    tone: 'pricing',
+  }))
+
   const badges: ModelCatalogBadge[] = [
+    ...pricingTierBadges,
     parameterBillions != null
       ? {
           label: formatParameterChip(parameterBillions),
@@ -162,15 +196,18 @@ export function buildModelCatalogRow(model: ModelInfo, context: ModelCatalogCont
         }
       : {
           label: UNKNOWN_CHIP,
-          title: deployment === 'local'
-            ? 'Local model. No API token cost'
-            : 'Prompt price is not listed for this model',
+          title: deployment === 'in-app'
+            ? 'In-app model. No API token cost'
+            : deployment === 'other-app'
+              ? 'Uses another app on this device'
+              : 'Prompt price is not listed for this model',
         },
   ]
 
   return {
     model,
     pricing,
+    pricingTiers,
     deployment,
     parameterBillions,
     contextTokens,
@@ -184,13 +221,61 @@ export function buildModelCatalogRow(model: ModelInfo, context: ModelCatalogCont
 }
 
 export function prepareModelCatalogRows(models: readonly ModelInfo[], context: ModelCatalogContext): ModelCatalogRow[] {
-  const listed = models.filter(model => !isExcludedFromConsciousnessCatalog(model, context.providerId))
+  const listed = context.catalogKind === 'any'
+    ? [...models]
+    : models.filter(model => !isExcludedFromConsciousnessCatalog(model, context.providerId))
   return listed.map(model => buildModelCatalogRow(model, context))
+}
+
+export interface ModelCatalogSelectItem {
+  id: string
+  name: string
+  description?: string
+  deprecated?: boolean
+  badges: ModelCatalogRow['badges']
+}
+
+/**
+ * Builds filtered, sorted radio-card items with pricing chips for any module catalog.
+ */
+export function selectModelCatalogItems(
+  models: readonly ModelInfo[],
+  context: ModelCatalogContext,
+  filters: ModelCatalogFilters,
+  sortKey: ModelCatalogSortKey = 'default',
+  sortDirection: ModelCatalogSortDirection = 'asc',
+  searchQuery = '',
+): ModelCatalogSelectItem[] {
+  const query = searchQuery.toLowerCase().trim()
+  const rows = sortModelCatalogRows(
+    filterModelCatalogRows(
+      prepareModelCatalogRows(models, context),
+      filters,
+    ),
+    sortKey,
+    sortDirection,
+  )
+
+  const matched = !query
+    ? rows
+    : rows.filter(row =>
+        row.model.name.toLowerCase().includes(query)
+        || row.model.id.toLowerCase().includes(query)
+        || (row.model.description && row.model.description.toLowerCase().includes(query)),
+      )
+
+  return matched.map(row => ({
+    id: row.model.id,
+    name: row.model.name,
+    description: row.model.description,
+    deprecated: row.model.deprecated,
+    badges: row.badges,
+  }))
 }
 
 export function filterModelCatalogRows(rows: readonly ModelCatalogRow[], filters: ModelCatalogFilters): ModelCatalogRow[] {
   return rows.filter((row) => {
-    if (filters.pricing !== 'all' && row.pricing !== filters.pricing)
+    if (filters.pricing !== 'all' && !row.pricingTiers.includes(filters.pricing))
       return false
     if (filters.deployment !== 'all' && row.deployment !== filters.deployment)
       return false
@@ -249,11 +334,23 @@ export function sortModelCatalogRows(
 }
 
 export function compareProviderCatalogOrder(
-  left: { pricing?: ProviderPricing, deployment?: ProviderDeployment, localizedName?: string, name?: string },
-  right: { pricing?: ProviderPricing, deployment?: ProviderDeployment, localizedName?: string, name?: string },
+  left: {
+    pricing?: ProviderPricing
+    pricingTiers?: readonly ProviderPricing[]
+    deployment?: ProviderDeployment
+    localizedName?: string
+    name?: string
+  },
+  right: {
+    pricing?: ProviderPricing
+    pricingTiers?: readonly ProviderPricing[]
+    deployment?: ProviderDeployment
+    localizedName?: string
+    name?: string
+  },
 ): number {
-  const leftPricing = left.pricing ?? 'paid'
-  const rightPricing = right.pricing ?? 'paid'
+  const leftPricing = left.pricing ?? left.pricingTiers?.[0] ?? 'paid'
+  const rightPricing = right.pricing ?? right.pricingTiers?.[0] ?? 'paid'
   const leftDeployment = left.deployment ?? 'cloud'
   const rightDeployment = right.deployment ?? 'cloud'
 

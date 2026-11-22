@@ -12,6 +12,11 @@ dialogs:
   onboarding:
     official:
       title: AIRI Official Provider
+    languageStep:
+      title: Choose your language
+      description: AIRI will use this language for menus and messages.
+      cardHint: The default AIRI Card description is created from this choice. You can edit it later in Settings.
+      continue: Continue
     title: Welcome to AIRI!
     description: Let's set up your first AI provider to get started.
     selectProvider: Choose an AI Provider
@@ -181,8 +186,8 @@ model-select:
     support-status-header: We support both 2D and 3D models
     support-status: >
       Click {select-button} to select or import models.
-      Currently, {zip} (for Live2D and Spine models), {vrm} (for VRM models),
-      and {mmd} (for MMD models, zipped with their textures) are supported.
+      Live2D accepts a {zip} file or a model {folder} (for example a VTube Studio export folder).
+      Spine uses {zip}, {vrm} is for VRM models, and {mmd} is for MMD models zipped with their textures.
     model-type-example: >
       Neuro-sama uses 2D model driven by framework developed by Live2D Inc,
       while Grok Ani (in Grok Companion) uses 3D model driven by VRM / MMD open formats.
@@ -191,6 +196,8 @@ model-select:
     button: Select model
     select: Pick
     import: Import
+    import-live2d-zip: Live2D (ZIP)
+    import-live2d-folder: Live2D (Folder)
     live2d-thumbnail:
       label: Live2D card image on import
       render: Live render
@@ -2040,14 +2047,19 @@ pages:
       not-uploaded: Not uploaded. Complete this provider on this device.
     filters:
       pricing: Pricing
-      deployment: Deployment
+      deployment: Source
       all: All
       free: Free
       limited: Limited
       paid: Paid
       internal: Internal
-      local: Local
+      in-app: In-app
+      other-app: Other app
       cloud: Cloud
+      glossary:
+        note: 'Note:'
+        pricing: '{free} means no API charge for that path. {limited} means a free quota until the provider limit. {paid} means metered API use.'
+        source: '{inApp} runs inside AIRI. {otherApp} needs another program on your device. {cloud} uses an online API.'
     categories:
       chat:
         title: Chat
@@ -2075,6 +2087,7 @@ pages:
             description: Google AI Studio Image Preview.
     helpinfo:
       title: First time here?
+      dismiss: Dismiss introduction
       description: >
         AIRI requires at least one {chat} provider to be configured to think,
         and behave properly. You could think of it as the brain of the

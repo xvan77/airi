@@ -1,19 +1,47 @@
 /** Pricing category used by provider catalogue filters. */
 export type ProviderPricing = 'free' | 'limited' | 'paid'
 
-/** Deployment category used by provider catalogue filters. */
-export type ProviderDeployment = 'local' | 'cloud'
+/** Where the provider runs relative to AIRI. */
+export type ProviderDeployment = 'in-app' | 'other-app' | 'cloud'
+
+export const PROVIDER_DEPLOYMENT_FILTER_OPTIONS = [
+  'in-app',
+  'other-app',
+  'cloud',
+] as const satisfies readonly ProviderDeployment[]
 
 /**
  * Represents catalogue attributes used by provider filtering UI.
  */
 export interface ProviderAttributes {
-  /** Price bucket shown by the provider source filter. */
+  /** Primary price bucket used for catalog sort order. */
   pricing?: ProviderPricing
+  /** Every price bucket this provider can expose. */
+  pricingTiers?: readonly ProviderPricing[]
   /** Runtime/deployment bucket shown by the provider source filter. */
   deployment?: ProviderDeployment
   /** Whether the provider should receive the existing recommended tag. */
   beginnerRecommended?: boolean
+}
+
+const PRICING_TIER_RANK: Record<ProviderPricing, number> = {
+  free: 0,
+  limited: 1,
+  paid: 2,
+}
+
+export function primaryPricingTier(tiers: readonly ProviderPricing[]): ProviderPricing | undefined {
+  if (tiers.length === 0)
+    return undefined
+  return tiers.reduce((best, tier) => PRICING_TIER_RANK[tier] < PRICING_TIER_RANK[best] ? tier : best)
+}
+
+export function providerPricingChipLabel(tier: ProviderPricing): string {
+  if (tier === 'free')
+    return 'FREE'
+  if (tier === 'limited')
+    return 'LIM'
+  return 'PAID'
 }
 
 /** Minimal provider identity accepted by the attribute resolver. */
@@ -23,12 +51,26 @@ export interface ProviderAttributesInput {
 
 const paidCloud = {
   pricing: 'paid',
+  pricingTiers: ['paid'],
   deployment: 'cloud',
 } satisfies ProviderAttributes
 
-const freeLocal = {
+const mixedCloud = {
   pricing: 'free',
-  deployment: 'local',
+  pricingTiers: ['free', 'limited', 'paid'],
+  deployment: 'cloud',
+} satisfies ProviderAttributes
+
+const freeInApp = {
+  pricing: 'free',
+  pricingTiers: ['free'],
+  deployment: 'in-app',
+} satisfies ProviderAttributes
+
+const freeOtherApp = {
+  pricing: 'free',
+  pricingTiers: ['free'],
+  deployment: 'other-app',
 } satisfies ProviderAttributes
 
 const recommendedPaidCloud = {
@@ -39,20 +81,20 @@ const recommendedPaidCloud = {
 const providerAttributesById = {
   '302-ai': paidCloud,
   'aihubmix': paidCloud,
-  'aivis-speech': freeLocal,
+  'aivis-speech': freeOtherApp,
   'alibaba-cloud-model-studio': paidCloud,
   'aliyun-nls-transcription': paidCloud,
   'amazon-bedrock': paidCloud,
   'anthropic': paidCloud,
-  'app-local-audio-speech': freeLocal,
-  'app-local-audio-transcription': freeLocal,
-  'apple-vision': freeLocal,
+  'app-local-audio-speech': freeInApp,
+  'app-local-audio-transcription': freeInApp,
+  'apple-vision': freeInApp,
   'atlascloud': paidCloud,
   'azure-ai-foundry': paidCloud,
   'azure-openai': paidCloud,
-  'browser-local-audio-speech': freeLocal,
-  'browser-local-audio-transcription': freeLocal,
-  'browser-web-speech-api': freeLocal,
+  'browser-local-audio-speech': freeInApp,
+  'browser-local-audio-transcription': freeInApp,
+  'browser-web-speech-api': freeInApp,
   'byteplus': paidCloud,
   'byteplus-coding-plan': paidCloud,
   'cerebras-ai': paidCloud,
@@ -65,12 +107,13 @@ const providerAttributesById = {
   'elevenlabs': paidCloud,
   'featherless-ai': paidCloud,
   'fireworks-ai': paidCloud,
-  'google-generative-ai': { deployment: 'cloud' },
-  'groq': { deployment: 'cloud' },
-  'index-tts-vllm': freeLocal,
-  'kokoro-local': freeLocal,
-  'local-llm': freeLocal,
-  'lm-studio': freeLocal,
+  'google-generative-ai': mixedCloud,
+  'google-gemini-audio-speech': mixedCloud,
+  'groq': mixedCloud,
+  'index-tts-vllm': freeOtherApp,
+  'kokoro-local': freeInApp,
+  'local-llm': freeInApp,
+  'lm-studio': freeOtherApp,
   'microsoft-speech': paidCloud,
   'mimo': paidCloud,
   'mimo-audio-speech': paidCloud,
@@ -87,7 +130,7 @@ const providerAttributesById = {
   'official-provider': recommendedPaidCloud,
   'official-provider-speech': recommendedPaidCloud,
   'official-provider-speech-streaming': recommendedPaidCloud,
-  'ollama': freeLocal,
+  'ollama': freeOtherApp,
   'openai': paidCloud,
   'openai-audio-speech': paidCloud,
   'openai-audio-transcription': paidCloud,
@@ -95,14 +138,14 @@ const providerAttributesById = {
   'openai-compatible-audio-speech': false,
   'openai-compatible-audio-transcription': false,
   'openpaths': paidCloud,
-  'openrouter-ai': paidCloud,
+  'openrouter-ai': mixedCloud,
   'openrouter-audio-speech': paidCloud,
   'perplexity-ai': paidCloud,
-  'player2-speech': freeLocal,
+  'player2-speech': freeOtherApp,
   'speech-noop': false,
   'together-ai': paidCloud,
-  'voicevox': freeLocal,
-  'virtual-audio-studio': freeLocal,
+  'voicevox': freeOtherApp,
+  'virtual-audio-studio': freeInApp,
   'volcengine': paidCloud,
   'volcengine-coding-plan': paidCloud,
   'xai': paidCloud,
@@ -119,8 +162,16 @@ const providerAttributesById = {
  * - `{ pricing: "paid" }`
  */
 function compactProviderAttributes(metadata: ProviderAttributes): ProviderAttributes {
+  const pricingTiers = metadata.pricingTiers?.length
+    ? [...metadata.pricingTiers]
+    : metadata.pricing
+      ? [metadata.pricing]
+      : undefined
+  const pricing = metadata.pricing ?? (pricingTiers ? primaryPricingTier(pricingTiers) : undefined)
+
   return {
-    ...(metadata.pricing ? { pricing: metadata.pricing } : {}),
+    ...(pricing ? { pricing } : {}),
+    ...(pricingTiers?.length ? { pricingTiers } : {}),
     ...(metadata.deployment ? { deployment: metadata.deployment } : {}),
     ...(metadata.beginnerRecommended !== undefined ? { beginnerRecommended: metadata.beginnerRecommended } : {}),
   }
