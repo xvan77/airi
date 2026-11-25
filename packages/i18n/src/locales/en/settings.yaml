@@ -553,7 +553,36 @@ pages:
     delete: Delete
     delete_card: Delete Card
     delete_confirmation: Are you sure you want to delete this card?
-    description: Use AIRI character card presets
+    delete_remove_long_term_memories: Remove long-term memories for this card
+    delete_remove_long_term_memories_description: >-
+      Removes {count} entries linked to this character. Shared storage is not affected.
+    deleted_with_memories_toast: 'Deleted "{name}" and removed {count} long-term memories.'
+    description: Character presets for the stage, chat, and modules
+    overview:
+      heading: What is an AIRI Card?
+      what_is: >-
+        An AIRI Card is one character preset in AIRI. It stores the persona,
+        avatar, and the settings for chat, speech, vision, and other modules.
+        When you activate a card, the stage and chat use that character.
+      why_two_ways_lead: You can build a card yourself, or let AIRI help.
+      why_two_ways_automatic_tail: >-
+        creation uses pasted or uploaded text, but not only that: it adapts your text in
+        a format that is optimal for AIRI to send instructions for the LLM.
+      why_two_ways_manual_tail: >-
+        creation opens the full editor so you enter the information you want step by step.
+    creators:
+      automatic:
+        title: Automatic AIRI Card creator
+        description: >-
+          Paste character notes or upload a text file. AIRI drafts a card with your
+          consciousness model.
+        badge: Automatic
+      manual:
+        title: Manual card creator
+        description: >-
+          Open the full editor. You write every field and pick each module
+          yourself.
+        badge: Manual
     description_label: Description
     drop_here: Drop to upload
     create_card: Create a new Card
@@ -592,6 +621,12 @@ pages:
       use_default_not_configured: Use default (not configured)
       inherit_global_settings: Inherit global settings
       no_model: No model
+      add_display_model: Add a model to your character
+      change_display_model: Change model
+      browse_display_models: Browse models
+      remove_display_model: Remove model
+      default_display_model_note: >-
+        Opens the model library. If you save without picking one, AIRI uses Hiyori (Pro) by default.
       fields_info:
         subtitle: >-
           You can put here some details about the character you are creating,
@@ -626,6 +661,48 @@ pages:
         invalid_artistry_json: 'Error: Artistry provider options contains invalid JSON.'
       none: None
       none_disabled: None (Disabled)
+      from_text:
+        title: Create card from text
+        short_action: From text
+        description: >-
+          Paste notes from a wiki, a document, or your own writing. AIRI uses your
+          consciousness model once to build a compact system prompt for chat.
+        source_label: Character material
+        source_description: At least 50 characters. Paste works. You can also upload .txt, .md, or .docx.
+        character_count: '{count} / {max} characters'
+        upload_txt: Upload file
+        generate: Generate card
+        preview_title: Generated card
+        preview_card_hint: >-
+          This block goes on the AIRI Card. It holds who she is, how she talks, and the rules for every chat.
+        split_not_on_card: >-
+          Some parts of your text are not added directly to the AIRI Card. That keeps the main instructions small for the LLM.
+        split_to_memory: >-
+          Those parts can go to long-term memory instead. The AI can open them as extra context when a reply needs them.
+        consent_question: Are you ok with this?
+        memory_grocery_heading: 'We will add the following topics to long-term memory:'
+        memory_grocery_note: >-
+          This is a short topic list, not the full text. Nothing is written to long-term memory until you save this card.
+        memory_save_only: >-
+          Long-term memory is updated only when you tap Save in the card editor. If you leave without saving, no entries are created.
+        send_to_long_memory: Send to long memory
+        add_manually_later: Add manually later
+        saved_toast: 'Added {count} memory entries for this card.'
+        continue_editor: Review in full editor
+        open_consciousness: Open consciousness settings
+        using_model: 'Compiler uses {provider} / {model}.'
+        errors:
+          too_short: Add more text before you generate (at least 50 characters).
+          too_long: Text is too long. Shorten it or split it into parts.
+          no_consciousness: Set a consciousness provider and model first.
+          compile_failed: 'Could not compile the card. {detail}'
+          read_file: Could not read that file.
+          legacy_doc: >-
+            Old .doc files are not supported here. In Word, use Save As and pick .docx, or paste the text.
+    delete_from_list: Delete card
+    delete_from_list_aria: 'Delete card {name}'
+    deleted_toast: 'Deleted "{name}".'
+    delete_failed: Could not delete this card.
     modules: Modules
     name_asc: Name (A-Z)
     name_desc: Name (Z-A)
@@ -1147,14 +1224,22 @@ pages:
       enable-description: The character remembers what you talk about. When this is off, it remembers nothing.
       memories:
         title: Memories
-        description: Each character keeps its own secrets, and the others cannot see them. After you share a secret, every character knows it, and you cannot take it back. You can delete any secret, but you cannot rewrite one.
+        description: >-
+          Each AIRI Card keeps its own long-term entries. Other cards cannot see them.
+          Shared storage holds entries every card can read in chat.
         empty: No memories yet.
         forget: 'Forget {name}'
-        make_general: 'Share {name} with every character'
-        general: Shared secrets
+        make_general: 'Move {name} to shared storage'
+        general: Shared storage
+        unlinked_title: Not linked to a character
+        unlinked_description: >-
+          These entries still point at a card that no longer exists. Remove them or move each one to shared storage.
+        unlinked_from_card: 'Former card id: {id}'
+        unlinked_remove_all: Remove all unlinked
+        unlinked_removed_toast: 'Removed {count} unlinked memories.'
         entry:
           title: Memories
-          description: Each character's secrets, and the secrets that they share.
+          description: Long-term entries for each character, shared storage, and unlinked leftovers.
       recipes:
         title: Recipes
         empty: No recipes yet.

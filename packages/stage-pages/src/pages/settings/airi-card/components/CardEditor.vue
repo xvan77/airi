@@ -1,17 +1,19 @@
 <script setup lang="ts">
 // 角色卡编辑页的核心表单，路由壳只负责把卡片 ID 和当前分区传进来。
 import type { Card } from '@proj-airi/ccc'
+import type { DisplayModel } from '@proj-airi/stage-ui/stores/display-models'
 import type { AiriExtension } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import type { VoiceInfo } from '@proj-airi/stage-ui/stores/providers/provider'
 import type { Ref } from 'vue'
 
 import { errorMessageFrom } from '@moeru/std'
 import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
+import { ModelSelectorDialog } from '@proj-airi/stage-ui/components/scenarios/dialogs/model-selector'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
 import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, safeParseAiriCardDraft } from '@proj-airi/stage-ui/services/airi-card-editor'
 import { resolveModuleSelection } from '@proj-airi/stage-ui/services/airi-card-modules'
-import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
+import { DEFAULT_BUILT_IN_DISPLAY_MODEL_ID, useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
@@ -30,6 +32,8 @@ import CardCreationTabArtistry from './tabs/CardCreationTabArtistry.vue'
 interface Props {
   cardId?: string
   initialSection?: string
+  /** One-shot draft for create mode (for example compiled from plain text). */
+  initialDraft?: Partial<Card>
 }
 
 interface SavedCardPayload {
@@ -90,6 +94,28 @@ const selectedSpeechModel = ref<string>('')
 const selectedSpeechVoiceId = ref<string>('')
 const previewVoices = ref<VoiceInfo[]>([])
 const selectedDisplayModelId = ref<string>('')
+const displayModelSelectorOpen = ref(false)
+
+const selectedDisplayModel = computed(() =>
+  displayModels.value.find(model => model.id === selectedDisplayModelId.value),
+)
+
+function handleDisplayModelPick(model: DisplayModel | undefined) {
+  selectedDisplayModelId.value = model?.id ?? ''
+  displayModelSelectorOpen.value = false
+}
+
+function openDisplayModelSelector() {
+  displayModelSelectorOpen.value = true
+}
+
+function clearDisplayModel() {
+  selectedDisplayModelId.value = ''
+}
+
+function resolveDisplayModelIdForSave() {
+  return selectedDisplayModelId.value.trim() || DEFAULT_BUILT_IN_DISPLAY_MODEL_ID
+}
 
 // NOTICE:
 // The editor needs a non-empty option value for inherited settings.
@@ -477,7 +503,11 @@ function initializeCard(): Card {
     return { ...toRaw(existingCard) }
   }
 
-  return createCardDraft()
+  const draft = createCardDraft()
+  if (props.initialDraft)
+    return { ...draft, ...structuredClone(props.initialDraft) }
+
+  return draft
 }
 
 const card = ref<Card>(createCardDraft())
@@ -681,7 +711,7 @@ async function handleSave(activate: boolean) {
 
     let savedCardId: string
     if (isEditMode.value && props.cardId) {
-      if (!await cardStore.updateCard(props.cardId, cardWithModules, selectedDisplayModelId.value)) {
+      if (!await cardStore.updateCard(props.cardId, cardWithModules, resolveDisplayModelIdForSave())) {
         showError.value = true
         errorMessage.value = t('settings.pages.card.card_not_found')
         return
@@ -690,7 +720,7 @@ async function handleSave(activate: boolean) {
       trackCardEdited({ card_id: props.cardId })
     }
     else {
-      savedCardId = await cardStore.addCard(cardWithModules, 'scratch', selectedDisplayModelId.value)
+      savedCardId = await cardStore.addCard(cardWithModules, 'scratch', resolveDisplayModelIdForSave())
     }
 
     if (activate)
@@ -903,6 +933,23 @@ function handleBack() {
                       :placeholder="t('settings.pages.card.creation.no_model')"
                       class="w-full"
                     />
+                    <div :class="['flex flex-wrap gap-2 pt-1']">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="i-solar:users-group-two-rounded-line-duotone"
+                        :label="t('settings.pages.card.creation.browse_display_models')"
+                        @click="openDisplayModelSelector"
+                      />
+                      <Button
+                        v-if="selectedDisplayModelId"
+                        variant="secondary"
+                        size="sm"
+                        icon="i-solar:trash-bin-minimalistic-line-duotone"
+                        :label="t('settings.pages.card.creation.remove_display_model')"
+                        @click="clearDisplayModel"
+                      />
+                    </div>
                   </div>
                   <FieldInput v-model="cardVersion" :label="t('settings.pages.card.creation.version')" :required="true" :description="t('settings.pages.card.creation.fields_info.version')" />
                 </div>
@@ -911,7 +958,63 @@ function handleBack() {
                 :model-id="selectedDisplayModelId"
                 fit="contain"
                 :class="['order--1 !h-56 sm:!h-64 lg:order-none lg:!h-auto lg:min-h-[300px]']"
-              />
+              >
+                <div
+                  v-if="!selectedDisplayModelId"
+                  :class="[
+                    'absolute inset-0 z-10',
+                    'flex flex-col items-center justify-center gap-3 p-4 text-center',
+                    'bg-primary-100/95 dark:bg-primary-950/95',
+                  ]"
+                >
+                  <button
+                    type="button"
+                    :aria-label="t('settings.pages.card.creation.add_display_model')"
+                    :class="[
+                      'flex h-20 w-20 items-center justify-center rounded-2xl',
+                      'border-2 border-dashed border-primary-400/70',
+                      'bg-white/70 text-primary-600 dark:bg-neutral-900/70 dark:text-primary-300',
+                      'transition hover:border-primary-500 hover:bg-white dark:hover:bg-neutral-900',
+                    ]"
+                    @click="openDisplayModelSelector"
+                  >
+                    <span :class="['i-solar:add-square-line-duotone text-3xl']" aria-hidden="true" />
+                  </button>
+                  <p :class="['max-w-[14rem] text-sm font-medium text-neutral-800 dark:text-neutral-100']">
+                    {{ t('settings.pages.card.creation.add_display_model') }}
+                  </p>
+                  <p :class="['max-w-[14rem] text-xs text-neutral-500 dark:text-neutral-400']">
+                    {{ t('settings.pages.card.creation.default_display_model_note') }}
+                  </p>
+                </div>
+                <div
+                  v-else
+                  :class="[
+                    'absolute inset-x-0 bottom-0 z-10 flex justify-center gap-2 p-3',
+                    'bg-gradient-to-t from-primary-950/80 to-transparent',
+                  ]"
+                >
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    :label="t('settings.pages.card.creation.change_display_model')"
+                    @click="openDisplayModelSelector"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    :label="t('settings.pages.card.creation.remove_display_model')"
+                    @click="clearDisplayModel"
+                  />
+                </div>
+              </CardModelPreview>
+              <ModelSelectorDialog
+                v-model:show="displayModelSelectorOpen"
+                :selected-model="selectedDisplayModel"
+                @pick="handleDisplayModelPick"
+              >
+                <span :class="['sr-only']" aria-hidden="true" />
+              </ModelSelectorDialog>
             </section>
 
             <!-- Identity details -->

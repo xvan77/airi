@@ -23,7 +23,7 @@ describe('memory tools', () => {
 
     expect(tools.map(tool => tool.function.name)).toEqual([READ_MEMORY_TOOL_NAME, WRITE_MEMORY_TOOL_NAME, FORGET_MEMORY_TOOL_NAME])
     // One call reads or writes every entry that the turn needs.
-    expect(await read!.execute({ names: ['nickname', 'unknown'] }, call)).toBe('nickname (general): Yumeka.\nNo memory entry named "unknown".')
+    expect(await read!.execute({ names: ['nickname', 'unknown'] }, call)).toBe('nickname (shared storage): Yumeka.\nNo memory entry named "unknown".')
     expect(await write!.execute({ entries: [{ name: 'nickname', description: 'Yumeka.', body: 'Yumeka.' }, { name: 'city', description: 'Tokyo.', body: 'Tokyo.' }] }, call)).toBe('Saved memory "nickname".\nSaved memory "city".')
     expect(bound.write).toHaveBeenNthCalledWith(1, { name: 'nickname', description: 'Yumeka.', body: 'Yumeka.' })
     expect(bound.write).toHaveBeenNthCalledWith(2, { name: 'city', description: 'Tokyo.', body: 'Tokyo.' })
@@ -43,7 +43,7 @@ describe('memory tools', () => {
   })
 
   it('asks for few, plain writes and shows the index', () => {
-    expect(composeMemoryPrompt('General:\n- nickname: d')).toContain('Memory index:\nGeneral:\n- nickname: d')
+    expect(composeMemoryPrompt('Shared storage:\n- nickname: d')).toContain('Memory index:\nShared storage:\n- nickname: d')
     expect(composeMemoryPrompt('')).toContain('An index line that already states the fact needs no read.')
     expect(composeMemoryPrompt('')).toContain('Most turns save nothing.')
     expect(composeMemoryPrompt('')).toContain('Never save what a recipe already holds')

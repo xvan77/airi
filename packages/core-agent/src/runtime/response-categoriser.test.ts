@@ -15,6 +15,17 @@ describe('createStreamingCategorizer', () => {
     expect(result.segments).toEqual([])
   })
 
+  it('keeps card layout tags in speech so TTS can run', () => {
+    const categorizer = createStreamingCategorizer()
+    const text = '<core_identity>Hello from Alyori!</core_identity>'
+
+    categorizer.consume(text)
+    const result = categorizer.end()
+
+    expect(result.speech).toBe('Hello from Alyori!')
+    expect(result.reasoning).toBe('')
+  })
+
   it('should filter out reasoning tags from speech', () => {
     const categorizer = createStreamingCategorizer()
     const text = 'Hello <reasoning>thinking about this</reasoning> world!'
@@ -99,9 +110,9 @@ describe('createStreamingCategorizer', () => {
     expect(result.reasoning).toBe('thinking about this')
   })
 
-  it('should handle nested tags', () => {
+  it('should handle nested planning tags', () => {
     const categorizer = createStreamingCategorizer()
-    const text = 'Start <outer>outer <inner>inner</inner> more outer</outer> end'
+    const text = 'Start <reasoning>outer inner</think> more</reasoning> end'
 
     categorizer.consume(text)
     const result = categorizer.end()

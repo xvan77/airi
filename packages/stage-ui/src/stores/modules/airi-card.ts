@@ -39,7 +39,7 @@ import { wakeWordSchema } from '../../libs/voice/wake-words'
 import { resolveModuleSelection } from '../../services/airi-card-modules'
 import { createAvatarModelReference } from '../../services/avatar-model'
 import { useAuthStore } from '../auth'
-import { useDisplayModelsStore } from '../display-models'
+import { DEFAULT_BUILT_IN_DISPLAY_MODEL_ID, useDisplayModelsStore } from '../display-models'
 import { useFeatureFlagsStore } from '../feature-flags'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
@@ -80,8 +80,6 @@ const builtInDescriptions = Object.values(localeMessages).flatMap((messages) => 
 /** The members that every card needs before `newAiriCard` can normalize it. */
 const synchronizedCardSchema = looseObject({ name: string(), version: string() })
 
-/** Every device can load this Display Model, because it is bundled and not stored. */
-const BUILT_IN_DISPLAY_MODEL_ID = 'preset-live2d-1'
 const emptyAvatarModels: readonly CharacterAvatarModelReference[] = Object.freeze([])
 const emptyLive2DExpressions: readonly Live2DExpressionControl[] = Object.freeze([])
 const emptyLive2DMotions: readonly Live2DMotionControl[] = Object.freeze([])
@@ -322,8 +320,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     const newCard = newAiriCard(toRaw(card))
     cards.value.set(newCardId, newCard)
 
-    if (displayModelId)
-      await setCharacterDefaultAvatarModelFromDisplayModel(newCardId, displayModelId)
+    const resolvedDisplayModelId = displayModelId?.trim() || DEFAULT_BUILT_IN_DISPLAY_MODEL_ID
+    await setCharacterDefaultAvatarModelFromDisplayModel(newCardId, resolvedDisplayModelId)
 
     captureAnalyticsEvent('card_created', { card_id: newCardId, source })
     return newCardId
@@ -365,8 +363,10 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     const card = newAiriCard(updatedCard)
     cards.value.set(id, card)
     let editedAvatarModelId: string | undefined
-    if (displayModelId !== undefined)
-      editedAvatarModelId = await setCharacterDefaultAvatarModelFromDisplayModel(id, displayModelId)
+    if (displayModelId !== undefined) {
+      const resolvedDisplayModelId = displayModelId.trim() || DEFAULT_BUILT_IN_DISPLAY_MODEL_ID
+      editedAvatarModelId = await setCharacterDefaultAvatarModelFromDisplayModel(id, resolvedDisplayModelId)
+    }
 
     if (id === activeCardId.value) {
       if (displayModelId !== undefined)
@@ -532,7 +532,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
 
       let defaultAvatarModelId = extension.defaultAvatarModelId
       if (defaultAvatarModelId && !avatarModels.some(model => model.id === defaultAvatarModelId)) {
-        let fallback = avatarModels.find(model => model.displayModelId === BUILT_IN_DISPLAY_MODEL_ID) ?? avatarModels[0]
+        let fallback = avatarModels.find(model => model.displayModelId === DEFAULT_BUILT_IN_DISPLAY_MODEL_ID) ?? avatarModels[0]
         if (!fallback) {
           for (const displayModelId of availableDisplayModelIds) {
             const displayModel = await displayModels.getDisplayModel(displayModelId)
@@ -1195,7 +1195,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       const legacyDisplayModelId = legacyDisplayModelIdOf(toRaw(card))
       // The built-in card keeps its built-in reference for the bundled preset.
       // The backfill below adds it, so an unedited built-in card syncs no fields.
-      if (legacyDisplayModelId && (id !== 'default' || legacyDisplayModelId !== BUILT_IN_DISPLAY_MODEL_ID))
+      if (legacyDisplayModelId && (id !== 'default' || legacyDisplayModelId !== DEFAULT_BUILT_IN_DISPLAY_MODEL_ID))
         legacyDisplayModelIds.set(id, legacyDisplayModelId)
 
       const normalizedCard = newAiriCard(toRaw(card))

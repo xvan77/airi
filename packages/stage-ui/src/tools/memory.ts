@@ -48,7 +48,7 @@ export function composeMemoryPrompt(index: string, options?: { compact?: boolean
     `Read entries with ${READ_MEMORY_TOOL_NAME} when they matter for your reply. An index line that already states the fact needs no read.`,
     `Save with ${WRITE_MEMORY_TOOL_NAME} only when someone asks you to remember something, or states a lasting fact. Most turns save nothing.`,
     'One fact per entry. Update an existing entry instead of adding a near copy. Never save what a recipe already holds, your own rules, codes, passwords, or secrets.',
-    `Forget an entry with ${FORGET_MEMORY_TOOL_NAME} when it turns out wrong or someone asks. General entries belong to the owner, so you cannot change or forget them.`,
+    `Forget an entry with ${FORGET_MEMORY_TOOL_NAME} when it turns out wrong or someone asks. Shared storage entries belong to the owner, so you cannot change or forget them.`,
     index ? `Memory index:\n${index}` : 'The memory index is empty.',
   ].join('\n')
 }
@@ -60,7 +60,7 @@ interface CreateMemoryToolsOptions {
   forget: (name: string) => boolean
 }
 
-/** Creates the memory tools for one run. The run reads its card's memories and the general ones, and changes only its card's. */
+/** Creates the memory tools for one run. The run reads its card's memories and shared storage, and changes only its card's. */
 export async function createMemoryTools(options: CreateMemoryToolsOptions): Promise<Tool[]> {
   return [
     rawTool({
@@ -73,7 +73,7 @@ export async function createMemoryTools(options: CreateMemoryToolsOptions): Prom
           return 'Give at least one entry name from the memory index.'
         return parsed.output.names.map((name) => {
           const entry = options.read(name)
-          return entry ? `${entry.name} (${entry.persona ? 'yours' : 'general'}): ${entry.body}` : `No memory entry named "${name}".`
+          return entry ? `${entry.name} (${entry.persona ? 'yours' : 'shared storage'}): ${entry.body}` : `No memory entry named "${name}".`
         }).join('\n')
       },
     }),

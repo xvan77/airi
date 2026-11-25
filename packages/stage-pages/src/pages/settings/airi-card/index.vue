@@ -4,6 +4,7 @@ import { getAiriCardEditorModuleSettings } from '@proj-airi/stage-ui/services/ai
 import { AiriCardPackageError, importAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
+import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { Button, Input } from '@proj-airi/ui'
 import { ComboboxSelect } from '@proj-airi/ui/components/form'
@@ -14,14 +15,16 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
 import CardListItem from './components/card-list-item.vue'
+import DeleteCardDialog from './components/DeleteCardDialog.vue'
 import WakeWordConflictAlert from './components/wake-word-conflict-alert.vue'
 
 import { formatRelativeTime } from './composables/relative-time'
 
 const { t, locale } = useI18n()
+const memoryStore = useMemoryStore()
 const cardStore = useAiriCardStore()
 const displayModelsStore = useDisplayModelsStore()
-const { addCard } = cardStore
+const { addCard, removeCard } = cardStore
 const { cards, activeCardId, cardSyncStates, cloudSyncEnabled } = storeToRefs(cardStore)
 const { isAuthenticated } = storeToRefs(useAuthStore())
 
@@ -32,6 +35,58 @@ const searchQuery = shallowRef('')
 const sortOption = shallowRef<'nameAsc' | 'nameDesc' | 'recent'>('nameAsc')
 const inputFiles = shallowRef<File[]>([])
 const uploadInput = useTemplateRef<HTMLInputElement>('uploadInput')
+
+interface CardItem {
+  id: string
+  name: string
+  description?: string
+  version: string
+  displayModelId?: string
+}
+
+const deleteDialogOpen = shallowRef(false)
+const pendingDeleteCard = shallowRef<CardItem | undefined>()
+
+function requestDeleteCard(card: CardItem) {
+  pendingDeleteCard.value = card
+  deleteDialogOpen.value = true
+}
+
+async function confirmDeleteCard(options: { removeLongTermMemories: boolean }) {
+  const card = pendingDeleteCard.value
+  pendingDeleteCard.value = undefined
+  if (!card)
+    return
+  try {
+    const removed = await removeCard(card.id)
+    if (removed) {
+      if (options.removeLongTermMemories) {
+        const count = memoryStore.removeForPersona(card.id)
+        if (count > 0) {
+          toast(t('settings.pages.card.deleted_with_memories_toast', { name: card.name, count }))
+        }
+        else {
+          toast(t('settings.pages.card.deleted_toast', { name: card.name }))
+        }
+      }
+      else {
+        toast(t('settings.pages.card.deleted_toast', { name: card.name }))
+      }
+    }
+    else {
+      toast(t('settings.pages.card.delete_failed'))
+    }
+  }
+  catch (error) {
+    console.error('Error deleting card:', error)
+    toast(t('settings.pages.card.delete_failed'))
+  }
+}
+
+const overviewKeywordClass = [
+  'font-semibold',
+  'text-neutral-900 dark:text-neutral-50',
+]
 
 function handleUploadChange(event: Event) {
   const input = event.target as HTMLInputElement
@@ -70,14 +125,6 @@ function handleDrop(event: DragEvent) {
   event.preventDefault()
   dragDepth.value = 0
   inputFiles.value = Array.from(event.dataTransfer?.files ?? [])
-}
-
-interface CardItem {
-  id: string
-  name: string
-  description?: string
-  version: string
-  displayModelId?: string
 }
 
 watch(inputFiles, async (newFiles) => {
@@ -136,6 +183,10 @@ const sortedFilteredCards = computed<CardItem[]>(() => {
 
 function handleCardCreation() {
   void router.push('/settings/airi-card/new')
+}
+
+function handleCardFromText() {
+  void router.push('/settings/airi-card/from-text')
 }
 
 watch(activeCardId, (cardId, previousCardId) => {
@@ -223,7 +274,7 @@ async function handleRestoreDeletedCard(card: DeletedCard) {
 </script>
 
 <template>
-  <div :class="['flex flex-col gap-6 rounded-xl p-4 sm:p-6']">
+  <div :class="['flex flex-col gap-2 rounded-xl p-2.5 sm:gap-2.5 sm:p-3']">
     <WakeWordConflictAlert />
 
     <div
@@ -308,7 +359,119 @@ async function handleRestoreDeletedCard(card: DeletedCard) {
       </RouterLink>
     </p>
 
-    <div :class="['flex flex-wrap items-center gap-3']">
+    <section
+      :class="[
+        'flex flex-col gap-1.5 rounded-xl border px-3 py-2 sm:px-3 sm:py-2.5',
+        'border-neutral-200/60 bg-neutral-50/40 dark:border-neutral-700/50 dark:bg-neutral-900/40',
+      ]"
+      :aria-label="t('settings.pages.card.overview.heading')"
+    >
+      <h2 :class="['text-sm font-semibold text-neutral-800 dark:text-neutral-100']">
+        {{ t('settings.pages.card.overview.heading') }}
+      </h2>
+      <p :class="['text-sm leading-snug text-neutral-600 dark:text-neutral-300']">
+        {{ t('settings.pages.card.overview.what_is') }}
+      </p>
+      <p :class="['text-sm leading-snug text-neutral-600 dark:text-neutral-300']">
+        {{ t('settings.pages.card.overview.why_two_ways_lead') }}
+        <span :class="overviewKeywordClass">{{ t('settings.pages.card.creators.automatic.badge') }}</span>{{ ' ' }}
+        {{ t('settings.pages.card.overview.why_two_ways_automatic_tail') }}
+      </p>
+      <p :class="['text-sm leading-snug text-neutral-600 dark:text-neutral-300']">
+        <span :class="overviewKeywordClass">{{ t('settings.pages.card.creators.manual.badge') }}</span>{{ ' ' }}
+        {{ t('settings.pages.card.overview.why_two_ways_manual_tail') }}
+      </p>
+    </section>
+
+    <div :class="['grid grid-cols-1 gap-2 sm:grid-cols-2']">
+      <div
+        :class="[
+          'flex flex-col gap-1.5 rounded-2xl border-2 p-2.5 sm:p-3',
+          'border-primary-300/70 bg-primary-50/30 dark:border-primary-700/50 dark:bg-primary-950/25',
+        ]"
+      >
+        <div :class="['flex items-start justify-between gap-2']">
+          <div :class="['flex items-center gap-2']">
+            <span
+              :class="['i-solar:magic-stick-3-bold-duotone shrink-0 text-2xl text-primary-600 dark:text-primary-400']"
+              aria-hidden="true"
+            />
+            <h3 :class="['text-base font-semibold text-neutral-900 dark:text-neutral-50']">
+              {{ t('settings.pages.card.creators.automatic.title') }}
+            </h3>
+          </div>
+          <span
+            :class="[
+              'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase',
+              'bg-primary-500/15 text-primary-700 dark:bg-primary-400/15 dark:text-primary-300',
+            ]"
+          >
+            {{ t('settings.pages.card.creators.automatic.badge') }}
+          </span>
+        </div>
+        <p :class="['flex-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300']">
+          {{ t('settings.pages.card.creators.automatic.description') }}
+        </p>
+        <div :class="['flex flex-wrap gap-2']">
+          <Button
+            variant="primary"
+            color="primary"
+            icon="i-solar:add-square-line-duotone"
+            :label="t('settings.pages.card.create_card')"
+            @click="handleCardFromText"
+          />
+        </div>
+      </div>
+
+      <div
+        :class="[
+          'flex flex-col gap-1.5 rounded-2xl border-2 p-2.5 sm:p-3',
+          'border-neutral-300/80 bg-neutral-50/50 dark:border-neutral-600/60 dark:bg-neutral-900/50',
+        ]"
+      >
+        <div :class="['flex items-start justify-between gap-2']">
+          <div :class="['flex items-center gap-2']">
+            <span
+              :class="['i-solar:pen-new-square-line-duotone shrink-0 text-2xl text-neutral-600 dark:text-neutral-300']"
+              aria-hidden="true"
+            />
+            <h3 :class="['text-base font-semibold text-neutral-900 dark:text-neutral-50']">
+              {{ t('settings.pages.card.creators.manual.title') }}
+            </h3>
+          </div>
+          <span
+            :class="[
+              'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase',
+              'bg-neutral-500/10 text-neutral-600 dark:bg-neutral-400/10 dark:text-neutral-300',
+            ]"
+          >
+            {{ t('settings.pages.card.creators.manual.badge') }}
+          </span>
+        </div>
+        <p :class="['flex-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300']">
+          {{ t('settings.pages.card.creators.manual.description') }}
+        </p>
+        <div :class="['flex flex-wrap gap-2']">
+          <Button
+            variant="primary"
+            color="primary"
+            icon="i-solar:add-square-line-duotone"
+            :label="t('settings.pages.card.create_card')"
+            @click="handleCardCreation"
+          />
+        </div>
+      </div>
+    </div>
+
+    <input
+      ref="uploadInput"
+      type="file"
+      accept=".zip"
+      :class="['hidden']"
+      @change="handleUploadChange"
+    >
+
+    <div :class="['flex flex-wrap items-center gap-2']">
       <Input
         v-model="searchQuery"
         type="search"
@@ -329,27 +492,6 @@ async function handleRestoreDeletedCard(card: DeletedCard) {
           :class="['w-full']"
         />
       </div>
-      <div :class="['ms-auto flex flex-wrap justify-end gap-2 max-sm:w-full']">
-        <Button
-          icon="i-solar:upload-square-line-duotone"
-          :label="t('settings.pages.card.upload')"
-          @click="uploadInput?.click()"
-        />
-        <Button
-          variant="primary"
-          color="primary"
-          icon="i-solar:add-square-line-duotone"
-          :label="t('settings.pages.card.create_card')"
-          @click="handleCardCreation"
-        />
-      </div>
-      <input
-        ref="uploadInput"
-        type="file"
-        accept=".zip"
-        :class="['hidden']"
-        @change="handleUploadChange"
-      >
     </div>
 
     <div
@@ -359,7 +501,7 @@ async function handleRestoreDeletedCard(card: DeletedCard) {
       @dragleave="handleDragLeave"
       @drop="handleDrop"
     >
-      <div :class="['grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5']">
+      <div :class="['grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6']">
         <CardListItem
           v-for="item in sortedFilteredCards"
           :id="item.id"
@@ -369,6 +511,8 @@ async function handleRestoreDeletedCard(card: DeletedCard) {
           :version="item.version"
           :model-id="item.displayModelId"
           :sync-state="cardSyncStates[item.id]"
+          :deletable="item.id !== 'default'"
+          @delete="requestDeleteCard(item)"
         />
 
         <div
@@ -408,12 +552,21 @@ async function handleRestoreDeletedCard(card: DeletedCard) {
         </p>
       </div>
     </div>
+
+    <DeleteCardDialog
+      v-model="deleteDialogOpen"
+      :card-id="pendingDeleteCard?.id"
+      :card-name="pendingDeleteCard?.name"
+      @confirm="confirmDeleteCard"
+      @cancel="pendingDeleteCard = undefined"
+    />
   </div>
 </template>
 
 <route lang="yaml">
 meta:
   layout: settings
+  settingsHeaderDensity: compact
   titleKey: settings.pages.card.title
   subtitleKey: settings.title
   descriptionKey: settings.pages.card.description

@@ -5,7 +5,7 @@ import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import {
 
@@ -46,59 +46,6 @@ interface FavoriteSpeechModel {
 // Persistent Storage for Favorites
 const favorites = useLocalStorage<FavoriteSpeechModel[]>('airi:speech-model-favorites', [])
 const deletedKeys = useLocalStorage<string[]>('airi:speech-model-deleted-keys', [])
-
-// Seeding default favorites reactively to perfectly handle asynchronous card store hydration
-watch(cards, (newCards) => {
-  const discovered = new Set<string>()
-
-  // 1. Coalesce the current active configuration first
-  if (activeSpeechProvider.value && activeSpeechVoiceId.value) {
-    discovered.add(`${activeSpeechProvider.value}:${activeSpeechModel.value || ''}:${activeSpeechVoiceId.value}`)
-  }
-
-  // 2. Coalesce all distinct configurations from character cards
-  for (const card of newCards.values()) {
-    const provider = card.extensions?.airi?.modules?.speech?.provider
-    const model = card.extensions?.airi?.modules?.speech?.model || ''
-    const voiceId = card.extensions?.airi?.modules?.speech?.voice_id
-    if (provider && voiceId) {
-      discovered.add(`${provider}:${model}:${voiceId}`)
-    }
-  }
-
-  // 3. Dynamically sync discovered models into the favorites list
-  for (const key of discovered) {
-    const [provider, model, voiceId] = key.split(':')
-
-    // If explicitly deleted, respect that choice
-    if (deletedKeys.value.includes(key))
-      continue
-
-    const alreadyInFavorites = favorites.value.some(
-      fav => fav.provider === provider && fav.model === model && fav.voiceId === voiceId,
-    )
-    if (!alreadyInFavorites) {
-      let displayName = `Current (${model ? `${model.split('/').pop() || model} - ` : ''}${voiceId})`
-      for (const card of newCards.values()) {
-        const cardProv = card.extensions?.airi?.modules?.speech?.provider
-        const cardModel = card.extensions?.airi?.modules?.speech?.model || ''
-        const cardVoiceId = card.extensions?.airi?.modules?.speech?.voice_id
-        if (cardProv === provider && cardModel === model && cardVoiceId === voiceId) {
-          displayName = `${card.name} (${model ? `${model.split('/').pop() || model} - ` : ''}${voiceId})`
-          break
-        }
-      }
-
-      favorites.value.push({
-        id: `seed-${provider}-${model}-${voiceId}`,
-        name: displayName,
-        provider,
-        model,
-        voiceId,
-      })
-    }
-  }
-}, { immediate: true, deep: true })
 
 const isSpeechActive = computed(() => {
   return speechStore.configured
@@ -204,6 +151,12 @@ function handleToggleRecentFavorite(entry: SpeechModelRecentEntry) {
     return
   }
   handleAddRecentToFavorites(entry)
+}
+
+function handleRemoveRecentFromFavorites(entry: SpeechModelRecentEntry) {
+  const favorite = findFavoriteForRecent(entry)
+  if (favorite)
+    handleDeleteFavorite(favorite)
 }
 
 function handleToggleFavoriteStar(fav: FavoriteSpeechModel) {
@@ -367,6 +320,14 @@ function handleGoToSettings() {
                   </span>
                 </div>
               </div>
+              <button
+                type="button"
+                :class="['shrink-0 rounded p-1 text-neutral-400 transition-all dark:text-neutral-500 hover:text-red-500']"
+                title="Remove from favorites"
+                @click.stop="handleDeleteFavorite(fav)"
+              >
+                <div :class="['i-solar:trash-bin-trash-bold-duotone text-xs']" />
+              </button>
             </div>
           </div>
 
@@ -455,6 +416,15 @@ function handleGoToSettings() {
                       </span>
                     </div>
                   </div>
+                  <button
+                    v-if="isRecentInFavorites(entry)"
+                    type="button"
+                    :class="['shrink-0 rounded p-1 text-neutral-400 transition-all dark:text-neutral-500 hover:text-red-500']"
+                    title="Remove from favorites"
+                    @click.stop="handleRemoveRecentFromFavorites(entry)"
+                  >
+                    <div :class="['i-solar:trash-bin-trash-bold-duotone text-xs']" />
+                  </button>
                 </div>
               </div>
             </div>

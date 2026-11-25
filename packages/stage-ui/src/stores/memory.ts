@@ -2,14 +2,14 @@ import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
 import { computed } from 'vue'
 
-/** One remembered fact. A character keeps it on its own card. A general memory reaches every card. */
+/** One remembered fact. A character keeps it on its own card. Shared storage reaches every card. */
 export interface MemoryEntry {
   /** Short name in kebab case, unique within its scope. The index lists it, and tools address the entry by it. */
   name: string
   /** The index line: the fact itself when it fits in one line, or when the entry matters. */
   description: string
   body: string
-  /** The character card that owns this memory. Without it, the owner made the memory general. */
+  /** The character card that owns this memory. Without it, the entry lives in shared storage. */
   persona?: string
   updatedAt: number
 }
@@ -26,8 +26,8 @@ export function memoryName(name: string) {
  * - A run reads the index or an entry, writes or forgets a fact, or Settings lists the memories by card.
  *
  * Expects:
- * - Callers pass the character card of the run. It reads its own memories and the general ones.
- * - Only the owner makes a memory general, in Settings. A run writes and forgets only its own card's memories.
+ * - Callers pass the character card of the run. It reads its own memories and shared storage.
+ * - Only the owner moves a memory to shared storage, in Settings. A run writes and forgets only its own card's memories.
  *
  * Returns:
  * - Whether memory is on, entries, the index for a card, and actions that change entries.
@@ -38,24 +38,24 @@ export const useMemoryStore = defineStore('memory', () => {
 
   const sorted = computed(() => [...entries.value].sort((left, right) => left.name.localeCompare(right.name)))
 
-  /** General memories and the persona's own. */
+  /** Shared storage and the persona's own memories. */
   function visibleTo(personaId: string) {
     return sorted.value.filter(entry => !entry.persona || entry.persona === personaId)
   }
 
-  /** The index for a card: its own memories, then general ones, each as a name and its description. */
+  /** The index for a card: its own memories, then shared storage, each as a name and its description. */
   function indexFor(personaId: string) {
     const line = (entry: MemoryEntry) => `- ${entry.name}: ${entry.description}`
     const byName = (left: MemoryEntry, right: MemoryEntry) => left.name.localeCompare(right.name)
     const own = sorted.value.filter(entry => entry.persona === personaId).sort(byName).map(line)
-    const general = sorted.value.filter(entry => !entry.persona).sort(byName).map(line)
+    const shared = sorted.value.filter(entry => !entry.persona).sort(byName).map(line)
     return [
       ...(own.length ? [`Your own:\n${own.join('\n')}`] : []),
-      ...(general.length ? [`General:\n${general.join('\n')}`] : []),
+      ...(shared.length ? [`Shared storage:\n${shared.join('\n')}`] : []),
     ].join('\n')
   }
 
-  /** Reads an entry by name. The persona's own entry wins over a general one with the same name. */
+  /** Reads an entry by name. The persona's own entry wins over a shared one with the same name. */
   function read(name: string, personaId: string) {
     const key = memoryName(name)
     const matches = visibleTo(personaId).filter(entry => entry.name === key)
@@ -72,7 +72,7 @@ export const useMemoryStore = defineStore('memory', () => {
     return next
   }
 
-  /** Makes a card's memory general, so every card reads it. A general memory with the same name gives way. */
+  /** Moves a card memory to shared storage, so every card reads it. A shared entry with the same name gives way. */
   function makeGeneral(entry: Pick<MemoryEntry, 'name' | 'persona'>) {
     const source = entries.value.find(existing => existing.name === entry.name && existing.persona === entry.persona)
     if (!source?.persona)
@@ -86,7 +86,7 @@ export const useMemoryStore = defineStore('memory', () => {
     entries.value = entries.value.filter(existing => existing.name !== entry.name || existing.persona !== entry.persona)
   }
 
-  /** Forgets an entry of the card by name. General memories belong to the owner, so a run cannot forget them. */
+  /** Forgets an entry of the card by name. Shared storage belongs to the owner, so a run cannot forget it. */
   function forget(name: string, personaId: string) {
     const key = memoryName(name)
     const target = entries.value.find(entry => entry.name === key && entry.persona === personaId)
@@ -94,6 +94,25 @@ export const useMemoryStore = defineStore('memory', () => {
       return false
     remove(target)
     return true
+  }
+
+  function countForPersona(personaId: string) {
+    return entries.value.filter(entry => entry.persona === personaId).length
+  }
+
+  /** Removes every entry owned by one character card. */
+  function removeForPersona(personaId: string) {
+    const before = entries.value.length
+    entries.value = entries.value.filter(entry => entry.persona !== personaId)
+    return before - entries.value.length
+  }
+
+  /** Removes entries that still point at a card id that no longer exists. */
+  function removeUnlinkedFromCards(existingCardIds: Iterable<string>) {
+    const known = new Set(existingCardIds)
+    const before = entries.value.length
+    entries.value = entries.value.filter(entry => !entry.persona || known.has(entry.persona))
+    return before - entries.value.length
   }
 
   function resetState() {
@@ -111,6 +130,9 @@ export const useMemoryStore = defineStore('memory', () => {
     makeGeneral,
     forget,
     remove,
+    countForPersona,
+    removeForPersona,
+    removeUnlinkedFromCards,
     resetState,
   }
 })

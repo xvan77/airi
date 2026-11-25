@@ -30,6 +30,7 @@ const routeMeta = computed(() => route.meta as {
   title?: string
   subtitle?: string
   disableBackButton?: boolean
+  settingsHeaderDensity?: 'default' | 'compact'
 })
 
 const providerTitle = computed(() => {
@@ -103,6 +104,7 @@ onMounted(() => updateThemeColor())
         :title="routeHeaderMetadata?.title || ''"
         :subtitle="routeHeaderMetadata?.subtitle"
         :disable-back-button="routeMeta.disableBackButton || (isStageTamagotchi() && route.path === '/settings')"
+        :density="routeMeta.settingsHeaderDensity === 'compact' ? 'compact' : 'default'"
       />
       <div id="settings-scroll-container" ref="scrollContainer" :class="['relative', 'min-h-0', 'flex-1', 'overflow-y-auto', 'scrollbar-none']">
         <RouterView />

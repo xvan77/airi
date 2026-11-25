@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Button } from '@proj-airi/ui'
+import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
+import { Button, FieldCheckbox } from '@proj-airi/ui'
 import {
   AlertDialogAction,
   AlertDialogCancel,
@@ -10,21 +11,32 @@ import {
   AlertDialogRoot,
   AlertDialogTitle,
 } from 'reka-ui'
+import { computed, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
   modelValue: boolean
+  cardId?: string
   cardName?: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  (e: 'confirm'): void
+  (e: 'confirm', options: { removeLongTermMemories: boolean }): void
   (e: 'cancel'): void
 }>()
 
 const { t } = useI18n()
+const memoryStore = useMemoryStore()
+const removeLongTermMemories = shallowRef(true)
+
+const memoryCount = computed(() => props.cardId ? memoryStore.countForPersona(props.cardId) : 0)
+
+watch(() => props.modelValue, (open) => {
+  if (open)
+    removeLongTermMemories.value = memoryCount.value > 0
+})
 
 function handleCancel() {
   emit('update:modelValue', false)
@@ -33,7 +45,9 @@ function handleCancel() {
 
 function handleConfirm() {
   emit('update:modelValue', false)
-  emit('confirm')
+  emit('confirm', {
+    removeLongTermMemories: memoryCount.value > 0 && removeLongTermMemories.value,
+  })
 }
 </script>
 
@@ -48,9 +62,17 @@ function handleConfirm() {
         <AlertDialogTitle class="mb-4 text-xl font-normal">
           {{ t('settings.pages.card.delete_card') }}
         </AlertDialogTitle>
-        <AlertDialogDescription class="mb-6">
+        <AlertDialogDescription class="mb-4">
           {{ t('settings.pages.card.delete_confirmation') }} <b>"{{ cardName || '' }}"</b>
         </AlertDialogDescription>
+
+        <FieldCheckbox
+          v-if="memoryCount > 0"
+          v-model="removeLongTermMemories"
+          :class="['mb-6']"
+          :label="t('settings.pages.card.delete_remove_long_term_memories')"
+          :description="t('settings.pages.card.delete_remove_long_term_memories_description', { count: memoryCount })"
+        />
 
         <div class="flex flex-row justify-end gap-3">
           <AlertDialogCancel as-child>

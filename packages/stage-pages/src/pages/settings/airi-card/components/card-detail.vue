@@ -11,6 +11,7 @@ import { exportAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-im
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
+import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { Button, GhostButton, IconButton, Select } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -36,6 +37,7 @@ const emit = defineEmits<{
 
 const { t, te, locale } = useI18n()
 const { trackSceneBackgroundSet } = useAnalytics()
+const memoryStore = useMemoryStore()
 const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const displayModelsStore = useDisplayModelsStore()
@@ -100,9 +102,18 @@ async function handleExportCard() {
   }
 }
 
-async function handleDeleteConfirm() {
+async function handleDeleteConfirm(options: { removeLongTermMemories: boolean }) {
   if (selectedCard.value) {
     await cardStore.removeCard(props.cardId)
+    if (options.removeLongTermMemories) {
+      const count = memoryStore.removeForPersona(props.cardId)
+      if (count > 0) {
+        toast(t('settings.pages.card.deleted_with_memories_toast', {
+          name: selectedCard.value.name,
+          count,
+        }))
+      }
+    }
     emit('back')
   }
   showDeleteConfirm.value = false
@@ -705,6 +716,7 @@ const proseClasses = [
 
     <DeleteCardDialog
       v-model="showDeleteConfirm"
+      :card-id="cardId"
       :card-name="selectedCard?.name"
       @confirm="handleDeleteConfirm"
       @cancel="showDeleteConfirm = false"

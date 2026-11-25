@@ -57,57 +57,6 @@ interface FavoriteModel {
 const favorites = useLocalStorage<FavoriteModel[]>('airi:chat-model-favorites', [])
 const deletedKeys = useLocalStorage<string[]>('airi:chat-model-deleted-keys', [])
 
-// Seeding default favorites reactively to perfectly handle asynchronous card store hydration
-watch(cards, (newCards) => {
-  const discovered = new Set<string>()
-
-  // 1. Coalesce the current active model from store first
-  if (activeProvider.value && activeModel.value) {
-    discovered.add(`${activeProvider.value}:${activeModel.value}`)
-  }
-
-  // 2. Coalesce consciousness model settings from imported character cards
-  for (const card of newCards.values()) {
-    const provider = card.extensions?.airi?.modules?.consciousness?.provider
-    const model = card.extensions?.airi?.modules?.consciousness?.model
-    if (provider && model) {
-      discovered.add(`${provider}:${model}`)
-    }
-  }
-
-  // 3. Dynamically sync discovered models into the favorites list
-  for (const key of discovered) {
-    const [provider, model] = key.split(':')
-
-    // If the user has explicitly deleted this favorite, respect their choice and do not auto-seed it again
-    if (deletedKeys.value.includes(key))
-      continue
-
-    const alreadyInFavorites = favorites.value.some(fav => fav.provider === provider && fav.model === model)
-    if (!alreadyInFavorites) {
-      // Find a friendly display name based on character card name
-      let displayName = `Current (${model.split('/').pop() || model})`
-      for (const card of newCards.values()) {
-        const cardProv = card.extensions?.airi?.modules?.consciousness?.provider
-        const cardModel = card.extensions?.airi?.modules?.consciousness?.model
-        if (cardProv === provider && cardModel === model) {
-          displayName = `${card.name} (${model.split('/').pop() || model})`
-          break
-        }
-      }
-
-      favorites.value.push({
-        id: `seed-${provider}-${model}`,
-        name: displayName,
-        provider,
-        model,
-      })
-    }
-  }
-
-  // Seeding Debug Logs deleted
-}, { immediate: true, deep: true })
-
 const electronLocalLlmGetStatus = defineInvokeEventa<LocalLlmServerStatus>('eventa:invoke:electron:local-llm:get-status')
 const electronLocalLlmStartServer = defineInvokeEventa<void, { modelId: string }>('eventa:invoke:electron:local-llm:start-server')
 const electronLocalLlmStopServer = defineInvokeEventa<void>('eventa:invoke:electron:local-llm:stop-server')
@@ -315,6 +264,12 @@ function handleToggleRecentFavorite(entry: ChatModelRecentEntry) {
   handleAddRecentToFavorites(entry)
 }
 
+function handleRemoveRecentFromFavorites(entry: ChatModelRecentEntry) {
+  const favorite = findFavoriteForRecent(entry)
+  if (favorite)
+    handleDeleteFavorite(favorite)
+}
+
 function handleToggleFavoriteStar(fav: FavoriteModel) {
   handleDeleteFavorite(fav)
 }
@@ -326,8 +281,7 @@ function formatRecentSubtitle(entry: ChatModelRecentEntry) {
 function handleDeleteFavorite(fav: FavoriteModel) {
   favorites.value = favorites.value.filter(f => f.id !== fav.id)
 
-  // Track as deleted so it is never auto-seeded on card additions
-  const key = `${fav.provider}:${fav.model}`
+  const key = chatModelSelectionKey(fav.provider, fav.model)
   if (!deletedKeys.value.includes(key)) {
     deletedKeys.value.push(key)
   }
@@ -543,6 +497,14 @@ function handleGoToSettings() {
                   </span>
                 </div>
               </div>
+              <button
+                type="button"
+                class="shrink-0 rounded p-1 text-neutral-400 transition-all dark:text-neutral-500 hover:text-red-500"
+                title="Remove from favorites"
+                @click.stop="handleDeleteFavorite(fav)"
+              >
+                <div class="i-solar:trash-bin-trash-bold-duotone text-xs" />
+              </button>
             </div>
           </div>
 
@@ -631,6 +593,15 @@ function handleGoToSettings() {
                       </span>
                     </div>
                   </div>
+                  <button
+                    v-if="isRecentInFavorites(entry)"
+                    type="button"
+                    class="shrink-0 rounded p-1 text-neutral-400 transition-all dark:text-neutral-500 hover:text-red-500"
+                    title="Remove from favorites"
+                    @click.stop="handleRemoveRecentFromFavorites(entry)"
+                  >
+                    <div class="i-solar:trash-bin-trash-bold-duotone text-xs" />
+                  </button>
                 </div>
               </div>
             </div>

@@ -86,8 +86,11 @@ const syncableFormats: string[] = [DisplayModelFormat.Live2dZip, DisplayModelFor
 const uploadTaskKind = 'upload-display-model'
 const UploadPayloadSchema = v.object({ modelId: v.string(), requestId: v.string() })
 
+/** Bundled Live2D preset used when a card has no display model yet. */
+export const DEFAULT_BUILT_IN_DISPLAY_MODEL_ID = 'preset-live2d-1'
+
 const displayModelsPresets: DisplayModel[] = [
-  { id: 'preset-live2d-1', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dProUrl, name: 'Hiyori (Pro)', previewImage: presetLive2dPreview, importedAt: 1733113886840 },
+  { id: DEFAULT_BUILT_IN_DISPLAY_MODEL_ID, format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dProUrl, name: 'Hiyori (Pro)', previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-live2d-2', format: DisplayModelFormat.Live2dZip, type: 'url', url: presetLive2dFreeUrl, name: 'Hiyori (Free)', previewImage: presetLive2dPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-1', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarAUrl, name: 'AvatarSample_A', previewImage: presetVrmAvatarAPreview, importedAt: 1733113886840 },
   { id: 'preset-vrm-2', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarBUrl, name: 'AvatarSample_B', previewImage: presetVrmAvatarBPreview, importedAt: 1733113886840 },

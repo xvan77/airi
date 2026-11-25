@@ -33,13 +33,21 @@ export interface CategorizedResponse {
   raw: string // Original full response
 }
 
+/** Tag names that hold private planning. They are filtered from visible speech and TTS. */
+const REASONING_TAG_NAMES = new Set([
+  'thinking',
+  'think',
+  'thought',
+  'reasoning',
+  'redacted_reasoning',
+])
+
 /**
- * Maps tag names to categories
- * All tags are treated as reasoning (filtered from TTS)
+ * Maps tag names to categories.
+ * Card layout tags such as core_identity are not planning blocks, so their inner text stays speech.
  */
-function mapTagNameToCategory(_tagName: string): ResponseCategory {
-  // All tags are reasoning - no need to distinguish tag names
-  return 'reasoning'
+function mapTagNameToCategory(tagName: string): ResponseCategory {
+  return REASONING_TAG_NAMES.has(tagName.toLowerCase()) ? 'reasoning' : 'speech'
 }
 
 interface ExtractedTag {
@@ -199,6 +207,9 @@ export function categorizeResponse(
         speechParts.push(text)
       }
     }
+    if (segment.category === 'speech' && segment.content.trim()) {
+      speechParts.push(segment.content.trim())
+    }
     lastEnd = Math.max(lastEnd, segment.endIndex)
   }
 
@@ -247,7 +258,7 @@ export function createStreamingCategorizer(
   let tagState: TagState = 'outside'
   let tagStackDepth = 0
 
-  // Fallback for filterToSpeech - uses rehype for robust incomplete tag detection
+  // Fallback for filterToSpeech - uses rehype for incomplete tag detection
   function checkIncompleteTag(): boolean {
     try {
       // A `<` that does not start a tag, as in `a < b` or `<=>`, is text, and so is `&`. rehype writes them as references.
@@ -383,8 +394,7 @@ export function createStreamingCategorizer(
 
       // Check if position falls within any non-speech segment
       for (const segment of categorized.segments) {
-        if (position >= segment.startIndex && position < segment.endIndex) {
-          // Position is within a tagged segment (thought/reasoning)
+        if (segment.category === 'reasoning' && position >= segment.startIndex && position < segment.endIndex) {
           return false
         }
       }
@@ -452,7 +462,6 @@ export function createStreamingCategorizer(
       let filtered = ''
       const endPosition = startPosition + text.length
 
-      // Find all non-speech segments that overlap with this text
       // Note: segments are already filtered to be complete by extractAllTags
       const overlappingSegments = categorized.segments.filter(
         segment => segment.endIndex > startPosition && segment.startIndex < endPosition,
@@ -463,7 +472,6 @@ export function createStreamingCategorizer(
         return text
       }
 
-      // Build filtered text by excluding non-speech segments
       let currentPos = startPosition
       for (const segment of overlappingSegments) {
         const segmentStart = Math.max(segment.startIndex, startPosition)
@@ -476,8 +484,16 @@ export function createStreamingCategorizer(
           filtered += text.slice(beforeStart, beforeEnd)
         }
 
-        // Skip the segment content (don't add to filtered)
-        currentPos = segmentEnd
+        if (segment.category === 'reasoning') {
+          currentPos = segmentEnd
+        }
+        else if (segment.content.trim() && segment.endIndex <= endPosition) {
+          filtered += `${segment.content.trim()} `
+          currentPos = segmentEnd
+        }
+        else {
+          currentPos = segmentEnd
+        }
       }
 
       // Add remaining text after last segment

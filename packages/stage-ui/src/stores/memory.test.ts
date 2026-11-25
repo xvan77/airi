@@ -29,7 +29,7 @@ describe('memory store', () => {
 
     memory.makeGeneral({ name: 'nickname', persona: 'airi' })
 
-    expect(memory.indexFor('discord-host')).toBe('Your own:\n- channel-rules: Rules of the Discord channel.\nGeneral:\n- nickname: What the owner likes to be called.')
+    expect(memory.indexFor('discord-host')).toBe('Your own:\n- channel-rules: Rules of the Discord channel.\nShared storage:\n- nickname: What the owner likes to be called.')
     expect(memory.read('nickname', 'discord-host')?.body).toBe('Yumeka.')
     expect(memory.entries.filter(entry => entry.name === 'nickname').map(entry => entry.persona)).toEqual([undefined])
   })
@@ -48,5 +48,18 @@ describe('memory store', () => {
     expect(memory.write({ name: '!!', description: '', body: 'x' }, 'airi')).toBeUndefined()
     expect(memory.write({ name: 'x', description: '', body: ' ' }, 'airi')).toBeUndefined()
     expect(memoryName('  我的 猫咪！ ')).toBe('我的-猫咪')
+  })
+
+  it('removes all memories for one card and drops unlinked leftovers', () => {
+    const memory = useMemoryStore()
+    memory.write({ name: 'lore', description: 'Backstory.', body: 'Born in the forest.' }, 'alyori')
+    memory.write({ name: 'nickname', description: 'Call name.', body: 'Yumeka.' }, 'ghost-card')
+
+    expect(memory.countForPersona('alyori')).toBe(1)
+    expect(memory.removeForPersona('alyori')).toBe(1)
+    expect(memory.countForPersona('alyori')).toBe(0)
+
+    expect(memory.removeUnlinkedFromCards(['default'])).toBe(1)
+    expect(memory.entries).toHaveLength(0)
   })
 })

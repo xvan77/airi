@@ -499,6 +499,11 @@
       part-of-speech: noun
       status: preferred
       context: Long-term memory specific settings and management
+    - text: Shared storage
+      part-of-speech: noun
+      status: preferred
+      context: Long-term memories every AIRI Card can read in chat
+      note: Do not use the label General for this group in English UI.
 
 - id: short-term-memory
   subject: memory

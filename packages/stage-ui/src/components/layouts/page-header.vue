@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMotion } from '@vueuse/motion'
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const props = withDefaults(defineProps<{
@@ -9,10 +9,17 @@ const props = withDefaults(defineProps<{
   showBackButton?: boolean
   disableBackButton?: boolean
   fallbackRoute?: string
+  /** Slightly less vertical padding below the title row. */
+  density?: 'default' | 'compact'
 }>(), {
   showBackButton: true,
   disableBackButton: false,
   fallbackRoute: '/settings',
+  density: 'default',
+})
+
+const headerPaddingClass = computed(() => {
+  return props.density === 'compact' ? 'pb-3 pt-8' : 'pb-6 pt-10'
 })
 
 const router = useRouter()
@@ -75,9 +82,10 @@ watch([() => props.title, () => props.subtitle, route], async () => {
       right: 'env(safe-area-inset-right, 0px)',
       left: 'env(safe-area-inset-left, 0px)',
     }"
-    sticky inset-x-0 top-0 z-99 w-full pb-6 pt-10
+    sticky inset-x-0 top-0 z-99 w-full
     flex="~ row items-center gap-2"
     bg="$bg-color"
+    :class="[headerPaddingClass]"
   >
     <button @click="handleBack">
       <div
