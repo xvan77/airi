@@ -19,7 +19,7 @@ const { loadingMessage } = useRendererWindowLoadingCopy(labelRef, routeRef)
 
 <template>
   <RendererWindowLoadingStatus
-    layout="center"
+    layout="bottom"
     draggable
     :message="loadingMessage"
   />

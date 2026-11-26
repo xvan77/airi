@@ -63,6 +63,7 @@ export const providerLocalLlm = defineProvider<LocalLlmConfig, 'local-llm'>({
   tasks: ['chat'],
   icon: 'i-lucide:cpu',
   isAvailableBy: isStageTamagotchi,
+  requiresCredentials: false,
 
   createProviderConfig: ({ t }) => localLlmConfigSchema.extend({
     modelId: localLlmConfigSchema.shape.modelId.meta({

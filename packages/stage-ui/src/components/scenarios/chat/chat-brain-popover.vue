@@ -33,7 +33,7 @@ const consciousnessStore = useConsciousnessStore()
 const providersStore = useProviderStore()
 const airiCardStore = useAiriCardStore()
 
-const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
+const { activeProvider, activeModel, chatReady } = storeToRefs(consciousnessStore)
 const { activeCard, activeCardId, cards } = storeToRefs(airiCardStore)
 const { configuredChatProvidersMetadata } = storeToRefs(providersStore)
 
@@ -117,11 +117,10 @@ const isStartingServer = ref(false)
 let localLlmPollInterval: ReturnType<typeof setInterval> | null = null
 
 const isLlmActive = computed(() => {
-  if (!activeProvider.value || !activeModel.value)
+  if (!chatReady.value)
     return false
-  if (activeProvider.value === 'local-llm') {
+  if (activeProvider.value === 'local-llm')
     return localLlmStatus.value?.state === 'running'
-  }
   return true
 })
 
@@ -216,20 +215,39 @@ async function stopLocalLlmServerIfRunning() {
   }
 }
 
-watch(activeProvider, (provider) => {
-  if (provider === 'local-llm') {
-    updateLocalLlmStatus()
-    if (!localLlmPollInterval) {
+watch(
+  [activeProvider, activeModel],
+  async ([provider, model], previous) => {
+    if (provider !== 'local-llm') {
+      if (localLlmPollInterval) {
+        clearInterval(localLlmPollInterval)
+        localLlmPollInterval = null
+      }
+      return
+    }
+
+    await updateLocalLlmStatus()
+    if (!localLlmPollInterval)
       localLlmPollInterval = setInterval(updateLocalLlmStatus, 3000)
-    }
-  }
-  else {
-    if (localLlmPollInterval) {
-      clearInterval(localLlmPollInterval)
-      localLlmPollInterval = null
-    }
-  }
-}, { immediate: true })
+
+    if (!model || !isStageTamagotchi())
+      return
+
+    const previousProvider = previous?.[0]
+    const previousModel = previous?.[1]
+    const selectionChanged = provider !== previousProvider || model !== previousModel
+    const alreadyOnModel = localLlmStatus.value?.state === 'running'
+      && localLlmStatus.value.activeModel === model
+    const alreadyStartingModel = localLlmStatus.value?.state === 'starting'
+      && localLlmStatus.value.activeModel === model
+
+    // Start (or switch) when local-llm becomes active or the GGUF changes.
+    // Do not restart on status polls alone, so Stop Server stays under user control.
+    if (selectionChanged && !alreadyOnModel && !alreadyStartingModel)
+      await handleStartServer()
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
   if (localLlmPollInterval) {
@@ -303,6 +321,7 @@ function handleSelectFavorite(fav: FavoriteModel) {
 
   if (fav.provider !== 'local-llm' && fav.model)
     void stopLocalLlmServerIfRunning()
+  // local-llm start runs from the activeProvider/activeModel watch after commit.
 
   // Update active card extensions to keep character state synced
   if (activeCard.value) {

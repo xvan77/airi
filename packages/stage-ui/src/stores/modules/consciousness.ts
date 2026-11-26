@@ -230,11 +230,11 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
     const definition = providersStore.findProviderDefinition(providerId)
     const stored = providerConfigStore.providers[providerId]
 
-    if (definition?.requiresCredentials === false)
-      return true
-
     if (!stored)
       return false
+
+    if (definition?.requiresCredentials === false)
+      return stored.status === 'configured'
 
     if (stored.configuredBy === 'authentication')
       return stored.status === 'configured' && authStore.isAuthenticated

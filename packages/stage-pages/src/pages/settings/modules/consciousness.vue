@@ -4,6 +4,7 @@ import type { ModelInfo } from '@proj-airi/stage-ui/libs/providers/types'
 
 import { ErrorContainer, ModelCatalogFilters, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { formatChatProviderErrorContent } from '@proj-airi/stage-ui/libs/chat-provider-error-message'
 import { LOCAL_LLM_BASE_CATALOG } from '@proj-airi/stage-ui/libs/local-llm-catalog'
 import { compareProviderCatalogOrder, ensurePricingSourcesFresh, parseDiskSizeBytes } from '@proj-airi/stage-ui/libs/model-catalog'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -27,9 +28,9 @@ const providerStore = useProviderConfigStore()
 const airiCardStore = useAiriCardStore()
 const consciousnessStore = useConsciousnessStore()
 const consciousnessSettingsStore = useConsciousnessSettingsStore()
-const { configuredProviders } = storeToRefs(providerStore)
+const { providers: storedProviders } = storeToRefs(providerStore)
 const { moduleChatProvidersMetadata } = storeToRefs(providersStore)
-const { reasoning, stageActEnabled, compactRequests, compactRequestsAuto, temperatureEnabled, topPEnabled } = storeToRefs(consciousnessSettingsStore)
+const { reasoning, stageActEnabled, compactRequests, compactRequestsAuto, temperatureEnabled, topPEnabled, showProviderHealth } = storeToRefs(consciousnessSettingsStore)
 const {
   activeProvider,
   activeModel,
@@ -93,14 +94,24 @@ const lastModelOnBrowsingProvider = computed(() => {
   return ''
 })
 
+/**
+ * Catalog radio pick for the current provider tab only.
+ * Cleared on every tab change so no provider (local-llm, Groq, cloud) pre-selects a model.
+ */
+const browsingCatalogPick = ref('')
+
+/** Preferred model for labels and local-llm actions — not the catalog radio. */
 const browsingModelSelection = computed(() => {
+  const pick = browsingCatalogPick.value.trim()
+  if (pick)
+    return pick
   if (isBrowsingActiveChatProvider.value)
     return activeModel.value
   return lastModelOnBrowsingProvider.value
 })
 
-/** Highlights the active model or the last model remembered for this provider tab (blue radio dot). */
-const catalogRadioSelection = computed(() => browsingModelSelection.value?.trim() ?? '')
+/** Radios stay empty until the user picks a card or uses the last-model banner. */
+const catalogRadioSelection = computed(() => browsingCatalogPick.value)
 
 const showBrowsingLastModelBanner = computed(() => Boolean(lastModelOnBrowsingProvider.value?.trim()))
 
@@ -114,6 +125,7 @@ async function selectLastModelOnBrowsingProvider() {
 const browsingManualModelDraft = ref('')
 
 watch(browsingProvider, (provider) => {
+  browsingCatalogPick.value = ''
   browsingManualModelDraft.value = provider === activeProvider.value
     ? activeModel.value
     : consciousnessStore.lastModelForProvider(provider)
@@ -123,7 +135,6 @@ watch(activeProvider, () => {
   if (browsingProvider.value === activeProvider.value)
     browsingManualModelDraft.value = activeModel.value
 })
-
 const sortedModuleChatProviders = computed(() =>
   [...moduleChatProvidersMetadata.value].sort(compareProviderCatalogOrder),
 )
@@ -197,18 +208,34 @@ const localLlmCanStartServer = computed(() =>
   Boolean(localLlmModelToStart.value) && !localLlmDownloadInProgress.value,
 )
 
+function localLlmCatalogEntry(filename: string) {
+  return LOCAL_LLM_BASE_CATALOG.find(entry => entry.filename === filename)
+}
+
 function localLlmDisplayName(filename: string) {
-  const catalogEntry = LOCAL_LLM_BASE_CATALOG.find(entry => entry.filename === filename)
+  const catalogEntry = localLlmCatalogEntry(filename)
   if (catalogEntry)
     return catalogEntry.name
   return filename.replace(/\.gguf$/i, '').replace(/[-_]/g, ' ')
+}
+
+function localLlmDescription(filename: string) {
+  const catalogEntry = localLlmCatalogEntry(filename)
+  if (catalogEntry)
+    return catalogEntry.description
+  const stem = filename.replace(/\.gguf$/i, '')
+  const quant = stem.match(/[Qq]\d(?:_[A-Z0-9]+)+|[Ff]p?\d+/u)?.[0]
+  const label = localLlmDisplayName(filename)
+  if (quant)
+    return `${label} local GGUF (${quant}). Offline chat through the App Local LLM server.`
+  return `${label} local GGUF. Offline chat through the App Local LLM server.`
 }
 
 const localLlmDownloadedModelItems = computed((): ModelInfo[] =>
   localLlmDownloadedModels.value.map(filename => ({
     id: filename,
     name: localLlmDisplayName(filename),
-    description: filename,
+    description: localLlmDescription(filename),
     provider: 'local-llm',
   })),
 )
@@ -231,7 +258,7 @@ const consciousnessDisplayModels = computed((): ModelInfo[] => {
       ...model,
       id: model.id,
       name: model.name ?? fromDisk?.name ?? model.id,
-      description: model.description ?? fromDisk?.description ?? model.id,
+      description: model.description?.trim() || fromDisk?.description || localLlmDescription(model.id),
     })
   }
 
@@ -268,6 +295,8 @@ async function handleLocalLlmStartServer() {
   await startLocalLlmServer(model)
   providersStore.forceProviderConfigured('local-llm')
   await refreshLocalLlmModels()
+  // Starting a model from Consciousness also commits it for chat everywhere.
+  await selectModel(model)
 }
 
 async function handleLocalLlmStopServer() {
@@ -281,10 +310,8 @@ async function handleLocalLlmQuickDownload(entry: LocalLlmCatalogEntry) {
     repo: entry.repo,
     filename: entry.filename,
   })
-  if (browsingProvider.value === 'local-llm')
-    await selectModel(entry.filename)
-  else
-    consciousnessStore.rememberModelForProvider('local-llm', entry.filename)
+  // Remember for the banner. Do not auto-commit chat — same as provider-tab browse rules.
+  consciousnessStore.rememberModelForProvider('local-llm', entry.filename)
 }
 
 watch(browsingProvider, async (provider) => {
@@ -325,6 +352,7 @@ async function selectModel(modelId: string) {
   const previousModelId = activeModel.value
   const loadedOnServer = localLlmStatus.value?.activeModel
 
+  browsingCatalogPick.value = modelId
   consciousnessStore.commitChatSelection(provider, modelId)
   browsingManualModelDraft.value = modelId
   await persistSelection()
@@ -342,7 +370,9 @@ async function selectModel(modelId: string) {
     && modelId !== loadedOnServer
     && localLlmDownloadedModels.value.includes(modelId)
   ) {
-    await handleLocalLlmStartServer()
+    await startLocalLlmServer(modelId)
+    providersStore.forceProviderConfigured('local-llm')
+    await refreshLocalLlmModels()
   }
 }
 
@@ -384,8 +414,26 @@ async function updateTopPEnabled(value: boolean) {
   await consciousnessSettingsStore.setTopPEnabled(value)
 }
 
+async function updateShowProviderHealth(value: boolean) {
+  await consciousnessSettingsStore.setShowProviderHealth(value)
+}
+
+function providerHealthFailed(providerId: string) {
+  return storedProviders.value[providerId]?.status === 'invalid'
+}
+
+function friendlyProviderError(error: unknown) {
+  return formatChatProviderErrorContent(
+    error,
+    key => t(key),
+    t('settings.pages.modules.consciousness.sections.section.provider-model-selection.error'),
+    { providerId: browsingProvider.value },
+  )
+}
+
 onMounted(() => {
   void ensurePricingSourcesFresh()
+  void providersStore.refreshListedProviderValidation()
   const browse = route.query.browse
   if (typeof browse === 'string' && browse.length > 0)
     browsingProvider.value = browse
@@ -453,7 +501,7 @@ onMounted(() => {
                 </button>
               </template>
 
-              <template v-if="configuredProviders[metadata.id] === false" #bottomRight>
+              <template v-if="showProviderHealth && providerHealthFailed(metadata.id)" #bottomRight>
                 <div class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 font-medium dark:bg-amber-900/30 dark:text-amber-300">
                   {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.health_check_failed') }}
                 </div>
@@ -502,38 +550,119 @@ onMounted(() => {
           <h2 class="text-lg md:text-2xl">
             {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.title') }}
           </h2>
-          <div class="flex flex-col items-start gap-1 text-neutral-400 md:flex-row md:items-center md:justify-between dark:text-neutral-400">
+          <div
+            :class="[
+              'flex flex-col items-start gap-1 text-neutral-400',
+              'md:flex-row md:items-center md:justify-between',
+              'dark:text-neutral-400',
+            ]"
+          >
             <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.subtitle') }}</span>
             <div
-              v-if="isBrowsingActiveChatProvider && browsingModelSelection"
-              class="flex flex-wrap items-center gap-2 text-sm text-neutral-400 font-medium dark:text-neutral-400"
+              v-if="browsingProvider === 'local-llm' && showLocalLlmOfflineActions"
+              :class="[
+                'flex flex-col items-start gap-2',
+                'md:items-end',
+              ]"
+            >
+              <div :class="['flex flex-col gap-0.5 md:items-end md:text-right']">
+                <span :class="['text-sm text-amber-600 font-medium dark:text-amber-400']">
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.offline_title') }}
+                </span>
+                <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.offline_description') }}
+                </span>
+                <span
+                  v-if="localLlmDownloadProgressPercent !== null"
+                  :class="['text-xs text-amber-600 dark:text-amber-400']"
+                >
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.downloading', { progress: localLlmDownloadProgressPercent }) }}
+                </span>
+              </div>
+              <div :class="['flex flex-wrap items-center gap-2 text-sm font-medium']">
+                <span
+                  v-if="browsingModelSelection"
+                  :class="['text-neutral-400 dark:text-neutral-400']"
+                >
+                  {{ t(localLlmModelLabelKey) }} {{ browsingModelSelection }}
+                </span>
+                <span
+                  v-if="browsingModelSelection && !localLlmActiveModelOnDisk"
+                  :class="[
+                    'border border-amber-500/30 rounded bg-amber-500/10 px-2 py-0.5 text-[10px]',
+                    'text-amber-600 font-bold dark:text-amber-400',
+                  ]"
+                >
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.not_downloaded') }}
+                </span>
+                <button
+                  v-if="localLlmDownloadInProgress"
+                  type="button"
+                  disabled
+                  :class="[
+                    'flex cursor-not-allowed items-center gap-1',
+                    'border border-amber-500/20 rounded bg-amber-500/10 px-2 py-0.5 text-[10px]',
+                    'text-amber-600 font-bold opacity-80 dark:text-amber-400',
+                  ]"
+                >
+                  <div class="i-solar:refresh-line-duotone animate-spin text-sm" />
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.downloading_button') }}
+                </button>
+                <button
+                  v-else-if="localLlmCanStartServer"
+                  type="button"
+                  :class="[
+                    'flex items-center gap-1',
+                    'border border-green-500/20 rounded bg-green-500/10 px-2 py-0.5 text-[10px]',
+                    'text-green-600 font-bold dark:text-green-500 disabled:opacity-50',
+                  ]"
+                  :disabled="localLlmIsStartingServer"
+                  :title="localLlmModelToStart !== browsingModelSelection ? localLlmModelToStart : undefined"
+                  @click="handleLocalLlmStartServer"
+                >
+                  <div class="i-solar:play-circle-line-duotone" />
+                  {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.start_server') }}
+                </button>
+              </div>
+            </div>
+            <div
+              v-else-if="isBrowsingActiveChatProvider && browsingModelSelection"
+              :class="[
+                'flex flex-wrap items-center gap-2 text-sm text-neutral-400 font-medium',
+                'dark:text-neutral-400',
+              ]"
             >
               <span>{{ t(localLlmModelLabelKey) }} {{ browsingModelSelection }}</span>
               <span
                 v-if="browsingProvider === 'local-llm' && !localLlmActiveModelOnDisk"
-                class="border border-amber-500/30 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold dark:text-amber-400"
+                :class="[
+                  'border border-amber-500/30 rounded bg-amber-500/10 px-2 py-0.5 text-[10px]',
+                  'text-amber-600 font-bold dark:text-amber-400',
+                ]"
               >
                 {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.not_downloaded') }}
               </span>
               <span
                 v-if="browsingProvider === 'local-llm' && localLlmStatus"
-                class="border rounded px-2 py-0.5 text-[10px] font-bold"
-                :class="localLlmServerState === 'running'
-                  ? 'border-green-500/20 bg-green-500/10 text-green-500'
-                  : localLlmServerState === 'starting'
-                    ? 'animate-pulse border-amber-500/20 bg-amber-500/10 text-amber-500'
-                    : 'border-red-500/20 bg-red-500/10 text-red-500'"
+                :class="[
+                  'border rounded px-2 py-0.5 text-[10px] font-bold',
+                  localLlmServerState === 'running'
+                    ? 'border-green-500/20 bg-green-500/10 text-green-500'
+                    : 'animate-pulse border-amber-500/20 bg-amber-500/10 text-amber-500',
+                ]"
               >
                 {{ localLlmServerState === 'running'
                   ? t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_running')
-                  : localLlmServerState === 'starting'
-                    ? t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_starting')
-                    : t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_offline') }}
+                  : t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.status_starting') }}
               </span>
               <button
                 v-if="browsingProvider === 'local-llm' && (localLlmServerState === 'running' || localLlmServerState === 'starting')"
                 type="button"
-                class="flex items-center gap-1 border border-red-500/20 rounded bg-red-500/10 px-2 py-0.5 text-[10px] text-red-500 font-bold"
+                :class="[
+                  'flex items-center gap-1',
+                  'border border-red-500/20 rounded bg-red-500/10 px-2 py-0.5 text-[10px]',
+                  'text-red-500 font-bold',
+                ]"
                 @click="handleLocalLlmStopServer"
               >
                 <div class="i-solar:stop-circle-line-duotone" />
@@ -543,7 +672,11 @@ onMounted(() => {
                 v-else-if="browsingProvider === 'local-llm' && localLlmDownloadInProgress"
                 type="button"
                 disabled
-                class="flex cursor-not-allowed items-center gap-1 border border-amber-500/20 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-600 font-bold opacity-80 dark:text-amber-400"
+                :class="[
+                  'flex cursor-not-allowed items-center gap-1',
+                  'border border-amber-500/20 rounded bg-amber-500/10 px-2 py-0.5 text-[10px]',
+                  'text-amber-600 font-bold opacity-80 dark:text-amber-400',
+                ]"
               >
                 <div class="i-solar:refresh-line-duotone animate-spin text-sm" />
                 {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.local_llm.downloading_button') }}
@@ -551,7 +684,11 @@ onMounted(() => {
               <button
                 v-else-if="browsingProvider === 'local-llm' && localLlmCanStartServer"
                 type="button"
-                class="flex items-center gap-1 border border-green-500/20 rounded bg-green-500/10 px-2 py-0.5 text-[10px] text-green-600 font-bold dark:text-green-500 disabled:opacity-50"
+                :class="[
+                  'flex items-center gap-1',
+                  'border border-green-500/20 rounded bg-green-500/10 px-2 py-0.5 text-[10px]',
+                  'text-green-600 font-bold dark:text-green-500 disabled:opacity-50',
+                ]"
                 :disabled="localLlmIsStartingServer"
                 :title="localLlmModelToStart !== browsingModelSelection ? localLlmModelToStart : undefined"
                 @click="handleLocalLlmStartServer"
@@ -575,21 +712,6 @@ onMounted(() => {
         </div>
 
         <template v-else-if="consciousnessDisplayModels.length > 0">
-          <ConsciousnessLocalLlmActions
-            v-if="showLocalLlmOfflineActions"
-            :active-model="browsingModelSelection"
-            :server-state="localLlmServerState"
-            :downloaded-models="localLlmDownloadedModels"
-            :is-starting-server="localLlmIsStartingServer"
-            :is-downloading="localLlmIsDownloading"
-            :download-progress-percent="localLlmDownloadProgressPercent"
-            :can-start-server="localLlmCanStartServer"
-            :download-in-progress="localLlmDownloadInProgress"
-            show-quick-download
-            @start-server="handleLocalLlmStartServer"
-            @stop-server="handleLocalLlmStopServer"
-            @quick-download="handleLocalLlmQuickDownload"
-          />
           <p
             v-if="browsingProvider === 'local-llm' && localLlmServerState !== 'running' && localLlmDownloadedModels.length > 0"
             class="text-xs text-neutral-500 dark:text-neutral-400"
@@ -647,24 +769,14 @@ onMounted(() => {
         <!-- Error state (no downloadable local models to show) -->
         <template v-else-if="browsingProviderModelError">
           <ConsciousnessLocalLlmActions
-            v-if="browsingProvider === 'local-llm'"
-            :active-model="browsingModelSelection"
-            :server-state="localLlmServerState"
-            :downloaded-models="localLlmDownloadedModels"
-            :is-starting-server="localLlmIsStartingServer"
+            v-if="browsingProvider === 'local-llm' && localLlmDownloadedModels.length === 0"
             :is-downloading="localLlmIsDownloading"
-            :download-progress-percent="localLlmDownloadProgressPercent"
-            :can-start-server="localLlmCanStartServer"
-            :download-in-progress="localLlmDownloadInProgress"
-            show-quick-download
-            @start-server="handleLocalLlmStartServer"
-            @stop-server="handleLocalLlmStopServer"
             @quick-download="handleLocalLlmQuickDownload"
           />
           <ErrorContainer
-            v-else
+            v-else-if="browsingProvider !== 'local-llm'"
             :title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.error')"
-            :error="browsingProviderModelError"
+            :error="friendlyProviderError(browsingProviderModelError)"
           />
           <div v-if="browsingProvider !== 'local-llm'" class="mt-2">
             <label class="mb-1 block text-sm font-medium">
@@ -681,22 +793,12 @@ onMounted(() => {
 
         <template v-else-if="!(browsingProvider === 'local-llm' && localLlmServerState === 'starting')">
           <ConsciousnessLocalLlmActions
-            v-if="browsingProvider === 'local-llm'"
-            :active-model="browsingModelSelection"
-            :server-state="localLlmServerState"
-            :downloaded-models="localLlmDownloadedModels"
-            :is-starting-server="localLlmIsStartingServer"
+            v-if="browsingProvider === 'local-llm' && localLlmDownloadedModels.length === 0"
             :is-downloading="localLlmIsDownloading"
-            :download-progress-percent="localLlmDownloadProgressPercent"
-            :can-start-server="localLlmCanStartServer"
-            :download-in-progress="localLlmDownloadInProgress"
-            show-quick-download
-            @start-server="handleLocalLlmStartServer"
-            @stop-server="handleLocalLlmStopServer"
             @quick-download="handleLocalLlmQuickDownload"
           />
           <div
-            v-else
+            v-else-if="browsingProvider !== 'local-llm'"
             class="flex items-center justify-between gap-4 rounded-xl bg-amber-50/50 p-2 dark:bg-amber-900/20"
           >
             <div class="min-w-0 flex flex-1 items-start gap-2">
@@ -731,6 +833,9 @@ onMounted(() => {
             :items="[]"
             :searchable="true"
             :allow-custom="true"
+            :description-collapsed-by-default="true"
+            :description-toggle-label="t('settings.pages.modules.consciousness.model_catalog.description_show')"
+            :description-collapse-label="t('settings.pages.modules.consciousness.model_catalog.description_hide')"
             :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
             :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
             :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: modelSearchQuery })"
@@ -822,6 +927,12 @@ onMounted(() => {
         :label="t('settings.pages.modules.consciousness.sections.section.model-options.compact-requests.label')"
         :description="compactRequestsDescription"
         @update:model-value="updateCompactRequests"
+      />
+      <FieldCheckbox
+        :model-value="showProviderHealth"
+        :label="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.show_provider_health.label')"
+        :description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.show_provider_health.description')"
+        @update:model-value="updateShowProviderHealth"
       />
     </section>
   </SettingsCard>

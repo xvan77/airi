@@ -8,9 +8,11 @@ import {
   ProviderBasicSettings,
   ProviderGenerationSettings,
   ProviderSettingsContainer,
+  ProviderKindCallout,
   ProviderSettingsLayout,
   ProviderValidationAlerts,
 } from '@proj-airi/stage-ui/components'
+import { useProviderSettingsPolicy } from '@proj-airi/stage-ui/composables/use-provider-settings-policy'
 import { useProviderValidation } from '@proj-airi/stage-ui/composables/use-provider-validation'
 import { getDefinedProvider } from '@proj-airi/stage-ui/libs'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
@@ -70,7 +72,6 @@ const {
   isValid,
   validationMessage,
   handleResetSettings,
-  forceValid,
   hasManualValidators,
   isManualTesting,
   manualTestPassed,
@@ -80,6 +81,8 @@ const {
   cancelManualPing,
   skipToNextPingModel,
 } = useProviderValidation(providerId)
+
+const { showApiKey } = useProviderSettingsPolicy(providerId)
 
 const apiKeyPlaceholder = computedAsync(async () => {
   const definition = providerDefinition.value ?? getDefinedProvider(providerId)
@@ -114,7 +117,9 @@ function goToModelSelection() {
         :description="t('settings.pages.providers.common.section.basic.description')"
         :on-reset="handleResetSettings"
       >
+        <ProviderKindCallout :provider-id="providerId" />
         <ProviderApiKeyInput
+          v-if="showApiKey"
           v-model="apiKey"
           :provider-name="providerMetadata?.localizedName"
           :placeholder="apiKeyPlaceholder"
@@ -151,7 +156,6 @@ function goToModelSelection() {
         :manual-test-message="manualTestMessage"
         :manual-test-progress-lines="manualTestProgressLines"
         :on-run-test="runManualTest"
-        :on-force-valid="forceValid"
         :on-go-to-model-selection="goToModelSelection"
         :on-cancel-manual-ping="cancelManualPing"
         :on-skip-next-ping-model="skipToNextPingModel"

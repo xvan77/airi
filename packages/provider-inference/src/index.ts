@@ -18,7 +18,8 @@ export function listProviders() {
 
 export { portableProviderDefinitions }
 export * from './generation'
-export { enrichCatalogModelsWithModelBank, enrichOpenRouterCatalogModels } from './model-catalog'
+export { enrichModelsForProvider, fallbackCatalogModelDescription, providerChatModelBanks } from './model-bank-catalog'
+export { catalogModelIdKey, enrichCatalogModelsWithModelBank, enrichOpenRouterCatalogModels } from './model-catalog'
 export { createWebSpeechAPIProvider, streamWebSpeechAPITranscription } from './providers/local/browser-web-speech-api'
 export { createSherpawTranscriptionDefinition, executeSherpawStream, SHERPAW_TRANSCRIPTION_PROVIDER_ID } from './providers/local/sherpaw-transcription'
 export type { SherpawModelResource, SherpawTranscriptionHost } from './providers/local/sherpaw-transcription'

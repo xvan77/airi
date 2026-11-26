@@ -71,6 +71,7 @@ export const providerOllama = defineProvider<OllamaConfig, 'ollama'>({
   tasks: ['chat'],
   capabilities: { chat: { reasoning: { modes: ['enabled', 'disabled'] } } },
   icon: 'i-lobe-icons:ollama',
+  requiresCredentials: false,
 
   createProviderConfig: ({ t }) => ollamaConfigSchema.extend({
     baseUrl: ollamaConfigSchema.shape.baseUrl

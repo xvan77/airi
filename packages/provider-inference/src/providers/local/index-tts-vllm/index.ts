@@ -22,6 +22,7 @@ export const providerIndexTtsVllm = defineProvider<IndexTtsConfig, 'index-tts-vl
   descriptionLocalize: ({ t }) => t('settings.pages.providers.provider.index-tts-vllm.description'),
   tasks: ['text-to-speech'],
   iconColor: 'i-lobe-icons:bilibiliindex',
+  requiresCredentials: false,
   createProviderConfig: () => indexTtsConfigSchema,
   createProvider(config) {
     return {

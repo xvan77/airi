@@ -6,7 +6,7 @@ import type { ProviderMetadata, ProviderValidationPlan } from '../../libs/provid
 import type { ChatRequestOptions, ModelInfo, ProviderDefinition, ProviderInstance, VoiceInfo } from '../../libs/providers/types'
 
 import { errorMessageFrom } from '@moeru/std'
-import { enrichOpenRouterCatalogModels, getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
+import { enrichModelsForProvider, getGenerationProvider, withReasoning } from '@proj-airi/provider-inference'
 import { isAggressiveOfflineStartup, isCustomProvidersDisabled } from '@proj-airi/stage-shared'
 import { isUsableChatModel } from '@proj-airi/stage-shared/chat-model-eligibility'
 import {
@@ -17,6 +17,7 @@ import {
   isCloudModelCatalogCacheStale,
   modelsFromCloudModelCatalogCache,
 } from '@proj-airi/stage-shared/cloud-model-catalog-cache'
+import { isUsableVisionModel } from '@proj-airi/stage-shared/vision-model-eligibility'
 import { computedAsync, useAsyncState, useIntervalFn } from '@vueuse/core'
 import { listModels } from '@xsai/model'
 import { uniqBy } from 'es-toolkit'
@@ -24,10 +25,12 @@ import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { collectChatProviderErrorDetail } from '../../libs/chat-provider-error-message'
 import {
   readPersistedCloudModelCatalog,
   writePersistedCloudModelCatalog,
 } from '../../libs/model-catalog/cloud-cache-storage'
+import { isPromptApiSupportedHost } from '../../libs/prompt-api-runtime'
 import {
   getProviderValidationIntervalMs,
   getValidatorsOfProvider,
@@ -38,6 +41,7 @@ import {
   SPEECH_CREDENTIALS_VALIDATOR_ID,
 } from '../../libs/providers'
 import { getProviderCategory, selectProviderMetadata, selectProvidersMetadata } from '../../libs/providers/metadata'
+import { OFFICIAL_VISION_PROVIDER_ID } from '../../libs/providers/providers/official/constants'
 import { getSchemaDefault } from '../../libs/zod'
 import { useAuthStore } from '../auth'
 import { useProviderConfigStore } from './config'
@@ -578,8 +582,8 @@ export const useProviderStore = defineStore('provider', () => {
     return result
   })
 
-  function deleteProvider(providerId: string) {
-    void providerConfigStore.removeProvider(providerId)
+  async function deleteProvider(providerId: string) {
+    await providerConfigStore.removeProvider(providerId)
     delete providerRuntimeState.value[providerId]
   }
 
@@ -626,17 +630,17 @@ export const useProviderStore = defineStore('provider', () => {
     id: string
     name?: string
   }>) {
-    return models.map(model => ({
+    return enrichModelsForProvider(providerId, models.map(model => ({
       metadata: model.metadata,
       reasoning: model.reasoning,
       inputModalities: model.inputModalities ?? model.architecture?.input_modalities,
       id: model.id,
       name: model.name ?? model.display_name ?? model.id,
       provider: providerId,
-      description: model.description ?? '',
+      description: model.description?.trim() || '',
       contextLength: model.contextLength ?? model.context_length ?? 0,
       deprecated: model.deprecated ?? false,
-    }))
+    })))
   }
 
   async function disposeTemporaryProvider(provider: ProviderInstance) {
@@ -782,11 +786,45 @@ export const useProviderStore = defineStore('provider', () => {
     }
   }
 
-  function usesChatModelEligibility(providerId: string) {
+  function modelCatalogEligibilityMode(providerId: string): 'chat' | 'vision' | 'none' {
+    if (providerId.startsWith(VISION_PROVIDER_ID_PREFIX) || providerId === 'apple-vision')
+      return 'vision'
+
     const definition = findProviderDefinition(providerId)
     if (!definition)
+      return 'chat'
+
+    const category = getProviderCategory(definition.tasks)
+    if (category === 'vision')
+      return 'vision'
+    if (category === 'chat')
+      return 'chat'
+    return 'none'
+  }
+
+  function isNativeVisionProvider(providerId: string) {
+    if (providerId === 'apple-vision' || providerId === OFFICIAL_VISION_PROVIDER_ID)
       return true
-    return getProviderCategory(definition.tasks) === 'chat'
+    const definition = findProviderDefinition(providerId)
+    if (!definition)
+      return false
+    return definition.disableModelCatalog === true
+      && getProviderCategory(definition.tasks) === 'vision'
+  }
+
+  /**
+   * Vision Providers catalog: hide backends with a finished model list and no
+   * vision-capable models. Keep native vision providers and catalogs not loaded yet.
+   */
+  function providerHasVisionCapableModels(providerId: string) {
+    if (isNativeVisionProvider(providerId))
+      return true
+
+    const runtime = providerRuntimeState.value[providerId]
+    if (!runtime || runtime.modelStatus !== 'ready')
+      return true
+
+    return runtime.models.some(model => isUsableVisionModel(model))
   }
 
   function normalizeFetchedProviderModels(providerId: string, models: Array<{
@@ -800,25 +838,35 @@ export const useProviderStore = defineStore('provider', () => {
     deprecated?: boolean
     provider?: string
   }>) {
-    const applyChatEligibility = usesChatModelEligibility(providerId)
+    const eligibilityMode = modelCatalogEligibilityMode(providerId)
     const normalized = uniqBy(models.filter(model => !!model.id), m => m.id)
-      .filter(model => !applyChatEligibility || isUsableChatModel({ id: model.id, name: model.name ?? '' }, providerId))
+      .filter((model) => {
+        if (eligibilityMode === 'vision') {
+          return isUsableVisionModel({
+            id: model.id,
+            name: model.name ?? '',
+            inputModalities: model.inputModalities,
+            metadata: model.metadata,
+          })
+        }
+        if (eligibilityMode === 'chat')
+          return isUsableChatModel({ id: model.id, name: model.name ?? '' }, providerId)
+        return true
+      })
       .map(model => ({
         metadata: model.metadata,
         reasoning: model.reasoning,
         inputModalities: model.inputModalities,
         id: model.id,
         name: model.name ?? model.id,
-        description: model.description ?? '',
+        description: model.description?.trim() || '',
         contextLength: model.contextLength ?? 0,
         deprecated: model.deprecated ?? false,
         provider: providerId,
       }))
 
-    if (providerId === 'openrouter-ai')
-      return enrichOpenRouterCatalogModels(normalized)
-
-    return normalized
+    // model-bank supplies the long More-info prose many APIs omit (Gemini, Grok, Groq, …).
+    return enrichModelsForProvider(providerId, normalized)
   }
 
   function commitProviderModelCatalog(
@@ -988,7 +1036,7 @@ export const useProviderStore = defineStore('provider', () => {
           [providerId]: {
             ...currentRuntimeState,
             modelStatus: 'error',
-            modelError: errorMessageFrom(error) ?? 'Unknown error',
+            modelError: collectChatProviderErrorDetail(error, errorMessageFrom(error) ?? 'Unknown error'),
           },
         }
       }
@@ -1238,8 +1286,29 @@ export const useProviderStore = defineStore('provider', () => {
   })
 
   const allVisionProvidersMetadata = computed(() => {
-    return availableProvidersMetadata.value.filter(metadata => metadata.category === 'vision')
+    return availableProvidersMetadata.value.filter(metadata =>
+      metadata.category === 'vision'
+      && providerHasVisionCapableModels(metadata.id),
+    )
   })
+
+  async function loadModelsForVisionProviderCatalog() {
+    const visionProviders = availableProvidersMetadata.value.filter(metadata => metadata.category === 'vision')
+    await Promise.all(visionProviders.map(async (metadata) => {
+      if (!supportsModelListing(metadata.id))
+        return
+      if (providerRuntimeState.value[metadata.id]?.modelStatus === 'ready')
+        return
+      if (providerRuntimeState.value[metadata.id]?.modelStatus === 'loading')
+        return
+      try {
+        await fetchModelsForProvider(metadata.id)
+      }
+      catch (error) {
+        console.warn(`[provider] Vision catalog model load failed for ${metadata.id}:`, errorMessageFrom(error))
+      }
+    }))
+  }
 
   const configuredChatProvidersMetadata = computed(() => {
     return allChatProvidersMetadata.value.filter(metadata => providerConfigStore.configuredProviders[metadata.id])
@@ -1271,12 +1340,7 @@ export const useProviderStore = defineStore('provider', () => {
   }
 
   function shouldListProviderForPromptApi(providerId: string) {
-    return providerId === 'prompt-api' && 'LanguageModel' in globalThis
-  }
-
-  function isProviderAvailableWithoutConfiguration(providerId: string) {
-    return providerConfiguredBy(providerId) !== 'authentication'
-      && getProviderDefinition(providerId).requiresCredentials === false
+    return providerId === 'prompt-api' && isPromptApiSupportedHost()
   }
 
   function providerConfiguredBy(providerId: string) {
@@ -1300,37 +1364,44 @@ export const useProviderStore = defineStore('provider', () => {
       && (providerConfiguredBy(providerId) !== 'authentication' || authStore.isAuthenticated)
   }
 
-  // Authentication-owned providers do not require a user-supplied API key,
-  // but they do require an authenticated session. Browser and local providers
-  // remain available without a persisted configuration record.
+  function isModuleListedUserProvider(providerId: string) {
+    return providerConfiguredBy(providerId) !== 'authentication' && shouldListProvider(providerId)
+  }
+
+  // Authentication-owned providers need a configured record and a session.
+  // User providers appear only when configured or explicitly added. That way
+  // trash can remove credential-free locals such as Ollama from every module strip.
   const moduleChatProvidersMetadata = computed(() => {
-    return allChatProvidersMetadata.value.filter(metadata =>
-      isProviderConfiguredForModule(metadata.id)
-      || (providerConfiguredBy(metadata.id) !== 'authentication' && shouldListProvider(metadata.id))
-      || isProviderAvailableWithoutConfiguration(metadata.id)
-      || shouldListProviderForPromptApi(metadata.id),
-    )
+    return allChatProvidersMetadata.value.filter((metadata) => {
+      if (metadata.id === 'prompt-api' && !isPromptApiSupportedHost())
+        return false
+
+      return isProviderConfiguredForModule(metadata.id)
+        || isModuleListedUserProvider(metadata.id)
+        || shouldListProviderForPromptApi(metadata.id)
+    })
   })
 
   const moduleSpeechProvidersMetadata = computed(() => {
     return allAudioSpeechProvidersMetadata.value.filter(metadata =>
-      isProviderConfiguredForModule(metadata.id)
-      || isProviderAvailableWithoutConfiguration(metadata.id),
+      // speech-noop is the permanent "None" speech option on the Speech module.
+      metadata.id === 'speech-noop'
+      || isProviderConfiguredForModule(metadata.id)
+      || isModuleListedUserProvider(metadata.id),
     )
   })
 
   const moduleTranscriptionProvidersMetadata = computed(() => {
     return allAudioTranscriptionProvidersMetadata.value.filter(metadata =>
       isProviderConfiguredForModule(metadata.id)
-      || isProviderAvailableWithoutConfiguration(metadata.id),
+      || isModuleListedUserProvider(metadata.id),
     )
   })
 
   const moduleVisionProvidersMetadata = computed(() => {
     return allVisionProvidersMetadata.value.filter(metadata =>
       isProviderConfiguredForModule(metadata.id)
-      || (providerConfiguredBy(metadata.id) !== 'authentication' && shouldListProvider(metadata.id))
-      || isProviderAvailableWithoutConfiguration(metadata.id),
+      || isModuleListedUserProvider(metadata.id),
     )
   })
 
@@ -1386,6 +1457,8 @@ export const useProviderStore = defineStore('provider', () => {
     allAudioSpeechProvidersMetadata,
     allAudioTranscriptionProvidersMetadata,
     allVisionProvidersMetadata,
+    loadModelsForVisionProviderCatalog,
+    providerHasVisionCapableModels,
     configuredChatProvidersMetadata,
     configuredSpeechProvidersMetadata,
     configuredTranscriptionProvidersMetadata,

@@ -69,6 +69,10 @@ export function useLocalLlmStartupChatNotice() {
 
   onMounted(() => {
     void syncNoticeWithStatus()
+    // NOTICE:
+    // Keep polling while chat is mounted. Stopping after the first non-starting
+    // sample misses the first-install restart that begins after chat opens.
+    // Removal condition: a start-requested event that can wake a paused poller.
     pollTimer = setInterval(() => {
       void syncNoticeWithStatus()
     }, 800)

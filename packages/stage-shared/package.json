@@ -37,6 +37,7 @@
     "./cloud-model-catalog-cache": "./src/cloud-model-catalog-cache.ts",
     "./catalog-description": "./src/catalog-description.ts",
     "./chat-model-eligibility": "./src/chat-model-eligibility/index.ts",
+    "./vision-model-eligibility": "./src/vision-model-eligibility/index.ts",
     "./webgpu": "./src/webgpu/index.ts"
   },
   "scripts": {

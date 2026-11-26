@@ -10,14 +10,14 @@ const isWindowsRef = useAsyncState(() => isWindows(), false)
 
 <template>
   <div v-if="isWindowsRef" class="resize-handles">
-    <div class="handle n" @mousedown="handleResizeStart($event, 'n')" />
-    <div class="handle s" @mousedown="handleResizeStart($event, 's')" />
-    <div class="handle e" @mousedown="handleResizeStart($event, 'e')" />
-    <div class="handle w" @mousedown="handleResizeStart($event, 'w')" />
-    <div class="handle ne" @mousedown="handleResizeStart($event, 'ne')" />
-    <div class="handle nw" @mousedown="handleResizeStart($event, 'nw')" />
-    <div class="handle se" @mousedown="handleResizeStart($event, 'se')" />
-    <div class="handle sw" @mousedown="handleResizeStart($event, 'sw')" />
+    <div class="handle n" @pointerdown="handleResizeStart($event, 'n')" />
+    <div class="handle s" @pointerdown="handleResizeStart($event, 's')" />
+    <div class="handle e" @pointerdown="handleResizeStart($event, 'e')" />
+    <div class="handle w" @pointerdown="handleResizeStart($event, 'w')" />
+    <div class="handle ne" @pointerdown="handleResizeStart($event, 'ne')" />
+    <div class="handle nw" @pointerdown="handleResizeStart($event, 'nw')" />
+    <div class="handle se" @pointerdown="handleResizeStart($event, 'se')" />
+    <div class="handle sw" @pointerdown="handleResizeStart($event, 'sw')" />
   </div>
 </template>
 

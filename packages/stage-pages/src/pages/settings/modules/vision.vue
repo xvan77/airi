@@ -1,24 +1,28 @@
 <script setup lang="ts">
-import { Alert, ErrorContainer, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
+import { Alert, ErrorContainer, ModelCatalogFilters, RadioCardManySelect, RadioCardSimple } from '@proj-airi/stage-ui/components'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
+import { ensurePricingSourcesFresh } from '@proj-airi/stage-ui/libs/model-catalog'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useConsciousnessSettingsStore } from '@proj-airi/stage-ui/stores/modules/consciousness-settings'
 import { useVisionActivityStore, useVisionProcessingStore, useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { FieldCheckbox, FieldRange, SettingsCard } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
 const airiCardStore = useAiriCardStore()
+const consciousnessSettingsStore = useConsciousnessSettingsStore()
 const visionStore = useVisionStore()
 const visionProcessingStore = useVisionProcessingStore()
 const visionActivityStore = useVisionActivityStore()
-const { configuredProviders } = storeToRefs(providerStore)
+const { providers: storedProviders } = storeToRefs(providerStore)
 const { moduleVisionProvidersMetadata } = storeToRefs(providersStore)
+const { showProviderHealth } = storeToRefs(consciousnessSettingsStore)
 const {
   useForChat,
   useForToolImages,
@@ -27,8 +31,13 @@ const {
   customModelName,
   ollamaThinkingEnabled,
   modelSearchQuery,
+  modelFilterPricing,
+  modelFilterDeployment,
+  modelSortKey,
+  modelSortDirection,
   supportsModelListing,
   providerModels,
+  visionModelSelectItems,
   isLoadingActiveProviderModels,
   activeProviderModelError,
 } = storeToRefs(visionStore)
@@ -46,12 +55,28 @@ const {
 const { t, locale } = useI18n()
 const { trackProviderClick } = useAnalytics()
 
+const VISION_PROVIDER_ID_PREFIX = 'vision-'
+
+onMounted(() => {
+  void ensurePricingSourcesFresh()
+})
+
 watch(activeProvider, async (provider) => {
   if (!provider)
     return
 
   await visionStore.loadModelsForProvider(provider)
 }, { immediate: true })
+
+const activeProviderSettingsPath = computed(() => {
+  if (!activeProvider.value)
+    return '/settings/providers#vision'
+
+  const sourceId = activeProvider.value.startsWith(VISION_PROVIDER_ID_PREFIX)
+    ? activeProvider.value.slice(VISION_PROVIDER_ID_PREFIX.length)
+    : activeProvider.value
+  return `/settings/providers/vision/${sourceId}`
+})
 
 async function selectProvider(provider: string) {
   await airiCardStore.selectActiveCardVisionProvider(provider)
@@ -70,6 +95,14 @@ async function handleDeleteProvider(providerId: string) {
   await providersStore.deleteProvider(providerId)
 }
 
+async function updateShowProviderHealth(value: boolean) {
+  await consciousnessSettingsStore.setShowProviderHealth(value)
+}
+
+function providerHealthFailed(providerId: string) {
+  return storedProviders.value[providerId]?.status === 'invalid'
+}
+
 const formattedLastCapture = computed(() => formatRelativeTime(lastCaptureAt.value))
 const formattedLastContextUpdate = computed(() => formatRelativeTime(lastContextUpdateAt.value))
 const formattedLastInferenceDuration = computed(() => lastInference.value
@@ -81,6 +114,9 @@ const lastInferenceProviderName = computed(() => {
   return moduleVisionProvidersMetadata.value.find(metadata => metadata.id === providerId)?.localizedName ?? providerId
 })
 const isOllamaVisionProvider = computed(() => activeProvider.value === 'vision-ollama')
+const failedInferenceCountClass = computed(() => failedInferenceCount.value > 0
+  ? 'text-red-500'
+  : 'text-neutral-600 dark:text-neutral-200')
 
 function canDeleteProvider(providerId: string) {
   return !providerId.startsWith('official-provider') && !providerId.startsWith('vision-official-provider')
@@ -104,26 +140,36 @@ function formatRelativeTime(timestamp: number | null) {
 <template>
   <div :class="['flex', 'flex-col', 'gap-6']">
     <SettingsCard>
-      <FieldCheckbox
-        v-model="useForChat"
-        :label="t('stage.chat.images.use-vision')"
-        :description="t('stage.chat.images.use-vision-description')"
-      />
-      <FieldCheckbox
-        v-model="useForToolImages"
-        :label="t('settings.pages.modules.vision.tool-images.label')"
-        :description="t('settings.pages.modules.vision.tool-images.description')"
-      />
-    </SettingsCard>
-
-    <SettingsCard>
       <div :class="['flex', 'flex-col', 'gap-4']">
         <div>
-          <h2 :class="['text-lg', 'text-neutral-500', 'md:text-2xl', 'dark:text-neutral-500']">
-            {{ t('settings.pages.providers.title') }}
-          </h2>
+          <div :class="['flex', 'items-center', 'justify-between', 'gap-4']">
+            <h2 :class="['text-lg', 'text-neutral-500', 'md:text-2xl', 'dark:text-neutral-500']">
+              {{ t('settings.pages.providers.title') }}
+            </h2>
+            <RouterLink
+              :to="activeProviderSettingsPath"
+              :class="[
+                'inline-flex',
+                'shrink-0',
+                'items-center',
+                'gap-2',
+                'rounded-lg',
+                'bg-amber-500',
+                'px-4',
+                'py-2.5',
+                'text-sm',
+                'font-semibold',
+                'text-white',
+                'transition',
+                'hover:bg-amber-600',
+              ]"
+            >
+              <div :class="['text-lg', 'i-solar:settings-line-duotone']" />
+              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.open_provider_settings') }}
+            </RouterLink>
+          </div>
           <div :class="['text-neutral-400', 'dark:text-neutral-400']">
-            <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.description') }}</span>
+            <span>{{ t('settings.pages.modules.vision.sections.section.provider-selection.description') }}</span>
           </div>
         </div>
         <div :class="['max-w-full']">
@@ -137,10 +183,12 @@ function formatRelativeTime(timestamp: number | null) {
               :id="metadata.id"
               :key="metadata.id"
               :model-value="activeProvider"
+              dense
               name="provider"
               :value="metadata.id"
               :title="metadata.localizedName || 'Unknown'"
               :description="metadata.localizedDescription"
+              :more-info-label="t('settings.pages.modules.consciousness.model_catalog.description_show')"
               @update:model-value="selectProvider"
               @click="trackProviderClick(metadata.id, 'vision')"
             >
@@ -164,7 +212,7 @@ function formatRelativeTime(timestamp: number | null) {
                 </button>
               </template>
 
-              <template v-if="configuredProviders[metadata.id] === false" #bottomRight>
+              <template v-if="showProviderHealth && providerHealthFailed(metadata.id)" #bottomRight>
                 <div
                   :class="[
                     'rounded',
@@ -186,13 +234,14 @@ function formatRelativeTime(timestamp: number | null) {
               to="/settings/providers#vision"
               :class="[
                 'relative',
-                'min-w-50',
-                'w-fit',
+                'h-12',
+                'w-80',
+                'flex-shrink-0',
                 'rounded-xl',
                 'border-2',
                 'border-neutral-100',
                 'bg-white',
-                'p-4',
+                'p-2',
                 'transition',
                 'duration-200',
                 'ease-in-out',
@@ -201,6 +250,7 @@ function formatRelativeTime(timestamp: number | null) {
                 'dark:bg-neutral-900/20',
                 'dark:hover:border-primary-400/30',
                 'flex',
+                'flex-col',
                 'items-center',
                 'justify-center',
               ]"
@@ -252,10 +302,10 @@ function formatRelativeTime(timestamp: number | null) {
       <div :class="['flex', 'flex-col', 'gap-4']">
         <div>
           <h2 :class="['text-lg', 'md:text-2xl']">
-            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.title') }}
+            {{ t('settings.pages.modules.vision.sections.section.provider-model-selection.title') }}
           </h2>
           <div :class="['text-neutral-400', 'dark:text-neutral-400']">
-            <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.subtitle') }}</span>
+            <span>{{ t('settings.pages.modules.vision.sections.section.provider-model-selection.subtitle') }}</span>
           </div>
         </div>
 
@@ -272,24 +322,54 @@ function formatRelativeTime(timestamp: number | null) {
           :error="activeProviderModelError"
         />
 
-        <Alert
-          v-else-if="providerModels.length === 0 && !isLoadingActiveProviderModels"
-          type="warning"
-        >
-          <template #title>
-            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models') }}
-          </template>
-          <template #content>
-            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models_description') }}
-          </template>
-        </Alert>
-
-        <template v-else-if="providerModels.length > 0">
+        <template v-else-if="providerModels.length === 0 && !isLoadingActiveProviderModels">
+          <Alert type="warning">
+            <template #title>
+              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models') }}
+            </template>
+            <template #content>
+              {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_models_description') }}
+            </template>
+          </Alert>
           <RadioCardManySelect
             v-model="activeModel"
             v-model:search-query="modelSearchQuery"
-            :items="providerModels.sort((a, b) => a.id === activeModel ? -1 : b.id === activeModel ? 1 : 0)"
+            :provider-id="activeProvider"
+            :items="[]"
             :searchable="true"
+            :allow-custom="true"
+            :description-collapsed-by-default="true"
+            :description-toggle-label="t('settings.pages.modules.consciousness.model_catalog.description_show')"
+            :description-collapse-label="t('settings.pages.modules.consciousness.model_catalog.description_hide')"
+            :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
+            :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
+            :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: modelSearchQuery })"
+            :search-results-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_results', { count: '{count}', total: '{total}' })"
+            :custom-input-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.custom_model_placeholder')"
+            :expand-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.expand')"
+            :collapse-button-text="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.collapse')"
+            @update:model-value="persistSelection"
+            @update:custom-value="updateCustomModelName"
+          />
+        </template>
+
+        <template v-else-if="providerModels.length > 0">
+          <ModelCatalogFilters
+            v-model:pricing="modelFilterPricing"
+            v-model:deployment="modelFilterDeployment"
+            v-model:sort-key="modelSortKey"
+            v-model:sort-direction="modelSortDirection"
+            :class="['min-w-0', 'flex-1']"
+          />
+          <RadioCardManySelect
+            v-model="activeModel"
+            v-model:search-query="modelSearchQuery"
+            :provider-id="activeProvider"
+            :items="visionModelSelectItems"
+            :searchable="true"
+            :description-collapsed-by-default="true"
+            :description-toggle-label="t('settings.pages.modules.consciousness.model_catalog.description_show')"
+            :description-collapse-label="t('settings.pages.modules.consciousness.model_catalog.description_hide')"
             :search-placeholder="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.search_placeholder')"
             :search-no-results-title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results')"
             :search-no-results-description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.no_search_results_description', { query: modelSearchQuery })"
@@ -309,10 +389,10 @@ function formatRelativeTime(timestamp: number | null) {
       <div :class="['flex', 'flex-col', 'gap-4']">
         <div>
           <h2 :class="['text-lg', 'text-neutral-500', 'md:text-2xl', 'dark:text-neutral-400']">
-            {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.title') }}
+            {{ t('settings.pages.modules.vision.sections.section.provider-model-selection.title') }}
           </h2>
           <div :class="['text-neutral-400', 'dark:text-neutral-500']">
-            <span>{{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.subtitle') }}</span>
+            <span>{{ t('settings.pages.modules.vision.sections.section.provider-model-selection.subtitle') }}</span>
           </div>
         </div>
 
@@ -364,6 +444,36 @@ function formatRelativeTime(timestamp: number | null) {
           >
         </div>
       </div>
+    </SettingsCard>
+
+    <SettingsCard>
+      <section :class="['flex', 'flex-col', 'gap-4']">
+        <h2 :class="['text-lg', 'text-neutral-500', 'md:text-2xl', 'dark:text-neutral-400']">
+          {{ t('settings.pages.modules.vision.sections.section.model-options.title') }}
+        </h2>
+        <FieldCheckbox
+          v-model="useForChat"
+          :label="t('stage.chat.images.use-vision')"
+          :description="t('stage.chat.images.use-vision-description')"
+        />
+        <FieldCheckbox
+          v-model="useForToolImages"
+          :label="t('settings.pages.modules.vision.tool-images.label')"
+          :description="t('settings.pages.modules.vision.tool-images.description')"
+        />
+        <FieldCheckbox
+          v-if="isOllamaVisionProvider"
+          v-model="ollamaThinkingEnabled"
+          :label="t('settings.pages.modules.vision.ollama.thinking.label')"
+          :description="t('settings.pages.modules.vision.ollama.thinking.description')"
+        />
+        <FieldCheckbox
+          :model-value="showProviderHealth"
+          :label="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.show_provider_health.label')"
+          :description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.show_provider_health.description')"
+          @update:model-value="updateShowProviderHealth"
+        />
+      </section>
     </SettingsCard>
 
     <SettingsCard>
@@ -428,7 +538,7 @@ function formatRelativeTime(timestamp: number | null) {
             <div :class="['text-xs', 'uppercase', 'tracking-wide', 'text-neutral-400']">
               {{ t('settings.pages.modules.vision.stats.failed-inferences') }}
             </div>
-            <div :class="['text-sm', 'font-medium', ...(failedInferenceCount > 0 ? ['text-red-500'] : ['text-neutral-600', 'dark:text-neutral-200'])]">
+            <div :class="['text-sm', 'font-medium', failedInferenceCountClass]">
               {{ failedInferenceCount }}
             </div>
             <div :class="['text-xs', 'text-neutral-400']">
@@ -464,25 +574,6 @@ function formatRelativeTime(timestamp: number | null) {
             </div>
           </div>
         </div>
-      </div>
-    </SettingsCard>
-
-    <SettingsCard v-if="isOllamaVisionProvider">
-      <div :class="['flex', 'flex-col', 'gap-4']">
-        <div>
-          <h2 :class="['text-lg', 'text-neutral-500', 'md:text-2xl', 'dark:text-neutral-400']">
-            {{ t('settings.pages.modules.vision.ollama.title') }}
-          </h2>
-          <div :class="['text-neutral-400', 'dark:text-neutral-400']">
-            {{ t('settings.pages.modules.vision.ollama.description') }}
-          </div>
-        </div>
-
-        <FieldCheckbox
-          v-model="ollamaThinkingEnabled"
-          :label="t('settings.pages.modules.vision.ollama.thinking.label')"
-          :description="t('settings.pages.modules.vision.ollama.thinking.description')"
-        />
       </div>
     </SettingsCard>
   </div>

@@ -54,9 +54,10 @@ const emit = defineEmits<{
   submit: []
   /**
    * The user asked for Hearing settings. The host opens this settings route in its own window or router.
-   * Dictation without a transcription provider asks for the speech recognition page. The menu item asks for the Hearing overview.
+   * Dictation without a transcription provider asks for speech recognition.
+   * The menu item asks for Hearing more options (microphone, transcripts, wake words, voiceprint).
    */
-  configure: [route: '/settings/modules/hearing' | '/settings/modules/hearing/transcriber']
+  configure: [route: '/settings/modules/hearing/more' | '/settings/modules/hearing/transcriber']
   /** A recorded voice message waits to be sent, or not any more. The host enables its send button while one waits. */
   pendingChange: [pending: boolean]
 }>()
@@ -393,7 +394,7 @@ const separatorClasses = ['mx-2 my-1 h-px bg-neutral-200/80 dark:bg-neutral-700/
           <span>{{ t('stage.chat.voice-composer.push-to-talk-unavailable') }}</span>
         </p>
         <DropdownMenuSeparator :class="separatorClasses" />
-        <DropdownMenuItem :class="itemClasses" @select="emit('configure', '/settings/modules/hearing')">
+        <DropdownMenuItem :class="itemClasses" @select="emit('configure', '/settings/modules/hearing/more')">
           <span :class="['flex-1']">{{ t('stage.chat.voice-composer.hearing-settings') }}</span>
           <span :class="['i-solar:alt-arrow-right-linear size-4 shrink-0 opacity-60']" />
         </DropdownMenuItem>

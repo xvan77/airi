@@ -206,14 +206,15 @@ describe('provider store synchronization boundary', () => {
   // configuration. The official providers also have credential-free local
   // definitions, but their availability belongs to the authenticated session.
   //
-  // We fixed this by requiring a configured record for official providers
-  // while keeping account-free browser and local providers available.
+  // We fixed this by requiring a configured record for official providers.
+  // speech-noop stays listed as the permanent Speech "None" option.
   it('lists official providers only after authenticated setup configures them', async () => {
     const store = useProviderStore()
     const configStore = useProviderConfigStore()
 
     await vi.waitFor(() => {
       expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).toContain('speech-noop')
+      expect(store.moduleChatProvidersMetadata.map(provider => provider.id)).not.toContain('ollama')
       expect(store.moduleChatProvidersMetadata.map(provider => provider.id)).not.toContain('official-provider')
       expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_SPEECH_PROVIDER_ID)
       expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
@@ -247,6 +248,39 @@ describe('provider store synchronization boundary', () => {
     expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
     expect(store.moduleTranscriptionProvidersMetadata.map(provider => provider.id)).toContain(OFFICIAL_TRANSCRIPTION_PROVIDER_ID)
     expect(store.moduleVisionProvidersMetadata.map(provider => provider.id)).toContain('vision-official-provider')
+  })
+
+  // ROOT CAUSE:
+  //
+  // Module strips listed every credential-free provider via
+  // isProviderAvailableWithoutConfiguration. Trash called removeProvider, which
+  // returned early when no providers record existed, so the card stayed.
+  //
+  // We fixed this by listing user providers only when configured or added, and
+  // by always unmarking on remove.
+  it('removes credential-free providers from every module strip after delete', async () => {
+    const store = useProviderStore()
+    const configStore = useProviderConfigStore()
+
+    await store.initializeProvider('ollama')
+    await store.forceProviderConfigured('ollama')
+    await store.initializeProvider('kokoro-local')
+    await store.forceProviderConfigured('kokoro-local')
+
+    expect(store.moduleChatProvidersMetadata.map(provider => provider.id)).toContain('ollama')
+    expect(store.moduleVisionProvidersMetadata.map(provider => provider.id)).toContain('ollama')
+    expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).toContain('kokoro-local')
+
+    await store.deleteProvider('ollama')
+    await store.deleteProvider('kokoro-local')
+
+    expect(configStore.providers.ollama).toBeUndefined()
+    expect(configStore.addedProviders.ollama).toBeUndefined()
+    expect(configStore.providers['kokoro-local']).toBeUndefined()
+    expect(configStore.addedProviders['kokoro-local']).toBeUndefined()
+    expect(store.moduleChatProvidersMetadata.map(provider => provider.id)).not.toContain('ollama')
+    expect(store.moduleVisionProvidersMetadata.map(provider => provider.id)).not.toContain('ollama')
+    expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).not.toContain('kokoro-local')
   })
 
   // ROOT CAUSE:

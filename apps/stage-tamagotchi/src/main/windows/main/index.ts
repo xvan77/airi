@@ -37,6 +37,7 @@ import { array, number, object, optional, string } from 'valibot'
 import icon from '../../../../resources/icon.png?asset'
 
 import { electronFullscreenExit, electronFullscreenOpen, electronFullscreenPack, electronFullscreenRequestClose, electronFullscreenSetMode, electronFullscreenSurfaceChanged, electronMainWindowEnterFullscreen, electronMainWindowGetFullscreenState, electronMainWindowSetFullscreenBounds, electronStartDraggingWindow } from '../../../shared/eventa'
+import { MAIN_WINDOW_DEFAULT_HEIGHT, MAIN_WINDOW_DEFAULT_WIDTH } from '../../../shared/main-window-size'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { shouldOpenDevTools } from '../../libs/electron/devtools'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
@@ -111,10 +112,11 @@ export async function setupMainWindow(params: {
 
   const mainWindowConfig = getConfig().windows?.find(w => w.title === 'AIRI' && w.tag === 'main')
 
+  // First-install size. Saved bounds from config still win when present.
   const window = new BrowserWindow({
     title: 'AIRI',
-    width: mainWindowConfig?.width ?? 450.0,
-    height: mainWindowConfig?.height ?? 600.0,
+    width: mainWindowConfig?.width ?? MAIN_WINDOW_DEFAULT_WIDTH,
+    height: mainWindowConfig?.height ?? MAIN_WINDOW_DEFAULT_HEIGHT,
     x: mainWindowConfig?.x,
     y: mainWindowConfig?.y,
     show: false,

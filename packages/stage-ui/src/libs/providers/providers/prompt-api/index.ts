@@ -2,6 +2,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { checkPromptAvailability, createChatProvider } from 'xsai-chromium-prompt'
 import { z } from 'zod'
 
+import { isPromptApiSupportedHost } from '../../../prompt-api-runtime'
 import { defineProvider } from '../registry'
 
 const openAICompatibleConfigSchema = z.object({
@@ -31,7 +32,8 @@ export const providerPromptAPICompatible = defineProvider<OpenAICompatibleConfig
     return createChatProvider()
   },
 
-  validationRequiredWhen: () => true,
+  validationRequiredWhen: () => isPromptApiSupportedHost(),
+  isAvailableBy: async () => isPromptApiSupportedHost(),
   validators: {
     validateConfig: [
       ({ t }) => ({
@@ -42,6 +44,14 @@ export const providerPromptAPICompatible = defineProvider<OpenAICompatibleConfig
           intervalMs: 15_000,
         },
         validator: async () => {
+          if (!isPromptApiSupportedHost()) {
+            return {
+              valid: false,
+              errors: [{ error: new Error('Prompt API is only available in Chrome web AIRI.') }],
+              reason: 'unsupported-host',
+              reasonKey: '',
+            }
+          }
           const errors: Array<{ error: unknown }> = []
           let reason = ''
           try {

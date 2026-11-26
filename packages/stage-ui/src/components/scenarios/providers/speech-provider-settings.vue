@@ -2,7 +2,7 @@
 import { errorMessageFrom } from '@moeru/std'
 import { computedAsync, useDebounceFn } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -13,9 +13,11 @@ import {
   ProviderApiKeyInput,
   ProviderBaseUrlInput,
   ProviderBasicSettings,
+  ProviderKindCallout,
   ProviderSettingsContainer,
   ProviderValidationAlerts,
 } from '.'
+import { useProviderSettingsPolicy } from '../../../composables/use-provider-settings-policy'
 import { useProviderValidation } from '../../../composables/use-provider-validation'
 import { selectProviderMetadata } from '../../../libs/providers/metadata'
 import { useSpeechStore } from '../../../stores/modules/speech'
@@ -32,6 +34,7 @@ const props = defineProps<{
   // Hides the API key field for a provider that takes no credentials, such as a
   // local speech engine. The page otherwise shows a credential box with no effect.
   hideApiKey?: boolean
+  suppressValidationAlerts?: boolean
 }>()
 
 // Expose slots and emit events to allow customization
@@ -52,7 +55,6 @@ const {
   isValidating,
   isValid,
   validationMessage,
-  forceValid,
   hasManualValidators,
   isManualTesting,
   manualTestPassed,
@@ -63,15 +65,19 @@ const {
   skipToNextPingModel,
 } = useProviderValidation(props.providerId)
 
+const { showApiKey: policyShowApiKey, suppressValidationAlerts: policySuppressValidationAlerts } = useProviderSettingsPolicy(props.providerId)
+
+const showApiKeyField = computed(() => !props.hideApiKey && policyShowApiKey.value)
+const showValidationAlerts = computed(() => !props.suppressValidationAlerts && !policySuppressValidationAlerts.value)
+
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
 const speechStore = useSpeechStore()
 const { configs: providers } = storeToRefs(providerStore)
 
 function goToSpeechSelection() {
-  // Consciousness Select Model does not mark the provider configured. Speech
-  // lists only configured engines, so this skip is the Continue Anyway path.
-  void providersStore.forceProviderConfigured(props.providerId)
+  if (providerStore.providers[props.providerId]?.status !== 'configured')
+    return
   router.push({ path: '/settings/modules/speech', query: { browse: props.providerId } })
 }
 
@@ -118,7 +124,7 @@ function reconcileSettings() {
   // assignments run synchronous watchers under this guard and never write back.
   applyingSnapshot = true
   try {
-    if (!props.hideApiKey && !hasUnsavedField('apiKey'))
+    if (showApiKeyField.value && !hasUnsavedField('apiKey'))
       apiKey.value = stored?.apiKey as string | undefined || ''
     if (!hasUnsavedField('baseUrl'))
       baseUrl.value = stored?.baseUrl as string | undefined || providerMetadata.value?.defaultConfig.baseUrl as string | undefined || ''
@@ -139,10 +145,32 @@ function hasUnsavedField(field: string) {
 
 watch(() => providers.value[props.providerId], reconcileSettings, { deep: true })
 
+async function persistDefaultBaseUrlForExternalEngine() {
+  const definition = providersStore.findProviderDefinition(props.providerId)
+  if (!definition || definition.requiresCredentials !== false || !definition.validationRequiredWhen)
+    return
+
+  const defaults = providersStore.getDefaultProviderConfig(props.providerId)
+  const defaultBaseUrl = typeof defaults.baseUrl === 'string' ? defaults.baseUrl.trim() : ''
+  if (!defaultBaseUrl)
+    return
+
+  const storedConfig = providers.value[props.providerId] as { baseUrl?: string } | undefined
+  const storedBaseUrl = typeof storedConfig?.baseUrl === 'string'
+    ? storedConfig.baseUrl.trim()
+    : ''
+  if (storedBaseUrl)
+    return
+
+  await providerStore.patchProviderConfig(props.providerId, { baseUrl: defaultBaseUrl })
+}
+
 onMounted(async () => {
   await providersStore.initializeProvider(props.providerId)
 
   // Hidden credentials stay absent for providers that do not use an API key.
+  reconcileSettings()
+  await persistDefaultBaseUrlForExternalEngine()
   reconcileSettings()
 
   // Initial assignments must not become writes. Catalog loading can remain
@@ -234,7 +262,7 @@ async function scheduleProviderConfigUpdate(patch: Record<string, unknown>) {
 
 // Synchronous watchers distinguish user input from guarded snapshot assignments.
 watch(apiKey, async (value) => {
-  if (!props.hideApiKey)
+  if (showApiKeyField.value)
     await scheduleProviderConfigUpdate({ apiKey: value })
 }, { flush: 'sync' })
 
@@ -266,8 +294,9 @@ function handleResetVoiceSettings() {
         :description="t('settings.pages.providers.common.section.basic.description')"
         :on-reset="handleResetVoiceSettings"
       >
+        <ProviderKindCallout :provider-id="props.providerId" />
         <ProviderApiKeyInput
-          v-if="!props.hideApiKey"
+          v-if="showApiKeyField"
           v-model="apiKey"
           :provider-name="providerMetadata?.localizedName ?? ''"
           :placeholder="props.placeholder || 'API Key'"
@@ -294,6 +323,7 @@ function handleResetVoiceSettings() {
       </ProviderAdvancedSettings>
 
       <ProviderValidationAlerts
+        v-if="showValidationAlerts"
         :is-valid="isValid"
         :is-validating="isValidating"
         :validation-message="validationMessage"
@@ -303,7 +333,6 @@ function handleResetVoiceSettings() {
         :manual-test-message="manualTestMessage"
         :manual-test-progress-lines="manualTestProgressLines"
         :on-run-test="runManualTest"
-        :on-force-valid="forceValid"
         :on-go-to-model-selection="goToSpeechSelection"
         :on-cancel-manual-ping="cancelManualPing"
         :on-skip-next-ping-model="skipToNextPingModel"

@@ -4,6 +4,7 @@ import type { RemovableRef } from '@vueuse/core'
 import {
   ProviderBaseUrlInput,
   ProviderBasicSettings,
+  ProviderKindCallout,
   ProviderSettingsContainer,
   ProviderSettingsLayout,
   ProviderValidationAlerts,
@@ -37,7 +38,6 @@ const {
   isValid,
   validationMessage,
   handleResetSettings,
-  forceValid,
   hasManualValidators,
   isManualTesting,
   manualTestPassed,
@@ -61,6 +61,7 @@ const {
         :description="t('settings.pages.providers.common.section.basic.description')"
         :on-reset="handleResetSettings"
       >
+        <ProviderKindCallout provider-id="lm-studio" />
         <ProviderBaseUrlInput
           v-model="baseUrl"
           placeholder="http://localhost:1234/v1/"
@@ -77,7 +78,6 @@ const {
         :manual-test-message="manualTestMessage"
         :manual-test-progress-lines="manualTestProgressLines"
         :on-run-test="runManualTest"
-        :on-force-valid="forceValid"
         :on-go-to-model-selection="() => router.push('/settings/modules/consciousness')"
         :on-cancel-manual-ping="cancelManualPing"
         :on-skip-next-ping-model="skipToNextPingModel"

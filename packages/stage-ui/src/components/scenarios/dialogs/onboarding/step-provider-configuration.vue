@@ -186,20 +186,6 @@ async function handleNext() {
   }
 }
 
-async function handleContinueAnyway() {
-  if (!props.selectedProvider)
-    return
-
-  // onNext saves the configuration and marks the provider configured, so a
-  // failed validation does not need a separate force-configured call here.
-  await props.onNext({
-    apiKey: apiKey.value,
-    baseUrl: baseUrl.value,
-    accountId: accountId.value,
-    customFields: hasOnboardingFields.value ? { ...customFieldValues.value } : undefined,
-  })
-}
-
 // Placeholder helpers
 function getApiKeyPlaceholder(providerId: string): string {
   const placeholders: Record<string, string> = {
@@ -321,16 +307,7 @@ initializeForm()
         <!-- Validation Status -->
         <Alert v-if="validation === 'failed'" type="error">
           <template #title>
-            <div class="w-full flex items-center justify-between">
-              <span>{{ t('settings.dialogs.onboarding.validationFailed') }}</span>
-              <button
-                type="button"
-                class="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs text-red-600 font-medium transition-colors dark:bg-red-800/30 hover:bg-red-200 dark:text-red-300 dark:hover:bg-red-700/40"
-                @click="handleContinueAnyway"
-              >
-                {{ t('settings.pages.providers.common.continueAnyway') }}
-              </button>
-            </div>
+            <span>{{ t('settings.dialogs.onboarding.validationFailed') }}</span>
           </template>
           <template v-if="validationError" #content>
             <pre class="whitespace-pre-wrap break-all">{{ String(validationError) }}</pre>

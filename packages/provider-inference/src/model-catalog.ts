@@ -52,24 +52,26 @@ export function enrichOpenRouterCatalogModels(models: readonly ModelInfo[]): Mod
   return enrichCatalogModelsWithModelBank(models, openRouterChatModelBank)
 }
 
+/** Match API ids like `models/gemini-3-flash-preview` to model-bank ids. */
+export function catalogModelIdKey(id: string) {
+  return id.trim().replace(/^models\//i, '').toLowerCase()
+}
+
 export function enrichCatalogModelsWithModelBank(
   models: readonly ModelInfo[],
   bank: readonly AIChatModelCard[],
 ): ModelInfo[] {
-  const metadata = new Map(bank.map(model => [model.id, model]))
+  const metadata = new Map(bank.map(model => [catalogModelIdKey(model.id), model]))
   return models.map((model) => {
-    const details = metadata.get(model.id)
+    const details = metadata.get(catalogModelIdKey(model.id))
     if (!details)
-      return model
-
-    const description = pickBestCatalogDescription(model.description, details.description)
-    if (!description || description === model.description)
       return model
 
     return {
       ...model,
-      description,
-      contextLength: model.contextLength ?? details.contextWindowTokens,
+      name: details.displayName ?? model.name,
+      description: pickBestCatalogDescription(model.description, details.description) ?? model.description,
+      contextLength: model.contextLength || details.contextWindowTokens,
       metadata: model.metadata ?? {
         abilities: details.abilities,
         maxOutput: details.maxOutput,
@@ -109,24 +111,5 @@ export async function listModelCatalog(
   if (endpoint.origin !== official.origin || endpoint.pathname.replace(/\/$/, '') !== official.pathname.replace(/\/$/, ''))
     return { models }
 
-  const metadata = new Map(route.models.map(model => [model.id, model]))
-  return {
-    models: models.map((model) => {
-      const details = metadata.get(model.id)
-      if (!details)
-        return model
-      return {
-        ...model,
-        name: details.displayName ?? model.name,
-        description: pickBestCatalogDescription(model.description, details.description),
-        contextLength: details.contextWindowTokens ?? model.contextLength,
-        metadata: {
-          abilities: details.abilities,
-          maxOutput: details.maxOutput,
-          pricing: details.pricing ?? model.metadata?.pricing,
-          settings: details.settings,
-        },
-      }
-    }),
-  }
+  return { models: enrichCatalogModelsWithModelBank(models, route.models) }
 }

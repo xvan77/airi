@@ -229,6 +229,19 @@ describe('consciousness store provider selection', () => {
     expect(store.activeModel).toBe('anthropic/claude-3.5-sonnet')
   })
 
+  it('rememberModelForProvider does not change the active chat selection', () => {
+    const store = useConsciousnessStore()
+
+    store.commitChatSelection('openrouter-ai', 'anthropic/claude-3.5-sonnet')
+    store.rememberModelForProvider('groq', 'llama-3.1-8b-instant')
+    store.rememberModelForProvider('local-llm', 'gemma-3-270m-it-F16.gguf')
+
+    expect(store.activeProvider).toBe('openrouter-ai')
+    expect(store.activeModel).toBe('anthropic/claude-3.5-sonnet')
+    expect(store.lastModelForProvider('groq')).toBe('llama-3.1-8b-instant')
+    expect(store.lastModelForProvider('local-llm')).toBe('gemma-3-270m-it-F16.gguf')
+  })
+
   it('clears the model synchronously so callers can set a new one right after', () => {
     const store = useConsciousnessStore()
 

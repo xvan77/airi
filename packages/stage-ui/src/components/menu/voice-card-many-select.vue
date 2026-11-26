@@ -113,8 +113,30 @@ const filteredVoices = computed(() => {
   })
 })
 
+/**
+ * Collapsed list is a 2-column grid: row 1 = voices 1–2, row 2 = voices 3–4.
+ * Expand bar only when more than two rows.
+ */
+const collapsedVisibleCount = computed(() => props.columns * 2)
+
 const showExpandCollapseBtn = computed(() => {
-  return filteredVoices.value.length > props.columns
+  return filteredVoices.value.length > collapsedVisibleCount.value
+})
+
+const displayedVoices = computed(() => {
+  const voices = filteredVoices.value
+  const limit = collapsedVisibleCount.value
+  if (isListExpanded.value || voices.length <= limit)
+    return voices
+
+  const head = voices.slice(0, limit)
+  if (!voiceId.value || head.some(voice => voice.id === voiceId.value))
+    return head
+
+  const selected = voices.find(voice => voice.id === voiceId.value)
+  if (!selected)
+    return head
+  return [...head.slice(0, limit - 1), selected]
 })
 
 // Get preview URL from either field
@@ -354,10 +376,9 @@ const customVoiceName = ref('')
         <!-- Responsive grid container -->
         <div
           :class="[
-            'grid gap-2 mb-2',
-            isListExpanded
-              ? 'grid-cols-1 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))] snap-y snap-proximity'
-              : 'grid-flow-col auto-cols-[calc((100%-(var(--cols)-1)*1rem)/var(--cols))] overflow-x-auto scrollbar-none snap-x snap-proximity',
+            'mb-2 grid gap-2',
+            'grid-cols-1 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))]',
+            isListExpanded ? 'snap-y snap-proximity' : '',
             ...(props.listClass
               ? (typeof props.listClass === 'string'
                 ? [props.listClass]
@@ -368,7 +389,7 @@ const customVoiceName = ref('')
                 : []
             ),
           ]"
-          transition="all duration-200 ease-in-out"
+          class="transition-all duration-200 ease-in-out"
           :style="{ '--cols': props.columns }"
         >
           <!-- Not support voices warning -->
@@ -383,7 +404,7 @@ const customVoiceName = ref('')
 
           <!-- Voice card with preview button -->
           <VoiceCard
-            v-for="voice in filteredVoices"
+            v-for="voice in displayedVoices"
             :key="voice.id"
             v-model:voice-id="voiceId"
             v-model:custom-voice-name="customVoiceName"

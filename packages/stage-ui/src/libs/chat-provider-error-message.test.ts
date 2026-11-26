@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { classifyChatProviderError, formatChatProviderErrorContent, triggersCompactRequestsAutoEnable } from './chat-provider-error-message'
+import {
+  classifyChatProviderError,
+  formatChatProviderErrorContent,
+  humanizeChatProviderErrorDetail,
+  triggersCompactRequestsAutoEnable,
+} from './chat-provider-error-message'
 
 describe('chat provider error message', () => {
   it('detects OpenRouter shared-pool rate limits', () => {
@@ -86,13 +91,7 @@ describe('chat provider error message', () => {
     expect(content).toBe('Pick a chat model')
   })
 
-  it('maps Gemini free-tier speech quota dumps to the rate-limit summary without JSON', () => {
-    // ROOT CAUSE:
-    //
-    // Speech Test Voice stored errorMessageFrom(error). Gemini 429 bodies are
-    // a full QuotaFailure JSON, so Speech painted that dump over the page.
-    //
-    // Rate-limit summaries now stay short. The raw JSON stays out of the UI.
+  it('maps Gemini free-tier speech quota dumps to the rate-limit summary only', () => {
     const detail = '{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaMetric":"generativelanguage.googleapis.com/generate_content_free_tier_requests","quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","quotaDimensions":{"model":"gemini-2.5-flash-tts"},"quotaValue":"10"}]}]}}'
     const content = formatChatProviderErrorContent(
       new Error(detail),
@@ -104,5 +103,66 @@ describe('chat provider error message', () => {
     expect(content).toBe('Quota limit')
     expect(content).not.toContain('RESOURCE_EXHAUSTED')
     expect(content).not.toContain('quotaValue')
+  })
+
+  it('replaces OpenRouter function UUID noise with plain text on model errors', () => {
+    const detail = 'Remote sent 404 response: Function id \'3e84ff75-527b-4491-8647-530406876074\' is not found'
+    const human = humanizeChatProviderErrorDetail(detail)
+    expect(human).toBe('That model or endpoint was not found on your account.')
+    expect(human).not.toContain('404')
+    expect(human).not.toContain('3e84ff75')
+  })
+
+  it('drops parser line noise but keeps the provider explanation', () => {
+    const detail = 'Error 404. parser 2743 failed on line 71. You do not have credits left.'
+    const human = humanizeChatProviderErrorDetail(detail)
+    expect(human).toBe('You do not have credits left.')
+    expect(human).not.toMatch(/parser/i)
+    expect(human).not.toMatch(/404/)
+  })
+
+  it('returns only the summary when OpenRouter audio credit errors include JSON', () => {
+    const detail = 'OpenRouter audio request failed: 402 {"error":{"message":"This request requires at least $0.50 in balance for audio output","code":402,"metadata":{"limit_source":"openrouter_credits","remedy_hint":"Add credits at https://openrouter.ai/settings/credits"}}}'
+    const content = formatChatProviderErrorContent(
+      new Error(detail),
+      key => key === 'stage.chat.errors.openai_no_api_credits' ? 'No balance' : key,
+      'Unknown',
+    )
+    expect(classifyChatProviderError(detail)).toBe('openai_no_api_credits')
+    expect(content).toBe('No balance')
+    expect(content).not.toContain('{"error"')
+    expect(content).not.toContain('openrouter_credits')
+  })
+
+  it('classifies OpenRouter credit exhaustion from chat payloads', () => {
+    const detail = 'This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 9179.'
+    expect(classifyChatProviderError(detail)).toBe('openai_no_api_credits')
+    const content = formatChatProviderErrorContent(
+      new Error(detail),
+      key => key === 'stage.chat.errors.openai_no_api_credits' ? 'Out of credits' : key,
+      'Unknown',
+    )
+    expect(content).toBe('Out of credits')
+  })
+
+  it('classifies invalid token responses as auth failures', () => {
+    const detail = 'Remote sent 401 response: {"error":{"message":"invalid token (request id: 20261122125905370353524RoHdOTPW)","type":"cometapi_error"}}'
+    expect(classifyChatProviderError(detail)).toBe('provider_auth_failed')
+    const content = formatChatProviderErrorContent(
+      new Error(detail),
+      key => key === 'stage.chat.errors.provider_auth_failed' ? 'Bad API key' : key,
+      'Unknown',
+    )
+    expect(content).toBe('Bad API key')
+  })
+
+  it('appends scrubbed provider text after a model-unavailable summary', () => {
+    const detail = 'Remote sent 404 response: No endpoints found that support tool use. Try disabling "builtIn_debugRandomNumber".'
+    const content = formatChatProviderErrorContent(
+      new Error(detail),
+      key => key === 'stage.chat.errors.tools_not_supported' ? 'Tools not supported' : key,
+      'Unknown',
+    )
+    expect(content).toBe('Tools not supported')
   })
 })

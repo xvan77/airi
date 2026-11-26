@@ -4,6 +4,7 @@ import { Callout } from '@proj-airi/ui'
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ProviderKindCallout from './provider-kind-callout.vue'
 import SpeechProviderSettings from './speech-provider-settings.vue'
 
 import { useSpeechStore } from '../../../stores/modules/speech'
@@ -36,6 +37,7 @@ watch(() => providerStore.configuredProviders[props.providerId], async (configur
     <!-- The Advanced section starts collapsed. An unreachable engine leaves the
          voice list empty, so its reason has to stay visible under Basic. -->
     <template #basic-settings>
+      <ProviderKindCallout :provider-id="props.providerId" />
       <Callout
         v-if="showOriginCallout"
         theme="violet"

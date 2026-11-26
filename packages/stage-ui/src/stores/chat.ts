@@ -290,6 +290,7 @@ export const useChatStore = defineStore('chat', () => {
   function sessionSystemPrompt(sessionId: string) {
     const persona = personaOf(sessionId)
     const providerId = cardStore.getModules(persona).consciousness.provider
+    const slimOnDevice = isOnDeviceSlimChatProvider(providerId)
     const compact = usesCompactChatRequests(consciousnessSettingsStore.compactRequests, providerId)
     let includeFormatRules = !compact
     if (cardStore.ready) {
@@ -300,11 +301,13 @@ export const useChatStore = defineStore('chat', () => {
         includeFormatRules = !compact
       }
     }
+    // Local on-device chat has no tools and a small context. Keep identity short and skip
+    // memory / draw-card instructions that name tools the model never receives.
     const memoryIndex = memory.indexFor(persona)
-    const promptIdentity = compact ? cardStore.getCompactChatPrompt(persona) : cardStore.getSystemPrompt(persona)
+    const promptIdentity = (compact || slimOnDevice) ? cardStore.getCompactChatPrompt(persona) : cardStore.getSystemPrompt(persona)
     const identity = composeSystemPrompt(promptIdentity, { includeFormatRules })
-      + (memory.enabled ? composeMemoryPrompt(memoryIndex, { compact }) : '')
-      + (!compact && drawsCards(sessionId) ? composeDrawCardPrompt() : '')
+      + (!slimOnDevice && memory.enabled ? composeMemoryPrompt(memoryIndex, { compact }) : '')
+      + (!slimOnDevice && !compact && drawsCards(sessionId) ? composeDrawCardPrompt() : '')
     const recipeId = chatSession.sessionMetas[sessionId]?.recipeId
     const recipe = recipeId ? recipes.recipes.find(entry => entry.id === recipeId) : undefined
     return recipe ? identity + composeRecipeSpacePrompt(recipe) : identity
@@ -640,11 +643,14 @@ export const useChatStore = defineStore('chat', () => {
     // Each character card keeps its own memories and reads the general ones. A scene's card keeps its own as well.
     const persona = personaOf(sessionId)
     const providerId = cardStore.getModules(persona).consciousness.provider
+    // On-device slim chat already disables tools at the request. Do not attach memory, recipes, or cards.
+    if (isOnDeviceSlimChatProvider(providerId))
+      return tools
     const compact = usesCompactChatRequests(consciousnessSettingsStore.compactRequests, providerId)
     const memoryIndex = memory.indexFor(persona)
     const sourceTools = async () => [
       ...(typeof tools === 'function' ? await tools() ?? [] : tools ?? []),
-      ...shouldAttachMemoryTools(memory.enabled, memoryIndex, compact)
+      ...shouldAttachMemoryTools(memory.enabled, memoryIndex, compact, providerId)
         ? await createMemoryTools({ read: name => memory.read(name, persona), write: entry => memory.write(entry, persona), forget: name => memory.forget(name, persona) })
         : [],
     ]

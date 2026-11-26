@@ -6,6 +6,7 @@ import type { FullscreenGlideCurve, FullscreenMode } from '../../shared/eventa'
 import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import {
+  isElectronWindowResizing,
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
@@ -603,6 +604,14 @@ function handleFadeOnHoverInteractionChange() {
     return
   }
 
+  // Corner/edge resize must stay interactive. Click-through mid-drag swallows the release.
+  if (isElectronWindowResizing.value) {
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    return
+  }
+
   if (controlsOverlayActive.value || !outsideHearingStatus.value || !outsideAuthStatus.value) {
     // Portaled controls must receive clicks even outside the Island's bounds.
     isIgnoringMouseEvents.value = false
@@ -646,7 +655,7 @@ function handleFadeOnHoverInteractionChange() {
 }
 
 watch(
-  [outsideHearingStatus, outsideAuthStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, isWayland, fullscreenActive],
+  [outsideHearingStatus, outsideAuthStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, isWayland, fullscreenActive, isElectronWindowResizing],
   handleFadeOnHoverInteractionChange,
   { immediate: true },
 )

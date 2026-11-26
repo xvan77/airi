@@ -24,7 +24,7 @@ const speechStore = useSpeechStore()
 const providersStore = useProviderStore()
 const airiCardStore = useAiriCardStore()
 
-const { activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId } = storeToRefs(speechStore)
+const { activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId, speechReady } = storeToRefs(speechStore)
 const { cards } = storeToRefs(airiCardStore)
 const { availableSpeechProvidersMetadata } = storeToRefs(speechStore)
 
@@ -109,9 +109,7 @@ watch(cards, (newCards) => {
   }
 }, { immediate: true, deep: true })
 
-const isSpeechActive = computed(() => {
-  return speechStore.configured
-})
+const isSpeechActive = computed(() => speechReady.value)
 
 onMounted(() => {
   if (favoriteSpeechProviders.value.length > 0) {

@@ -34,6 +34,7 @@ async function handleGenerateTranscription(file: File) {
   <TranscriptionProviderSettings
     :provider-id="providerId"
     :default-model="defaultModel"
+    hide-api-key
   >
     <template #playground>
       <TranscriptionPlayground

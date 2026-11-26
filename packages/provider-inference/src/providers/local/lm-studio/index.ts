@@ -27,6 +27,7 @@ export const providerLmStudio = defineProvider<LMStudioConfig, 'lm-studio'>({
   tasks: ['chat'],
   icon: 'i-lobe-icons:lmstudio',
   iconColor: 'i-lobe-icons:lmstudio',
+  requiresCredentials: false,
 
   createProviderConfig: ({ t }) => lmStudioConfigSchema.extend({
     apiKey: lmStudioConfigSchema.shape.apiKey.meta({

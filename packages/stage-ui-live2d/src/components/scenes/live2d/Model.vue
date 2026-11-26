@@ -45,7 +45,9 @@ import {
   useMotionUpdatePluginLipSync,
   useMotionUpdatePluginManualControl,
 } from '../../../composables/live2d'
+import { ensureModelInView } from '../../../composables/live2d/ensure-model-in-view'
 import { useFitModel } from '../../../composables/live2d/fit-model'
+import { measureModelContentBias } from '../../../composables/live2d/measure-model-content-bias'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { useLive2D } from '../../../contexts/live2d'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
@@ -126,6 +128,12 @@ let isUnmounted = false
 
 const modelLoadMutex = new Mutex()
 
+/**
+ * Drawable-content offset from the Live2D canvas center, in unscaled model pixels.
+ * Chibi models often pad one side; subtracting bias * displayScale centers the art.
+ */
+const contentBiasLocal = ref({ x: 0, y: 0 })
+
 const manualMotionSpring = createLive2DMotionSpring()
 const manualControlOffset = computed(() => getLive2DMotionControlModelOffset(manualMotionSpring.output.value))
 const offset = computed(() => ({
@@ -187,16 +195,33 @@ watch([offset, scale, modelNormalizeParams], () => {
   setScaleAndPosition()
 })
 
+// Recentering runs on canvas size changes only. Slider and drag updates must not
+// fight a user who intentionally moves the model after it is in view.
+watch([() => props.width, () => props.height], () => {
+  applyEnsureModelInView()
+}, { flush: 'post' })
+
+function contentStageOffset(displayScale: number) {
+  return {
+    x: contentBiasLocal.value.x * displayScale,
+    y: contentBiasLocal.value.y * displayScale,
+  }
+}
+
 function setScaleAndPosition(animated = false) {
   if (!model.value)
     return
 
   const normalized = modelNormalizeParams.value
+  const displayScale = normalized.scale * scale.value
+  const content = contentStageOffset(displayScale)
+  const nextX = normalized.x + offset.value.x - content.x
+  const nextY = normalized.y + offset.value.y - content.y
 
   if (!animated) {
-    model.value.scale.set(normalized.scale * scale.value, normalized.scale * scale.value)
-    model.value.x = normalized.x + offset.value.x
-    model.value.y = normalized.y + offset.value.y
+    model.value.scale.set(displayScale, displayScale)
+    model.value.x = nextX
+    model.value.y = nextY
     return
   }
 
@@ -209,9 +234,9 @@ function setScaleAndPosition(animated = false) {
   }
 
   resizeAnimation = animate(current, {
-    scale: normalized.scale * scale.value,
-    x: normalized.x + offset.value.x,
-    y: normalized.y + offset.value.y,
+    scale: displayScale,
+    x: nextX,
+    y: nextY,
     duration: 200,
     ease: 'outQuad',
     onUpdate: () => {
@@ -222,6 +247,67 @@ function setScaleAndPosition(animated = false) {
       model.value.y = current.y
     },
   })
+}
+
+/**
+ * Apply drawable padding offset, then place the model.
+ * Does not rewrite the user's saved scale or position.
+ */
+function applyFirstLoadViewDefaults() {
+  if (!model.value)
+    return
+  if (!(initialModelWidth.value > 0) || !(initialModelHeight.value > 0))
+    return
+
+  const internalModel = model.value.internalModel
+  internalModel.coreModel.update()
+  // Drawable vertices are in original canvas pixels (see pixi-live2d-display
+  // getDrawableVertices), not the possibly scaled Pixi width/height.
+  const canvasWidth = internalModel.originalWidth || initialModelWidth.value
+  const canvasHeight = internalModel.originalHeight || initialModelHeight.value
+  const bias = measureModelContentBias({
+    getDrawableCount: () => internalModel.coreModel.getDrawableCount(),
+    getDrawableBounds: (index) => {
+      const bounds = internalModel.getDrawableBounds(index)
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+    },
+  }, canvasWidth, canvasHeight)
+
+  // Horizontal only: fit-model still frames the upper body on Y.
+  contentBiasLocal.value = { x: bias.x, y: 0 }
+  setScaleAndPosition()
+}
+
+/**
+ * After resize, only pull X back if the canvas center left the window.
+ * Never shrink scale here — that is what crushed models to ~0.48 before.
+ */
+function applyEnsureModelInView() {
+  if (!model.value)
+    return
+  if (!(props.width > 0) || !(props.height > 0))
+    return
+  if (!(initialModelWidth.value > 0) || !(initialModelHeight.value > 0))
+    return
+
+  const normalized = modelNormalizeParams.value
+  const next = ensureModelInView({
+    canvasWidth: props.width,
+    canvasHeight: props.height,
+    modelWidth: initialModelWidth.value,
+    modelHeight: initialModelHeight.value,
+    fitScale: normalized.scale,
+    fitX: normalized.x,
+    fitY: normalized.y,
+    positionX: position.value.x,
+    positionY: position.value.y,
+    scale: scale.value,
+  })
+  if (!next.changed)
+    return
+
+  position.value = { x: next.positionX, y: next.positionY }
+  setScaleAndPosition()
 }
 
 function destroyRenderedModel() {
@@ -238,6 +324,7 @@ function destroyRenderedModel() {
   }
   finally {
     model.value = undefined
+    contentBiasLocal.value = { x: 0, y: 0 }
   }
 }
 
@@ -381,7 +468,7 @@ async function performModelLoad() {
     initialModelWidth.value = model.value.width
     initialModelHeight.value = model.value.height
     model.value.anchor.set(0.5, 0.5)
-    setScaleAndPosition()
+    applyFirstLoadViewDefaults()
 
     // --- Interaction
 

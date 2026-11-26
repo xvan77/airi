@@ -57,7 +57,7 @@ type ChatWindowConfig = InferOutput<typeof chatWindowConfigSchema>
  * The floating chat beside the character is the default, so users try it and
  * give feedback. The style menu in both chat windows switches back to the
  * legacy window. The floating size fits the composer and a few bubbles beside
- * the default 450x600 main window.
+ * the default 380x300 main window.
  */
 const defaultChatWindowConfig: ChatWindowConfig = {
   mode: 'floating',

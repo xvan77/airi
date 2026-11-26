@@ -30,7 +30,13 @@ dialogs:
     testGenerationRunning: Ping...
     testGenerationFailed: Ping test failed
     pingFailedNoApiCredits: >-
-      Ping failed. This OpenAI account has no API credits left. Add billing on the OpenAI site or use another provider.
+      Ping failed. This provider account has no API credits or balance left. Add billing on
+      the provider site or use another provider.
+    pingFailedGeneric: >-
+      Could not connect to this provider. Check your API key and other settings, then try again.
+    pingFailedReachProgram: >-
+      Could not reach this program. Start it on your computer and check the Base URL.
+    apiKeyTooShort: Enter a complete API key before validation runs.
     retryPingCheck: Retry
     cancelPingCheck: Cancel ping
     tryAnotherPingModel: Try next model
@@ -880,6 +886,11 @@ pages:
             description: Select the suitable LLM provider for consciousness
             error: Error loading models
             health_check_failed: Health check failed
+            show_provider_health:
+              label: Show provider health
+              description: >-
+                Show a Health check failed chip on providers that did not pass
+                validation. Off by default.
             open_provider_settings: Open provider settings
             no_models_provider_shortcut: Configure this provider
             browsing_last_model:
@@ -1001,6 +1012,10 @@ pages:
     hearing:
       description: Configure how speech recognition works
       title: Hearing
+      more:
+        title: More options
+        description: Microphone, transcripts, wake words, and voiceprint.
+        open: More options
       transcriber:
         title: Speech recognition
         description: Choose the transcription provider and model, and test your microphone.
@@ -1055,6 +1070,9 @@ pages:
         section:
           provider-selection:
             description: Select the suitable speech recognition provider
+            none:
+              title: None
+              description: Hearing stays off until you choose a provider.
           microphone:
             title: Microphone
             label: Microphone
@@ -1361,6 +1379,15 @@ pages:
     vision:
       description: Vision
       title: Vision
+      sections:
+        section:
+          provider-selection:
+            description: Select a vision provider. Then pick a vision-capable model below.
+          provider-model-selection:
+            title: Model
+            subtitle: Choose a vision-capable model from this provider.
+          model-options:
+            title: Model options
       tool-images:
         label: Use the vision model for tool images
         description: The vision model reads the images that tools return, such as screenshots from Use computer, before your chat model replies. The chat model gets them directly when its provider reports image input. A description has no pixel positions.
@@ -2004,11 +2031,11 @@ pages:
         description: Image generation and design model providers. e.g. ComfyUI, Replicate.
         items:
           comfyui:
-            description: Local image generation runner.
+            description: Local ComfyUI image workflows on this machine or network.
           replicate:
-            description: Cloud-based model inference service.
+            description: Replicate cloud image models with an r8_ API token.
           nanobanana:
-            description: Google AI Studio Image Preview.
+            description: Google Gemini image generation through Google AI Studio.
     helpinfo:
       title: First time here?
       description: >
@@ -2057,9 +2084,12 @@ pages:
             placeholder: en-US
       app-local-audio-transcription:
         title: App (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
+        description: On-device speech-to-text in the desktop app. No cloud API key is required.
       app-local-audio-speech:
         title: App (Local)
+        callout_in_app_title: Built into AIRI
+        callout_in_app: >-
+          Uses the text-to-speech voice already on this device. No API key and no extra program.
         description: Use the built-in Windows, macOS, or Linux text-to-speech voice. No API key or download is required.
         playground:
           default-text: Hello! This is your system voice speaking through AIRI.
@@ -2068,16 +2098,16 @@ pages:
         description: Build virtual voice profiles with pitch, speed, filters, and per-profile dialogue cleanup.
       browser-local-audio-transcription:
         title: Browser (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
+        description: On-device speech-to-text in the browser when the runtime supports it.
       browser-local-audio-speech:
         title: Browser (Local)
-        description: https://github.com/moeru-ai/xsai-transformers
+        description: On-device text-to-speech in the browser when the runtime supports it.
       alibaba-cloud-model-studio:
-        description: bailian.console.aliyun.com
+        description: Alibaba Cloud Model Studio chat and speech models with a Bailian API key.
         title: Alibaba Cloud Model Studio
       amazon-bedrock:
         title: Amazon Bedrock
-        description: aws.amazon.com/bedrock
+        description: Amazon Bedrock hosts many foundation models behind one AWS API key and region.
         config:
           api-key:
             label: Bedrock API Key
@@ -2087,7 +2117,7 @@ pages:
             label: AWS Region
             description: AWS region where Bedrock is enabled (e.g. us-east-1, us-west-2)
       anthropic:
-        description: anthropic.com
+        description: Anthropic Claude chat models. Browser use may need a CORS-safe proxy.
         title: Anthropic {'|'} Claude
         helpinfo:
           title: Before you start
@@ -2105,7 +2135,7 @@ pages:
               proxy backend like a Serverless Function running on
             part6: or some CORS bypassing services to bypass the CORS restrictions.
       cloudflare-workers-ai:
-        description: cloudflare.com
+        description: Cloudflare Workers AI models with your account ID and API token.
         fields:
           field:
             account-id:
@@ -2131,8 +2161,12 @@ pages:
               description: Adjust the volume of speech
               label: Volume
       voicevox:
-        description: voicevox.hiroshiba.jp
+        description: Local Japanese text-to-speech through a VOICEVOX engine on this machine.
         title: VOICEVOX
+        callout_engine_title: Local engine
+        callout_engine: >-
+          Start VOICEVOX on this computer. Set Base URL under Advanced if needed.
+          Default is http://127.0.0.1:50021/. This engine takes no API key.
         fields:
           field:
             intonation:
@@ -2141,8 +2175,12 @@ pages:
         callout_origin_title: Reaching the engine from a browser
         callout_origin: A browser reaches an engine on this machine only. For an engine on another machine, use the desktop application. The engine also has to accept this site, which you set with --cors_policy_mode all, or with --allow_origin and this address.
       aivis-speech:
-        description: aivis-project.com
+        description: Local text-to-speech through an AivisSpeech engine on this machine.
         title: AivisSpeech
+        callout_engine_title: Local engine
+        callout_engine: >-
+          Start AivisSpeech on this computer. Set Base URL under Advanced if needed.
+          This engine takes no API key.
         fields:
           field:
             intonation:
@@ -2151,7 +2189,7 @@ pages:
         callout_origin_title: Reaching the engine from a browser
         callout_origin: A browser reaches an engine on this machine only. For an engine on another machine, use the desktop application. The engine also has to accept this site, which you set on its settings page on port 10101.
       deepgram-tts:
-        description: deepgram.com
+        description: Deepgram Aura cloud text-to-speech with natural voices.
         title: Deepgram
       speech-noop:
         title: None
@@ -2249,14 +2287,14 @@ pages:
             nano_banana_pro: Nano Banana Pro (Gemini 3 Pro Image)
             nano_banana: Nano Banana (Gemini 2.5 Flash Image)
       deepseek:
-        description: deepseek.com
+        description: DeepSeek cloud chat models, including optional thinking mode.
         fields:
           field:
             thinking-mode:
               description: Controls whether DeepSeek reasoning models use thinking in chat requests.
         title: DeepSeek
       elevenlabs:
-        description: elevenlabs.io
+        description: ElevenLabs cloud text-to-speech with many cloned and preset voices.
         fields:
           field:
             simularity-boost:
@@ -2296,6 +2334,10 @@ pages:
         title: ElevenLabs
       kokoro-local:
         description: Local text-to-speech using Kokoro-82M.
+        callout_in_app_title: Built into AIRI
+        callout_in_app: >-
+          Kokoro runs inside AIRI. Wait for the voice download to finish before you select a voice in Speech.
+          No API key.
         fields:
           field:
             model:
@@ -2321,13 +2363,13 @@ pages:
           title: Voice Playground
         title: Kokoro TTS (Local)
       fireworks:
-        description: fireworks.ai
+        description: Fireworks AI cloud chat models with an OpenAI-compatible API.
         title: Fireworks.ai
       google-gemini-audio-speech:
-        description: aistudio.google.com
+        description: Google Gemini cloud text-to-speech from AI Studio. Free daily quota is small.
         title: Google Gemini
       microsoft-speech:
-        description: speech.microsoft.com
+        description: Microsoft Azure Speech cloud text-to-speech with region and API key.
         fields:
           field:
             region:
@@ -2335,23 +2377,23 @@ pages:
               label: Region
         title: Microsoft / Azure Speech
       index-tts-vllm:
-        description: https://index-tts.github.io/
+        description: Local Bilibili IndexTTS engine on this PC. Start the engine, then set the Base URL.
         title: Bilibili / IndexTTS
         callout_engine_title: Local engine
         callout_engine: IndexTTS is a separate program on this computer. Start the program. Then set Base URL under Advanced. The default address is http://localhost:11996/tts/. This engine takes no API key.
         callout_indextts2_unavailable_title: Limited Support
         callout_indextts2_unavailable: This page talks to IndexTTS 1.5. IndexTTS2 is not available yet.
       azure-ai-foundry:
-        description: Azure AI Foundry
+        description: Azure AI Foundry endpoints for chat models with your Azure credentials.
         title: Azure AI Foundry
       minimax:
-        description: minimaxi.com
+        description: MiniMax China cloud chat models with a MiniMax API key.
         title: MiniMax
       minimax-global:
-        description: minimax.io
+        description: MiniMax global cloud chat models with a MiniMax API key.
         title: MiniMax Global
       minimax-speech:
-        description: minimax.io
+        description: MiniMax cloud text-to-speech with HD and Turbo voice models.
         errors:
           provider-initialization-failed: Failed to initialize the MiniMax speech provider.
         fields:
@@ -2364,78 +2406,90 @@ pages:
           default-text: Hello! This is a test of MiniMax speech synthesis.
         title: MiniMax Speech
       mimo:
-        description: api.xiaomimimo.com
+        description: Xiaomi MiMo cloud models for chat, speech, and transcription.
         title: Xiaomi MiMo
       mistral:
-        description: mistral.ai
+        description: Mistral cloud chat models with an OpenAI-compatible API.
         title: Mistral
       moonshot:
-        description: moonshot.ai
+        description: Moonshot AI (Kimi) cloud chat models.
         title: Moonshot AI
       modelscope:
-        description: modelscope.cn
+        description: ModelScope cloud chat models from Alibaba ModelScope.
         title: ModelScope
       novita:
-        description: novita.ai
+        description: Novita AI cloud chat models with an OpenAI-compatible API.
         title: Novita
       ollama:
-        description: ollama.ai
+        description: Local Ollama server on this machine. Install Ollama, pull a model, then connect.
         title: Ollama
+        callout_engine_title: Local server
+        callout_engine: >-
+          Start Ollama on this computer and pull a model. Set Base URL under Advanced if you use a custom address.
+          Default is http://localhost:11434/v1/. This engine takes no API key.
       openai:
-        description: openai.com
+        description: OpenAI cloud chat and speech models with an OpenAI API key.
         title: OpenAI
       azure-openai:
-        description: Azure OpenAI API
+        description: Azure-hosted OpenAI chat models with your Azure OpenAI endpoint.
         title: Azure OpenAI
       openai-compatible:
-        description: OpenAI Compatible
+        description: Any chat or speech server that speaks the OpenAI API format.
         title: OpenAI Compatible
       nvidia:
-        description: build.nvidia.com
+        description: NVIDIA NIM cloud chat models from build.nvidia.com.
         title: NVIDIA NIM
       n1n:
-        description: n1n.ai - High-performance AI API provider.
+        description: n1n.ai aggregator for many cloud chat models behind one API key.
         title: n1n
       openpaths:
-        description: openpaths.io
+        description: OpenPaths cloud chat models with an OpenAI-compatible API.
         title: OpenPaths
       openrouter:
         description: One API key for many cloud chat models. Pay per use on openrouter.ai.
         title: OpenRouter
       openrouter-audio-speech:
-        description: openrouter.ai
+        description: OpenRouter cloud text-to-speech models behind one OpenRouter API key.
         title: OpenRouter
       perplexity:
-        description: perplexity.ai
+        description: Perplexity cloud chat models for search-oriented answers.
         title: Perplexity
       player2:
-        description: player2.game
+        description: Local Player2 app for game-oriented speech. Start Player2, then set the Base URL.
         title: Player2
         callout_engine_title: Local app
         callout_engine: Player2 is a separate program. Download it from https://player2.game, start it, then set Base URL under Advanced. The default address is http://localhost:4315/v1/. This engine takes no API key. If it still fails, use https://player2.game/discord.
       together:
-        description: together.ai
+        description: Together.ai cloud chat models with an OpenAI-compatible API.
         title: Together.ai
       google-generative-ai:
-        description: gemini.google.com
+        description: Google Gemini cloud chat models from Google AI Studio or Gemini API.
         title: Google Gemini
       groq:
-        description: groq.com
+        description: Groq cloud chat models with very fast inference and an API key.
         title: Groq
       featherless:
-        description: featherless.ai
+        description: Featherless AI cloud chat models with an OpenAI-compatible API.
         title: Featherless AI
       local-llm:
         title: App (Local LLM)
         description: Private offline chat. AIRI downloads models and runs them on your PC.
+        callout_in_app_title: Built into AIRI
+        callout_in_app: >-
+          AIRI downloads and runs chat models on this PC. Download and start a model on this page.
+          No API key.
       lm-studio:
-        description: lmstudio.ai
+        description: Local LM Studio server on this machine. Start the server, then connect.
         title: LM Studio
+        callout_engine_title: Local server
+        callout_engine: >-
+          Open LM Studio, start Local Server, then connect here. Default Base URL is http://localhost:1234/v1/.
+          This engine takes no API key.
       vllm:
-        description: vllm.ai
+        description: Local or remote vLLM OpenAI-compatible chat server.
         title: vLLM
       volcengine:
-        description: volcengine.com
+        description: Volcengine (ByteDance) cloud chat and speech models.
         fields:
           field:
             appId:
@@ -2443,7 +2497,7 @@ pages:
               label: App ID
         title: Volcano Engine
       volcengine-coding-plan:
-        description: Volcengine Coding Plan
+        description: Volcengine Coding Plan chat models selected in the Volcengine console.
         models:
           ark-code-latest:
             description: Uses the model selected in the Coding Plan console, including Auto; changes apply in 3–5 minutes.
@@ -2451,50 +2505,54 @@ pages:
             description: Legacy Coding Plan model scheduled for retirement. Switch to a currently supported model.
         title: Volcengine Coding Plan
       byteplus:
-        description: byteplus.com
+        description: BytePlus cloud chat models with a BytePlus API key.
         title: BytePlus
       byteplus-coding-plan:
-        description: BytePlus Coding Plan
+        description: BytePlus Coding Plan chat models selected in the BytePlus console.
         title: BytePlus Coding Plan
       xai:
-        description: x.ai
+        description: xAI Grok cloud chat models with an xAI API key.
         title: xAI
       zai:
-        description: z.ai
+        description: Z.ai (Zhipu) cloud chat models with a Z.ai API key.
         title: Z.ai
       302-ai:
-        description: 302.AI
+        description: 302.AI aggregator for many cloud chat models behind one API key.
         title: 302.AI
       comet-api:
-        description: CometAPI.com
+        description: CometAPI aggregator for many cloud chat models behind one API key.
         title: Comet API
       cerebras:
-        description: cerebras.ai
+        description: Cerebras cloud chat models with very fast inference.
         title: Cerebras
       aliyun-nls:
-        description: Aliyun NLS
+        description: Aliyun NLS speech recognition for Chinese and other locales.
         title: Aliyun NLS
       browser-web-speech-api:
-        description: Browser-native STT (requires Chrome/Edge/Safari)
+        description: Browser speech recognition in Chrome, Edge, or Safari. No API key.
         title: Web Speech API
       prompt-api:
-        description: With the Prompt API, you can send natural language requests to the foundation model in Chrome.
+        description: Chrome on-device Prompt API chat. Works in desktop Chrome, not in Tamagotchi.
         title: Prompt API
       official:
         title: Official Provider
-        description: Official AI provider by AIRI.
+        description: AIRI-hosted chat when you are signed in. No separate vendor API key.
         speech-title: Official Speech Provider
-        speech-description: Official text-to-speech provider by AIRI.
+        speech-description: AIRI-hosted text-to-speech when you are signed in.
         speech-streaming-title: Official Streaming Speech Provider
-        speech-streaming-description: Official low-latency text-to-speech provider by AIRI (bidirectional WebSocket).
+        speech-streaming-description: AIRI-hosted low-latency streaming speech when you are signed in.
         transcription-title: Official Transcription Provider
-        transcription-description: Official speech-to-text provider by AIRI.
+        transcription-description: AIRI-hosted speech-to-text when you are signed in.
+      official-provider-transcription:
+        callout_in_app_title: Built into AIRI
+        callout_in_app: >-
+          Speech-to-text runs through your signed-in AIRI account. No vendor API key on this page.
       transcriptions:
         playground:
           title: Transcription Playground
       aihubmix:
         title: AIHubMix
-        description: https://aihubmix.com (10% off)
+        description: AIHubMix aggregator for many cloud chat models. Account plans may include a discount.
     title: Providers
   connection:
     description: Configure WebSocket server connection

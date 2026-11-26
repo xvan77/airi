@@ -5,7 +5,6 @@ import type { SpeechCatalogSortDirection, SpeechCatalogSortKey } from '@proj-air
 import type { VoiceInfo } from '@proj-airi/stage-ui/stores/providers/provider'
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 
-import { errorMessageFrom } from '@moeru/std'
 import {
   Alert,
   ErrorContainer,
@@ -36,6 +35,7 @@ import { kokoroCatalogSelectItems } from '@proj-airi/stage-ui/libs/speech-catalo
 import { VIRTUAL_AUDIO_STUDIO_PROVIDER_ID } from '@proj-airi/stage-ui/libs/speech/voice-profile'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
+import { useConsciousnessSettingsStore } from '@proj-airi/stage-ui/stores/modules/consciousness-settings'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
@@ -61,11 +61,13 @@ const route = useRoute()
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
 const speechStore = useSpeechStore()
+const consciousnessSettingsStore = useConsciousnessSettingsStore()
 const audioContextStore = useAudioContext()
 let consolePreviewSource: AudioBufferSourceNode | null = null
 let consolePreviewCleanup: (() => void) | undefined
 const airiCardStore = useAiriCardStore()
-const { configuredProviders } = storeToRefs(providerStore)
+const { providers: storedProviders } = storeToRefs(providerStore)
+const { showProviderHealth } = storeToRefs(consciousnessSettingsStore)
 const { allAudioSpeechProvidersMetadata, moduleSpeechProvidersMetadata } = storeToRefs(providersStore)
 const {
   activeSpeechProvider,
@@ -445,6 +447,22 @@ function resolvedBrowsingSpeechProviderId(): string {
     return OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
   }
   return source
+}
+
+function formatSpeechError(error: unknown, providerId?: string, modelId?: string) {
+  return formatChatProviderErrorContent(
+    error,
+    key => t(key),
+    t('settings.pages.modules.consciousness.sections.section.provider-model-selection.error'),
+    {
+      providerId: providerId ?? resolvedBrowsingSpeechProviderId(),
+      modelId,
+    },
+  )
+}
+
+function friendlyProviderError(error: unknown) {
+  return formatSpeechError(error)
 }
 
 const resolvedBrowsingSpeechProvider = computed(() => resolvedBrowsingSpeechProviderId())
@@ -895,7 +913,7 @@ const speechModelSelectItems = computed(() => {
   return models.map(model => ({
     id: model.id,
     name: model.name,
-    description: model.description,
+    description: localizeModelDescription(model.description),
     deprecated: model.deprecated,
   }))
 })
@@ -1095,7 +1113,7 @@ const displayedSpeechVoiceId = computed({
   get: () => browsingSpeechVoiceId.value,
   set: (value: string) => {
     void selectSpeechVoice(value).catch((error) => {
-      errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+      errorMessage.value = formatSpeechError(error)
     })
   },
 })
@@ -1242,6 +1260,7 @@ onMounted(async () => {
     if (activeSpeechProvider.value === VIRTUAL_AUDIO_STUDIO_PROVIDER_ID)
       await speechStore.selectProviderModel('speech-noop', '')
     await providersStore.loadModelsForConfiguredProviders()
+    void providersStore.refreshListedProviderValidation()
     speechStore.ensureActiveSpeechModel()
 
     const browse = route.query.browse
@@ -1261,7 +1280,7 @@ onMounted(async () => {
   }
   catch (error) {
     // Closing a renderer rejects pending RPCs even after its page unmounts.
-    errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+    errorMessage.value = formatSpeechError(error)
   }
 })
 
@@ -1283,7 +1302,7 @@ watch(browsingSpeechSource, async (sourceId) => {
   }
   catch (error) {
     if (browsingSpeechSource.value === sourceId)
-      errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+      errorMessage.value = formatSpeechError(error)
   }
 }, { immediate: true })
 
@@ -1310,7 +1329,7 @@ watch(activeSpeechProvider, async (newProvider) => {
   catch (error) {
     // An obsolete provider request must not replace the current form error.
     if (newProvider === activeSpeechProvider.value)
-      errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+      errorMessage.value = formatSpeechError(error)
   }
 })
 
@@ -1334,7 +1353,7 @@ watch(displayedProviderModels, async (models, previous) => {
     await speechStore.loadVoicesForProvider(activeSpeechProvider.value, activeSpeechModel.value || undefined)
   }
   catch (error) {
-    errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+    errorMessage.value = formatSpeechError(error)
   }
 })
 
@@ -1479,15 +1498,7 @@ async function generateTestSpeech() {
     if (!isSpeechPlaygroundTestCurrent(generation))
       return
     console.error('Error generating speech:', error)
-    errorMessage.value = formatChatProviderErrorContent(
-      error,
-      t,
-      errorMessageFrom(error) || 'An unknown error occurred',
-      {
-        providerId: previewProvider,
-        modelId: previewModel,
-      },
-    )
+    errorMessage.value = formatSpeechError(error, previewProvider, previewModel)
   }
   finally {
     if (isSpeechPlaygroundTestCurrent(generation))
@@ -1562,7 +1573,7 @@ async function updateCustomModelName(value: string | undefined) {
     await applyBrowsingSpeechModel(value || '')
   }
   catch (error) {
-    errorMessage.value = errorMessageFrom(error) ?? 'An unknown error occurred'
+    errorMessage.value = formatSpeechError(error)
   }
 }
 
@@ -1573,6 +1584,14 @@ async function handleDeleteProvider(providerId: string) {
 
   await airiCardStore.clearProviderSelections(providerId)
   await providersStore.deleteProvider(providerId)
+}
+
+async function updateShowProviderHealth(value: boolean) {
+  await consciousnessSettingsStore.setShowProviderHealth(value)
+}
+
+function providerHealthFailed(providerId: string) {
+  return storedProviders.value[providerId]?.status === 'invalid'
 }
 </script>
 
@@ -1634,7 +1653,7 @@ async function handleDeleteProvider(providerId: string) {
                     <div i-solar:trash-bin-trash-bold-duotone class="text-base" />
                   </button>
                 </template>
-                <template v-if="configuredProviders[source.providerId] === false" #bottomRight>
+                <template v-if="showProviderHealth && source.providerId && providerHealthFailed(source.providerId)" #bottomRight>
                   <div class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 font-medium dark:bg-amber-900/30 dark:text-amber-300">
                     {{ t('settings.pages.modules.consciousness.sections.section.provider-model-selection.health_check_failed') }}
                   </div>
@@ -1726,7 +1745,7 @@ async function handleDeleteProvider(providerId: string) {
             <template v-else-if="displayedModelError">
               <ErrorContainer
                 :title="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.error')"
-                :error="displayedModelError"
+                :error="friendlyProviderError(displayedModelError)"
               />
 
               <label class="mb-1 block text-sm font-medium">
@@ -1868,7 +1887,7 @@ async function handleDeleteProvider(providerId: string) {
                 :items="isSpeechModelCatalogEmpty ? [] : speechModelSelectItems"
                 :searchable="false"
                 :allow-custom="true"
-                :provider-id="displayedSpeechSource"
+                :provider-id="resolvedBrowsingSpeechProvider"
                 :description-collapsed-by-default="true"
                 :description-toggle-label="t('settings.pages.modules.speech.model_catalog.description_show')"
                 :description-collapse-label="t('settings.pages.modules.speech.model_catalog.description_hide')"
@@ -2008,7 +2027,7 @@ async function handleDeleteProvider(providerId: string) {
               v-else-if="speechProviderError"
               class="mb-2"
               title="Error loading voices"
-              :error="speechProviderError"
+              :error="friendlyProviderError(speechProviderError)"
             />
 
             <!-- No voices available -->
@@ -2034,6 +2053,12 @@ async function handleDeleteProvider(providerId: string) {
                 v-model="ssmlEnabled"
                 label="Enable SSML"
                 description="Enable Speech Synthesis Markup Language for more control over speech output"
+              />
+              <FieldCheckbox
+                :model-value="showProviderHealth"
+                :label="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.show_provider_health.label')"
+                :description="t('settings.pages.modules.consciousness.sections.section.provider-model-selection.show_provider_health.description')"
+                @update:model-value="updateShowProviderHealth"
               />
               <FieldCheckbox
                 v-if="isKokoroSpeechProvider"

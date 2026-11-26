@@ -26,6 +26,7 @@ onMounted(async () => {
   <SpeechProviderSettings
     :provider-id="providerId"
     :default-model="defaultModel"
+    hide-api-key
   />
 </template>
 

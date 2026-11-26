@@ -1,8 +1,8 @@
 <script setup lang="ts">
 defineProps<{
   message: string
-  /** Boot card, centered popups, stage model load, or compact pill. */
-  layout: 'card' | 'center' | 'stage' | 'pill'
+  /** Boot card, centered popups, lower stage hint, stage model load, or compact pill. */
+  layout: 'card' | 'center' | 'bottom' | 'stage' | 'pill'
   /** Adds drag-region for Electron window moves on the centered panel. */
   draggable?: boolean
 }>()
@@ -51,6 +51,24 @@ const centerLabelClass = 'truncate'
     :class="[
       'pointer-events-none fixed inset-0 z-[9998]',
       'flex items-center justify-center p-6',
+      draggable ? 'drag-region' : '',
+    ]"
+    role="status"
+    aria-live="polite"
+    aria-busy="true"
+  >
+    <div :class="centerPopupPanel">
+      <span :class="['loading-status-spinner', 'loading-status-spinner-sm', 'shrink-0']" aria-hidden="true" />
+      <span :class="centerLabelClass">{{ message }}</span>
+    </div>
+  </div>
+
+  <!-- Auxiliary module loads: keep the pill low on the stage so it does not cover the model face. -->
+  <div
+    v-else-if="layout === 'bottom'"
+    :class="[
+      'pointer-events-none fixed inset-0 z-[9998]',
+      'flex items-end justify-center px-6 pb-8',
       draggable ? 'drag-region' : '',
     ]"
     role="status"

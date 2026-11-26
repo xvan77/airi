@@ -1,25 +1,48 @@
-import { isOpenAiNoApiCreditsError } from './provider-api-credits-error'
+import { formatChatProviderErrorContent } from './chat-provider-error-message'
 
-const CHAT_COMPLETIONS_CHECK_PREFIX = /^chat completions check failed:\s*/iu
+function stripMarkup(text: string): string {
+  return text
+    .replace(/<[^>]*>/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+}
+
+function firstFailureSentence(text: string): string {
+  const normalized = text.replace(/^Validation error:\s*/iu, '').trim()
+  const paragraph = normalized.split(/\n\n/u)[0] ?? normalized
+  return (paragraph.split('\n')[0] ?? paragraph).trim()
+}
 
 /**
- * Returns a short user-facing ping failure line when the provider error is recognized.
- * Otherwise returns null and the caller can keep the original reason.
+ * Returns a short user-facing line for provider settings validation and ping failures.
  */
 export function formatProviderPingFailureReason(
   reason: string,
   translate: (key: string) => string,
 ): string {
-  const trimmed = reason.trim()
-  if (!trimmed)
-    return trimmed
+  const stripped = stripMarkup(reason.trim())
+  if (!stripped)
+    return stripped
 
-  const withoutPrefix = trimmed.replace(CHAT_COMPLETIONS_CHECK_PREFIX, '')
-  const haystack = `${trimmed}\n${withoutPrefix}`
+  const candidate = stripped.includes('\n') || stripped.length > 220
+    ? firstFailureSentence(stripped)
+    : stripped
 
-  if (isOpenAiNoApiCreditsError(haystack)) {
-    return translate('settings.dialogs.onboarding.pingFailedNoApiCredits')
-  }
+  const formatted = formatChatProviderErrorContent(
+    candidate,
+    (key) => {
+      if (key === 'stage.chat.errors.openai_no_api_credits')
+        return translate('settings.dialogs.onboarding.pingFailedNoApiCredits')
+      return translate(key)
+    },
+    translate('settings.dialogs.onboarding.pingFailedGeneric'),
+  )
 
-  return trimmed
+  if (formatted === candidate && /remote sent \d{3}|connectivity check failed:/iu.test(candidate))
+    return translate('settings.dialogs.onboarding.pingFailedGeneric')
+
+  if (formatted === candidate && /failed to reach|failed to fetch|validation error:/iu.test(candidate))
+    return translate('settings.dialogs.onboarding.pingFailedReachProgram')
+
+  return formatted
 }

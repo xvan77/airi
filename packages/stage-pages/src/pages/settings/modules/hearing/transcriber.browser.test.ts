@@ -45,6 +45,13 @@ describe('speech recognition settings', () => {
     expect(screen.getByTestId('hearing-auto-send').query()).toBeNull()
   })
 
+  it('links to Hearing more options under the provider and model controls', async () => {
+    const screen = await renderTranscriber()
+
+    await expect.element(screen.getByTestId('hearing-more-options')).toHaveAttribute('href', '/settings/modules/hearing/more')
+    await expect.element(screen.getByTestId('hearing-more-options')).toHaveTextContent('More options')
+  })
+
   it('does not open the microphone when the page opens', async () => {
     const capture = vi.spyOn(navigator.mediaDevices, 'getUserMedia')
     const screen = await renderTranscriber()

@@ -24,4 +24,9 @@ describe('compact requests', () => {
     expect(shouldAttachMemoryTools(true, 'fact-a: hi', true)).toBe(true)
     expect(shouldAttachMemoryTools(true, '', false)).toBe(true)
   })
+
+  it('drops memory tools for on-device slim chat', () => {
+    expect(shouldAttachMemoryTools(true, 'fact-a: hi', false, 'local-llm')).toBe(false)
+    expect(shouldAttachMemoryTools(true, 'fact-a: hi', false, 'groq')).toBe(true)
+  })
 })

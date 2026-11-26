@@ -1,132 +1,39 @@
 <script setup lang="ts">
-import { getCachedWebGPUCapabilities } from '@proj-airi/stage-shared/webgpu'
 import {
   SpeechProviderSettings,
 } from '@proj-airi/stage-ui/components'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { getDefaultKokoroModel } from '@proj-airi/stage-ui/workers/kokoro/constants'
-import { Callout, ComboboxSelect } from '@proj-airi/ui'
 import { cloneDeep } from 'es-toolkit'
-import { computed, onMounted, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { onMounted, ref } from 'vue'
 
 const providerId = 'kokoro-local'
 const defaultModel = 'kokoro-82m'
 const speechStore = useSpeechStore()
 const providersStore = useProviderStore()
 const providerStore = useProviderConfigStore()
-const { t } = useI18n()
 
-const providerConfig = computed(() => {
-  return providerStore.getProviderConfig(providerId)
-})
-
-// Check if WebGPU is supported
-const hasWebGPU = ref(false)
-const fp16Supported = ref(false)
-
-// Track voices loading state
 const voicesLoading = ref(false)
 
-// Get provider models from store
-const providerModels = computed(() => {
-  return providersStore.getModelsForProvider(providerId)
-})
-
-// Model loading state
-const modelsLoading = computed(() => {
-  return providersStore.isLoadingModels[providerId] || false
-})
-
-// Model computed property
-const model = computed({
-  get(): string {
-    const currentValue = providerConfig.value?.model as string
-    if (currentValue)
-      return currentValue
-
-    return getDefaultKokoroModel(hasWebGPU.value, fp16Supported.value)
-  },
-  set(val: string) {
-    const config = providerStore.getProviderConfig(providerId)
-    config.model = val
-  },
-})
-
-// Model options for the dropdown
-const modelOptions = computed(() => {
-  return providerModels.value.map(m => ({
-    label: m.name,
-    value: m.id,
-  }))
-})
-
 onMounted(async () => {
-  // Check WebGPU support
-  // NOTICE: Uses synchronous check for initial render. The cached result from
-  // detectWebGPU() is populated by the providers store during initialization.
-  const capabilities = getCachedWebGPUCapabilities()
-  hasWebGPU.value = capabilities?.supported ?? (typeof navigator !== 'undefined' && !!navigator.gpu)
-  fp16Supported.value = capabilities?.fp16Supported ?? false
-
   try {
     voicesLoading.value = true
-
-    // Fetch available models first
     await providersStore.fetchModelsForProvider(providerId)
 
     const config = providerStore.getProviderConfig(providerId)
+    if (!config.model)
+      config.model = defaultModel
 
-    // Persist the default model if none is saved yet so validation passes on first visit
-    if (!config.model) {
-      config.model = getDefaultKokoroModel(hasWebGPU.value)
-    }
-
-    // Clone nested reactive values before the synchronized action sends its arguments.
     const configSnapshot = cloneDeep(config)
     const validationResult = await providersStore.validateProviderConfig(providerId, configSnapshot)
     if (validationResult.valid) {
-      // Load the initial model
       await providersStore.loadProviderModel(providerId, configSnapshot)
-
       await speechStore.loadVoicesForProvider(providerId)
-    }
-    else {
-      console.error('Failed to validate Kokoro provider config', config, validationResult)
     }
   }
   finally {
     voicesLoading.value = false
-  }
-})
-
-// Watch for model changes and reload model + voices
-watch(model, async (newValue) => {
-  if (newValue) {
-    try {
-      voicesLoading.value = true
-
-      const config = providerStore.getProviderConfig(providerId)
-      // Clone nested reactive values before the synchronized action sends its arguments.
-      const configSnapshot = cloneDeep(config)
-      const validationResult = await providersStore.validateProviderConfig(providerId, configSnapshot)
-
-      if (validationResult.valid) {
-        // Load the model using the capability with progress tracking
-        await providersStore.loadProviderModel(providerId, configSnapshot)
-
-        // Then reload voices
-        await speechStore.loadVoicesForProvider(providerId)
-      }
-    }
-    catch (error) {
-      console.error('[Kokoro Settings] Error in model watcher:', error)
-    }
-    finally {
-      voicesLoading.value = false
-    }
   }
 })
 </script>
@@ -135,26 +42,8 @@ watch(model, async (newValue) => {
   <SpeechProviderSettings
     :provider-id="providerId"
     :default-model="defaultModel"
-  >
-    <template #advanced-settings>
-      <!-- Model Selection -->
-      <div class="space-y-3">
-        <Callout :label="t('settings.pages.providers.provider.kokoro-local.fields.field.model.label')">
-          <div>
-            <p>{{ t('settings.pages.providers.provider.kokoro-local.fields.field.model.description') }}</p>
-          </div>
-        </Callout>
-        <div>
-          <ComboboxSelect
-            v-model="model"
-            :options="modelOptions"
-            :disabled="modelsLoading"
-            placeholder="Choose a model..."
-          />
-        </div>
-      </div>
-    </template>
-  </SpeechProviderSettings>
+    hide-api-key
+  />
 </template>
 
 <route lang="yaml">

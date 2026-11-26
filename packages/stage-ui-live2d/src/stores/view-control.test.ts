@@ -20,7 +20,8 @@ describe('useL2dViewControl', () => {
     expect(composable.viewControlsEnabled.value).toBe(false)
     expect(composable.viewControlMode.value).toBe('scale')
     expect(composable.position.value).toEqual({ x: 0, y: 0 })
-    expect(composable.scale.value).toBe(1)
+    // Brand-new install default (no saved key). Reset still uses defaultControlConfig.scale.default (1).
+    expect(composable.scale.value).toBe(1.15)
   })
 
   describe('set function', () => {

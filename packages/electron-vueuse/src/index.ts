@@ -1,3 +1,4 @@
+export { isElectronWindowResizing } from './composables/electron-window-resize-state'
 export { useElectronAllDisplays } from './composables/use-electron-all-displays'
 export { useElectronAutoUpdater } from './composables/use-electron-auto-updater'
 export {

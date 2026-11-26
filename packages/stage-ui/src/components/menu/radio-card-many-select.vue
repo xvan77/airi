@@ -115,14 +115,36 @@ const filteredItems = computed(() => {
   return result
 })
 
+/**
+ * Collapsed list is a 2-column grid: row 1 = models 1–2, row 2 = models 3–4.
+ * Expand bar (list row, not per-card More info) only when more than two rows.
+ */
+const collapsedVisibleCount = computed(() => props.columns * 2)
+
 const showExpandCollapseBtn = computed(() => {
-  return filteredItems.value.length > props.columns
+  return props.showMore && filteredItems.value.length > collapsedVisibleCount.value
+})
+
+const displayedItems = computed(() => {
+  const items = filteredItems.value
+  const limit = collapsedVisibleCount.value
+  if (isListExpanded.value || items.length <= limit)
+    return items
+
+  const head = items.slice(0, limit)
+  if (!modelValue.value || head.some(item => item.id === modelValue.value))
+    return head
+
+  const selected = items.find(item => item.id === modelValue.value)
+  if (!selected)
+    return head
+  return [...head.slice(0, limit - 1), selected]
 })
 
 /**
  * Centralized layout classes for every structural element.
  * `fillAvailableHeight` fills a flex parent and scrolls only the grid;
- * the default mode uses a max-height scroll cap or a horizontal collapsed strip.
+ * collapsed and expanded both use the same column grid.
  */
 const layout = computed(() => {
   const fill = props.fillAvailableHeight
@@ -146,9 +168,7 @@ const layout = computed(() => {
     itemsArea: fill ? 'flex min-h-0 flex-1 flex-col gap-2' : 'space-y-2',
     gridArea: fill ? 'flex min-h-0 flex-1 flex-col' : '',
     scrollContainer,
-    grid: expanded
-      ? 'grid grid-cols-1 gap-4 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))]'
-      : 'grid gap-4 grid-flow-col auto-cols-[calc((100%-(var(--cols)-1)*1rem)/var(--cols))] overflow-x-auto scrollbar-none snap-x snap-proximity',
+    grid: 'grid grid-cols-1 gap-4 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))]',
     gridItem: expanded && !fill ? 'snap-start' : '',
     expandWrapper: fill ? 'flex-shrink-0' : '',
   }
@@ -220,7 +240,7 @@ function updateCustomValue(value: string) {
             :style="{ '--cols': props.columns }"
           >
             <RadioCardDetail
-              v-for="item in filteredItems"
+              v-for="item in displayedItems"
               :id="item.id"
               :key="item.id"
               v-model="modelValue"

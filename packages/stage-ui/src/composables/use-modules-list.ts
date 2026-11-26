@@ -80,7 +80,7 @@ export function useModulesList() {
       name: t('settings.pages.modules.hearing.title'),
       description: t('settings.pages.modules.hearing.description'),
       icon: 'i-solar:microphone-3-bold-duotone',
-      to: '/settings/modules/hearing',
+      to: '/settings/modules/hearing/transcriber',
       configured: hearingStore.configured,
       category: 'essential',
     },

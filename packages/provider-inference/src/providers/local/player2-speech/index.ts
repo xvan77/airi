@@ -36,6 +36,7 @@ export const providerPlayer2Speech = defineProvider<Player2Config, 'player2-spee
   descriptionLocalize: ({ t }) => t('settings.pages.providers.provider.player2.description'),
   tasks: ['text-to-speech'],
   icon: 'i-lobe-icons:player2',
+  requiresCredentials: false,
   createProviderConfig: () => player2ConfigSchema,
   createProvider: config => createPlayer2(normalizeBaseUrl(config.baseUrl), 'airi'),
   validationRequiredWhen: config => Boolean(config.baseUrl?.trim()),

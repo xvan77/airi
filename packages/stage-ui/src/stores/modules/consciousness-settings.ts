@@ -37,6 +37,11 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
   const compactRequestsAuto = shallowRef(loadEnabled('compact-requests-auto'))
   const temperatureEnabled = shallowRef(loadEnabled('temperature-enabled'))
   const topPEnabled = shallowRef(loadEnabled('top-p-enabled'))
+  /**
+   * Provider health chips on Consciousness, Speech, and Vision.
+   * Off by default. The settings checkbox turns them on.
+   */
+  const showProviderHealth = shallowRef(loadEnabled('show-provider-health'))
 
   async function setReasoning(value: boolean) {
     reasoning.value = value
@@ -76,12 +81,18 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
     persistEnabled('top-p-enabled', value)
   }
 
+  async function setShowProviderHealth(value: boolean) {
+    showProviderHealth.value = value
+    persistEnabled('show-provider-health', value)
+  }
+
   async function resetState() {
     await setReasoning(false)
     await setStageActEnabled(false)
     await setCompactRequests(false)
     await setTemperatureEnabled(false)
     await setTopPEnabled(false)
+    await setShowProviderHealth(false)
   }
 
   return {
@@ -91,17 +102,19 @@ export const useConsciousnessSettingsStore = defineStore('consciousness-settings
     compactRequestsAuto,
     temperatureEnabled,
     topPEnabled,
+    showProviderHealth,
     setReasoning,
     setStageActEnabled,
     setCompactRequests,
     enableCompactRequestsFromLimitError,
     setTemperatureEnabled,
     setTopPEnabled,
+    setShowProviderHealth,
     resetState,
   }
 }, {
   synced: {
-    actions: ['resetState', 'setReasoning', 'setStageActEnabled', 'setCompactRequests', 'enableCompactRequestsFromLimitError', 'setTemperatureEnabled', 'setTopPEnabled'],
+    actions: ['resetState', 'setReasoning', 'setStageActEnabled', 'setCompactRequests', 'enableCompactRequestsFromLimitError', 'setTemperatureEnabled', 'setTopPEnabled', 'setShowProviderHealth'],
     state: true,
   },
 })

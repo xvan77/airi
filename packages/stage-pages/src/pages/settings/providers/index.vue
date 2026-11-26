@@ -11,7 +11,7 @@ import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -121,18 +121,18 @@ const providerBlocksConfig: ProviderBlockConfig[] = [
     providersRef: allChatProvidersMetadata,
   },
   {
-    id: 'vision',
-    icon: 'i-solar:eye-bold-duotone',
-    title: t('settings.pages.providers.categories.vision.title'),
-    description: t('settings.pages.providers.categories.vision.description'),
-    providersRef: allVisionProvidersMetadata,
-  },
-  {
     id: 'speech',
     icon: 'i-solar:user-speak-rounded-bold-duotone',
     title: t('settings.pages.providers.categories.speech.title'),
     description: t('settings.pages.providers.categories.speech.description'),
     providersRef: allAudioSpeechProvidersMetadata,
+  },
+  {
+    id: 'vision',
+    icon: 'i-solar:eye-bold-duotone',
+    title: t('settings.pages.providers.categories.vision.title'),
+    description: t('settings.pages.providers.categories.vision.description'),
+    providersRef: allVisionProvidersMetadata,
   },
   {
     id: 'transcription',
@@ -162,6 +162,11 @@ onMounted(() => {
     }
   }
 })
+
+watch(activeTabId, (id) => {
+  if (id === 'vision')
+    void providersStore.loadModelsForVisionProviderCatalog()
+}, { immediate: true })
 
 function setActiveTab(id: string) {
   activeTabId.value = id

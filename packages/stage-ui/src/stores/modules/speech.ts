@@ -19,6 +19,7 @@ import { toXml } from 'xast-util-to-xml'
 import { x } from 'xastscript'
 
 import { useInferenceStatus } from '../../composables/use-inference-status'
+import { collectChatProviderErrorDetail } from '../../libs/chat-provider-error-message'
 import { cancelKokoroModelLoad } from '../../libs/inference/adapters/kokoro'
 import { publishKokoroDownloadProgress, registerKokoroDownloadProgressSetter } from '../../libs/inference/kokoro-download-progress'
 import { isKokoroSpeechModelDownloaded } from '../../libs/inference/kokoro-speech-model-download-state'
@@ -295,7 +296,7 @@ export const useSpeechStore = defineStore('speech', () => {
     }
     catch (error) {
       if (localRequests.get(provider)?.sequence === sequence) {
-        errorMessage = errorMessageFrom(error) ?? 'Unknown error'
+        errorMessage = collectChatProviderErrorDetail(error, errorMessageFrom(error) ?? 'Unknown error')
         console.error('Failed to load speech voice catalog:', errorMessage)
       }
       return []
@@ -1276,6 +1277,26 @@ export const useSpeechStore = defineStore('speech', () => {
     return hasModel && hasVoice
   })
 
+  /** Speech can run only when provider validation passed and model plus voice exist. */
+  const speechReady = computed(() => {
+    if (!configured.value)
+      return false
+
+    const providerId = activeSpeechProvider.value
+    const definition = providersStore.findProviderDefinition(providerId)
+    const stored = providerStore.providers[providerId]
+    if (!stored)
+      return false
+
+    if (definition?.requiresCredentials === false)
+      return stored.status === 'configured'
+
+    if (stored.configuredBy === 'authentication')
+      return stored.status === 'configured'
+
+    return stored.status === 'configured'
+  })
+
   /** Releases this caller's waits, then awaits the leader's shared reset. Transport failures propagate to the caller. */
   async function resetState() {
     cancelCatalogRequests()
@@ -1320,6 +1341,7 @@ export const useSpeechStore = defineStore('speech', () => {
   return {
     // State
     configured,
+    speechReady,
     activeSpeechProvider,
     kokoroAwaitingSizeChoice,
     kokoroCatalogLoadPaused,

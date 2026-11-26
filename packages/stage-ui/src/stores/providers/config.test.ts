@@ -310,6 +310,23 @@ describe('provider config store', () => {
     )
   })
 
+  // ROOT CAUSE:
+  //
+  // removeProvider returned before unmarkProviderAdded when no providers
+  // record existed. Module strips then kept credential-free locals listed.
+  //
+  // We fixed this by always clearing addedProviders on remove.
+  it('unmarks addedProviders even when no provider record exists', async () => {
+    const store = installStore()
+    store.markProviderAdded('ollama')
+
+    expect(store.addedProviders.ollama).toBe(true)
+
+    await store.removeProvider('ollama')
+
+    expect(store.addedProviders.ollama).toBeUndefined()
+  })
+
   it('cancels a pending delete when the same id is ensured again', async () => {
     // ROOT CAUSE:
     //

@@ -14,7 +14,6 @@ const props = withDefaults(defineProps<{
   manualTestMessage: string
   manualTestProgressLines?: string[]
   onRunTest: () => void
-  onForceValid: () => void
   onGoToModelSelection: () => void
   onCancelManualPing?: () => void
   onSkipNextPingModel?: () => void
@@ -78,17 +77,7 @@ const selectionLabel = computed(() => {
   <!-- Validation Error -->
   <Alert v-else-if="!isValid && isValidating === 0 && validationMessage" type="error">
     <template #title>
-      <div :class="['w-full flex items-center justify-between']">
-        <span>{{ t('settings.dialogs.onboarding.validationFailed') }}</span>
-        <button
-          v-if="!hasManualValidators"
-          type="button"
-          :class="['ml-2 rounded px-2 py-0.5 text-xs font-medium transition-colors', 'bg-red-100 text-red-600 hover:bg-red-200', 'dark:bg-red-800/30 dark:text-red-300 dark:hover:bg-red-700/40']"
-          @click="props.onForceValid"
-        >
-          {{ t('settings.pages.providers.common.continueAnyway') }}
-        </button>
-      </div>
+      <span>{{ t('settings.dialogs.onboarding.validationFailed') }}</span>
     </template>
     <template v-if="validationMessage" #content>
       <div :class="['whitespace-pre-wrap break-all']">
@@ -141,14 +130,6 @@ const selectionLabel = computed(() => {
             @click="props.onRunTest"
           >
             {{ t('settings.dialogs.onboarding.retryPingCheck') }}
-          </button>
-          <button
-            v-if="!hasManualValidators"
-            type="button"
-            :class="['rounded px-2 py-0.5 text-xs font-medium transition-colors', 'bg-red-100 text-red-600 hover:bg-red-200', 'dark:bg-red-800/30 dark:text-red-300 dark:hover:bg-red-700/40']"
-            @click="props.onForceValid"
-          >
-            {{ t('settings.pages.providers.common.continueAnyway') }}
           </button>
         </div>
       </div>

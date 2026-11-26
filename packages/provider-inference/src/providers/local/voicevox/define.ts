@@ -117,6 +117,7 @@ export function defineVoicevoxFamilyProvider<const TId extends string>(
     icon: 'i-lobe-icons:speaker',
     id: options.id,
     name: options.name,
+    requiresCredentials: false,
 
     nameLocalize: ({ t }) => t(`settings.pages.providers.provider.${options.id}.title`),
 

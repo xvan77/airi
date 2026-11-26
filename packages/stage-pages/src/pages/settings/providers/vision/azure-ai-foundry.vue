@@ -65,7 +65,6 @@ const {
   isValid,
   validationMessage,
   handleResetSettings,
-  forceValid,
   hasManualValidators,
   isManualTesting,
   manualTestPassed,
@@ -129,9 +128,7 @@ const {
         :manual-test-passed="manualTestPassed"
         :manual-test-message="manualTestMessage"
         :manual-test-progress-lines="manualTestProgressLines"
-        :on-run-test="runManualTest"
-        :on-force-valid="forceValid"
-        :on-go-to-model-selection="() => router.push('/settings/modules/vision')"
+        :on-run-test="runManualTest" :on-go-to-model-selection="() => router.push('/settings/modules/vision')"
         :on-cancel-manual-ping="cancelManualPing"
         :on-skip-next-ping-model="skipToNextPingModel"
       />

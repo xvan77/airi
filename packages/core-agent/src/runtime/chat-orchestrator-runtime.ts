@@ -615,6 +615,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const nowTs = now()
     const messagesById = new Map(history.flatMap(message => message.id ? [[message.id, message] as const] : []))
     const turns = history.flatMap((message, historyIndex): Turn[] => {
+      // Status notices are UI only (for example local-llm startup). Do not send them to the model.
+      if (message.role === 'user' && message.notice?.source.startsWith('status:'))
+        return []
       if (message.role === 'assistant' && message.generationTranscript)
         return [structuredClone(unwrapMessage(message.generationTranscript))]
       const noticePrefix = message.role === 'user' && message.notice ? `[Notice from ${message.notice.source}, not a message from the owner.]\n` : ''
@@ -1284,12 +1287,14 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       }
 
       // A notice lets the conversation stay quiet. Only rendered text, stickers, cards, and tool calls count as a reply.
+      // A completed generation with empty rounds must not store a blank "Generated in …" bubble. Tiny local models
+      // often emit only EOS on a cold first session; storing that looked like a successful empty reply.
       const hasVisibleReply = buildingMessage.slices.some(slice => slice.type === 'sticker'
         || slice.type === 'card'
         || slice.type === 'tool-call'
         || (slice.type === 'text' && Boolean(slice.text.trim())))
       const silent = Boolean(options.notice) && !hasVisibleReply
-      if (!silent && !shouldAbort() && (hasVisibleReply || generatedTurn?.rounds.length)) {
+      if (!silent && !shouldAbort() && hasVisibleReply) {
         const finalAssistant = buildingMessage
         finalAssistant.completedAt = now()
         deps.session.appendSessionMessage(sessionId, finalAssistant)
@@ -1299,6 +1304,14 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           roundId,
           message: finalAssistant,
           messageText: fullText,
+        })
+      }
+      else if (!silent && !shouldAbort() && !options.notice && generatedTurn?.rounds.length) {
+        deps.session.appendSessionMessage(sessionId, {
+          role: 'error',
+          content: 'The model returned an empty reply. Send again, or start a new chat.',
+          id: createId(),
+          createdAt: now(),
         })
       }
 

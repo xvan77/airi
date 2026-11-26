@@ -6,6 +6,7 @@ import {
   ProviderAdvancedSettings,
   ProviderBaseUrlInput,
   ProviderBasicSettings,
+  ProviderKindCallout,
   ProviderSettingsContainer,
   ProviderSettingsLayout,
   ProviderValidationAlerts,
@@ -41,7 +42,6 @@ const {
   isValid,
   validationMessage,
   handleResetSettings,
-  forceValid,
   hasManualValidators,
   isManualTesting,
   manualTestPassed,
@@ -154,6 +154,7 @@ onMounted(async () => {
         :description="t('settings.pages.providers.common.section.basic.description')"
         :on-reset="handleResetSettings"
       >
+        <ProviderKindCallout provider-id="ollama" />
         <ProviderBaseUrlInput
           v-model="baseUrl"
           placeholder="http://localhost:11434/v1/"
@@ -195,9 +196,7 @@ onMounted(async () => {
         :manual-test-passed="manualTestPassed"
         :manual-test-message="manualTestMessage"
         :manual-test-progress-lines="manualTestProgressLines"
-        :on-run-test="runManualTest"
-        :on-force-valid="forceValid"
-        :on-go-to-model-selection="() => router.push('/settings/modules/consciousness')"
+        :on-run-test="runManualTest" :on-go-to-model-selection="() => router.push('/settings/modules/consciousness')"
         :on-cancel-manual-ping="cancelManualPing"
         :on-skip-next-ping-model="skipToNextPingModel"
       />

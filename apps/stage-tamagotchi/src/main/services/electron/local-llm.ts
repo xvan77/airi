@@ -331,11 +331,24 @@ export function setupLocalLlmService(context: MainContext): void {
     const modelSavePath = path.join(MODELS_DIR, payload.filename)
     let fileStream: ReturnType<typeof createWriteStream> | null = null
 
+    // Keep a running server marked running. Download progress uses downloadProgress only.
+    const markDownloadState = () => {
+      if (!serverProcess)
+        currentStatusState = 'downloading_binary'
+    }
+    const restoreStateAfterDownload = (failed: boolean) => {
+      if (serverProcess) {
+        currentStatusState = 'running'
+        return
+      }
+      currentStatusState = failed ? 'error' : 'idle'
+    }
+
     try {
       // 1. Download and extract binary if missing
       const binaryPath = getBinaryPath()
       if (!existsSync(binaryPath)) {
-        currentStatusState = 'downloading_binary'
+        markDownloadState()
         emitProgress({
           modelId: payload.modelId,
           status: 'downloading',
@@ -358,7 +371,7 @@ export function setupLocalLlmService(context: MainContext): void {
       }
 
       // 2. Download the actual model file
-      currentStatusState = 'downloading_binary' // Reuse state or keep reporting downloading
+      markDownloadState()
       const downloadUrl = `https://hf-mirror.com/${payload.repo}/resolve/main/${payload.filename}`
 
       const res = await fetch(downloadUrl, { signal })
@@ -423,7 +436,7 @@ export function setupLocalLlmService(context: MainContext): void {
         progress: 100,
         speedMb: 0,
       })
-      currentStatusState = 'idle'
+      restoreStateAfterDownload(false)
     }
     catch (err: any) {
       if (fileStream) {
@@ -448,7 +461,7 @@ export function setupLocalLlmService(context: MainContext): void {
         speedMb: 0,
         error: lastError,
       })
-      currentStatusState = 'error'
+      restoreStateAfterDownload(true)
     }
     finally {
       currentDownloadAbortController = null

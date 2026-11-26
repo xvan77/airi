@@ -11,6 +11,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
+import { hasValidatableApiKey } from '../libs/provider-api-key'
 import { formatProviderPingFailureReason } from '../libs/provider-connection-error-message'
 import { selectProviderMetadata } from '../libs/providers/metadata'
 import { useProviderConfigStore } from '../stores/providers/config'
@@ -148,8 +149,17 @@ export function useProviderValidation(providerId: string) {
    * `structuredClone` rejects a Vue reactive proxy. A shallow copy keeps the
    * nested values as proxies, so this copy must be deep.
    */
+  function credentialsWithDefaults(): Record<string, any> {
+    const defaults = providerMetadata.value?.defaultConfig
+      ?? providersStore.getDefaultProviderConfig(providerId)
+    return {
+      ...defaults,
+      ...credentials.value,
+    }
+  }
+
   function configToValidate(): Record<string, any> {
-    const config = cloneDeep(credentials.value)
+    const config = cloneDeep(credentialsWithDefaults())
     if (config.apiKey)
       config.apiKey = config.apiKey.trim()
     if (config.baseUrl)
@@ -186,6 +196,7 @@ export function useProviderValidation(providerId: string) {
       }
       else {
         providerStore.setProviderStatus(providerId, 'invalid')
+        providerStore.unmarkProviderAdded(providerId)
       }
 
       if (!isValid.value) {
@@ -195,9 +206,11 @@ export function useProviderValidation(providerId: string) {
     catch (error) {
       isValid.value = false
       providerStore.setProviderStatus(providerId, 'invalid')
-      finalValidationMessage = t('settings.dialogs.onboarding.validationError', {
-        error: errorMessageFrom(error) ?? 'Generic error (993b5ad7)',
-      })
+      providerStore.unmarkProviderAdded(providerId)
+      finalValidationMessage = formatProviderPingFailureReason(
+        errorMessageFrom(error) ?? 'Generic error (993b5ad7)',
+        t,
+      )
     }
     finally {
       setTimeout(() => {
@@ -258,6 +271,7 @@ export function useProviderValidation(providerId: string) {
           })
         }
         providerStore.setProviderStatus(providerId, 'invalid')
+        providerStore.unmarkProviderAdded(providerId)
       }
     }
     catch (error) {
@@ -266,7 +280,10 @@ export function useProviderValidation(providerId: string) {
         manualTestMessage.value = t('settings.dialogs.onboarding.chatPingCanceled')
       }
       else {
-        manualTestMessage.value = errorMessageFrom(error) ?? 'Generic error (e56ae24f)'
+        manualTestMessage.value = formatProviderPingFailureReason(
+          errorMessageFrom(error) ?? 'Generic error (e56ae24f)',
+          t,
+        )
       }
       trackProviderConnectionTestCompleted({
         ...providerConnectionTestAnalyticsBase(),
@@ -281,16 +298,32 @@ export function useProviderValidation(providerId: string) {
     }
   }
 
-  async function shouldValidateConfiguration() {
+  async function shouldValidateConfiguration(): Promise<'skip' | 'wait' | 'run'> {
     const definition = providersStore.getProviderDefinition(providerId)
-    return await definition.validationRequiredWhen?.(credentials.value) ?? false
+    const required = await definition.validationRequiredWhen?.(configToValidate()) ?? false
+    if (!required)
+      return 'skip'
+
+    if (definition.requiresCredentials !== false && !hasValidatableApiKey(credentials.value.apiKey))
+      return 'wait'
+
+    return 'run'
   }
 
   const debouncedValidateConfiguration = useDebounceFn(async () => {
-    if (!await shouldValidateConfiguration()) {
+    const gate = await shouldValidateConfiguration()
+    if (gate === 'skip') {
       isValid.value = false
       providerStore.setProviderStatus(providerId, 'unconfigured')
       validationMessage.value = ''
+      isValidating.value = 0
+      return
+    }
+    if (gate === 'wait') {
+      isValid.value = false
+      providerStore.setProviderStatus(providerId, 'unconfigured')
+      providerStore.unmarkProviderAdded(providerId)
+      validationMessage.value = t('settings.dialogs.onboarding.apiKeyTooShort')
       isValidating.value = 0
       return
     }
@@ -299,9 +332,9 @@ export function useProviderValidation(providerId: string) {
 
   onMounted(async () => {
     await providersStore.initializeProvider(providerId)
-    if (await shouldValidateConfiguration()) {
+    const gate = await shouldValidateConfiguration()
+    if (gate === 'run')
       await validateConfiguration()
-    }
   })
 
   // The synced config store re-applies fresh object snapshots (new references,
@@ -328,18 +361,6 @@ export function useProviderValidation(providerId: string) {
     manualTestMessage.value = ''
   }
 
-  function forceValid() {
-    if (hasManualValidators.value)
-      return
-
-    isValid.value = true
-    validationMessage.value = ''
-    manualTestPassed.value = true
-    manualTestMessage.value = ''
-    manualTestProgressLines.value = []
-    providersStore.forceProviderConfigured(providerId)
-  }
-
   return {
     t,
     router,
@@ -351,7 +372,6 @@ export function useProviderValidation(providerId: string) {
     isValid,
     validationMessage,
     handleResetSettings,
-    forceValid,
     // Manual test generation
     hasManualValidators,
     isManualTesting,

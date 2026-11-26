@@ -173,8 +173,11 @@ chat:
     hide: Hide details
   errors:
     openai_no_api_credits: >-
-      This OpenAI account has no API credits left. Add billing on the OpenAI site
-      or pick another provider in Consciousness.
+      This provider account has no API credits or balance left. Add billing on the
+      provider site or pick another provider.
+    provider_auth_failed: >-
+      The API key was rejected. Open provider settings and enter a valid key for
+      this service.
     non_chat_model: >-
       The model you selected is not a text chat model and is not available.
       Select a compatible model in Consciousness.
@@ -195,7 +198,7 @@ chat:
   images:
     empty: Share a thought or a picture.
     use-vision: Use the vision model for chat images
-    use-vision-description: Choose a provider and model below. It reads attached images before your chat model replies. Without a vision model, images go directly to the chat model.
+    use-vision-description: The vision model reads attached images before your chat model replies. Without a vision model, images go directly to the chat model.
     attach: 'Attach images'
     remove: 'Remove {name}'
     unsupported: 'Use PNG, JPEG, WebP, or GIF images.'

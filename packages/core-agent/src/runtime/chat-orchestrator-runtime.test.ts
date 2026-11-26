@@ -1,7 +1,7 @@
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { Message } from '@xsai/shared-chat'
 
-import type { Conversation } from '../messages/types'
+import type { AssistantTurn, Conversation } from '../messages/types'
 import type { ChatHistoryItem, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { StreamEvent, StreamOptions } from '../types/llm'
 import type { ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
@@ -285,12 +285,9 @@ describe('createChatOrchestratorRuntime', () => {
     expect(harness.sessionMessages['session-1'].filter(message => message.role === 'assistant')).toEqual([])
   })
 
-  it.each(['tool', 'sticker', 'generated turn'])('retains %s output without blank speech slices', async (kind) => {
+  it.each(['tool', 'sticker'] as const)('retains %s output without blank speech slices', async (kind) => {
     const harness = createHarness()
     const literals: string[] = []
-    const [generatedTurn] = chatMessagesToTurns([{ role: 'assistant', content: ' ' }])
-    if (generatedTurn.type !== 'assistant')
-      throw new Error('Expected assistant turn')
     harness.runtime.hooks.onTokenLiteral(async (literal) => {
       literals.push(literal)
     })
@@ -300,11 +297,8 @@ describe('createChatOrchestratorRuntime', () => {
         await options?.onStreamEvent?.({ type: 'tool-call', toolCallId: 'call-weather', toolCallType: 'function', toolName: 'weather', args: '{}' })
         await options?.onStreamEvent?.({ type: 'tool-result', toolCallId: 'call-weather', result: 'sunny' })
       }
-      else if (kind === 'sticker') {
-        await options?.onStreamEvent?.({ type: 'text-delta', text: '<|STICKER heart|>' })
-      }
       else {
-        await options?.onGeneratedTurn?.(generatedTurn)
+        await options?.onStreamEvent?.({ type: 'text-delta', text: '<|STICKER heart|>' })
       }
       await options?.onStreamEvent?.({ type: 'finish' })
     })
@@ -318,12 +312,60 @@ describe('createChatOrchestratorRuntime', () => {
       expect(saved?.role === 'assistant' && saved.slices.some(slice => slice.type === 'tool-call')).toBe(true)
       expect(saved?.role === 'assistant' && saved.tool_results).toEqual([{ type: 'tool-call-result', id: 'call-weather', result: 'sunny' }])
     }
-    else if (kind === 'sticker') {
+    else {
       expect(saved?.role === 'assistant' && saved.slices).toEqual([{ type: 'sticker', stickerId: 'heart' }])
     }
-    else {
-      expect(saved?.role === 'assistant' && saved.generationTranscript).toEqual(generatedTurn)
+  })
+
+  // First-install blank chat: llama.cpp can finish with one EOS token and an empty generation round.
+  // ROOT CAUSE:
+  //
+  // The store path treated `generatedTurn.rounds.length` as enough to keep an assistant message.
+  // That stored a completed empty bubble ("Generated in …") with no text.
+  //
+  // We now require visible text, stickers, cards, or tool calls. An empty completed round becomes an error.
+  it('stores an error instead of a blank assistant when the generation recorded an empty round', async () => {
+    const harness = createHarness()
+    const generatedTurn: AssistantTurn = {
+      type: 'assistant',
+      id: 'turn-empty',
+      status: 'completed',
+      rounds: [{ id: 'round-empty', content: [], toolInvocations: [], projectionIssues: [] }],
     }
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onGeneratedTurn?.(generatedTurn)
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hi', { model: 'test', chatProvider: provider })
+    expect(harness.sessionMessages['session-1'].filter(message => message.role === 'assistant')).toEqual([])
+    expect(harness.assistantAppended).toEqual([])
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({
+      role: 'error',
+      content: expect.stringContaining('empty reply'),
+    })
+  })
+
+  it('omits status notices from the model context', async () => {
+    const harness = createHarness()
+    harness.sessionMessages['session-1'].push({
+      id: 'local-llm-startup-notice',
+      role: 'user',
+      content: 'Starting local server…',
+      notice: { source: 'status:local-llm' },
+    })
+    let seenUserTexts: string[] = []
+    harness.stream.mockImplementationOnce(async (_model, _provider, context, options) => {
+      seenUserTexts = context.turns.flatMap(turn => turn.type === 'user'
+        ? turn.content.flatMap(part => part.type === 'text' ? [part.text] : [])
+        : [])
+      await options?.onStreamEvent?.({ type: 'text-delta', text: 'hello' })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hi', { model: 'test', chatProvider: provider })
+    expect(seenUserTexts.some(text => text.includes('Starting local server'))).toBe(false)
+    expect(seenUserTexts.some(text => text.includes('hi'))).toBe(true)
   })
 
   // ROOT CAUSE:

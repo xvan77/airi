@@ -23,6 +23,7 @@ import icon from '../../../resources/icon.png?asset'
 import macOSTrayIcon from '../../../resources/tray-icon-macos.png?asset'
 
 import { electronAppIconGet, electronAppIconSet } from '../../shared/eventa'
+import { MAIN_WINDOW_ASPECT_RATIO, MAIN_WINDOW_DEFAULT_HEIGHT, MAIN_WINDOW_DEFAULT_WIDTH } from '../../shared/main-window-size'
 import { findDominantDisplayArea } from '../../shared/utils/electron/display'
 import { onAppBeforeQuit } from '../libs/bootkit/lifecycle'
 import { shouldOpenDevTools } from '../libs/electron/devtools'
@@ -31,9 +32,9 @@ import { AppIconVisibility } from '../windows/shared/app-icon'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
 import { toggleWindowShow } from '../windows/shared/window'
 
-const RECOMMENDED_WIDTH = 450
-const RECOMMENDED_HEIGHT = 600
-const ASPECT_RATIO = RECOMMENDED_WIDTH / RECOMMENDED_HEIGHT
+const RECOMMENDED_WIDTH = MAIN_WINDOW_DEFAULT_WIDTH
+const RECOMMENDED_HEIGHT = MAIN_WINDOW_DEFAULT_HEIGHT
+const ASPECT_RATIO = MAIN_WINDOW_ASPECT_RATIO
 
 function applyWindowSize(window: BrowserWindow, width: number, height: number, x?: number, y?: number): void {
   if (isRendererUnavailable(window)) {

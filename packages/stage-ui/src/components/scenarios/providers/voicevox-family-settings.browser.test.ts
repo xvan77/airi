@@ -106,21 +106,18 @@ describe('voicevox family settings', () => {
     await expect.element(screen.getByRole('slider')).not.toBeInTheDocument()
   })
 
-  it('marks the provider invalid and still opens Speech after Continue Anyway', async () => {
+  it('keeps the provider invalid when the engine is unreachable', async () => {
     stubUnreachableEngine()
     const pinia = createPinia()
 
-    const { screen, router } = await mountSettings(pinia)
+    const { screen } = await mountSettings(pinia)
     const providerConfig = useProviderConfigStore(pinia)
     const speech = useSpeechStore(pinia)
 
     await expect.poll(() => providerConfig.providers.voicevox?.status).toBe('invalid')
     expect(speech.availableVoices.voicevox).toBeUndefined()
-
-    await screen.getByRole('button', { name: 'settings.pages.providers.common.continueAnyway' }).click()
-    await screen.getByRole('button', { name: 'settings.pages.providers.common.goToModelSelection' }).click()
-    expect(router.currentRoute.value.path).toBe('/settings/modules/speech')
-    expect(router.currentRoute.value.query.browse).toBe('voicevox')
+    await expect.element(screen.getByRole('button', { name: 'settings.pages.providers.common.continueAnyway' })).not.toBeInTheDocument()
+    await expect.element(screen.getByRole('button', { name: 'settings.pages.providers.common.goToModelSelection' })).not.toBeInTheDocument()
   })
 
   // ROOT CAUSE:

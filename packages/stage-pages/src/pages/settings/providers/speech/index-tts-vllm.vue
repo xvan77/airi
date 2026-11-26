@@ -16,12 +16,6 @@ const defaultModel = 'IndexTTS-1.5'
     <template #basic-settings>
       <Callout
         theme="violet"
-        :label="t('settings.pages.providers.provider.index-tts-vllm.callout_engine_title')"
-      >
-        {{ t('settings.pages.providers.provider.index-tts-vllm.callout_engine') }}
-      </Callout>
-      <Callout
-        theme="violet"
         :label="t('settings.pages.providers.provider.index-tts-vllm.callout_indextts2_unavailable_title')"
       >
         {{ t('settings.pages.providers.provider.index-tts-vllm.callout_indextts2_unavailable') }}

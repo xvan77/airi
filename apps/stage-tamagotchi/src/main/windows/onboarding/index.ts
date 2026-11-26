@@ -59,11 +59,8 @@ export function setupOnboardingWindowManager(params: {
       },
     })
 
-    newWindow.on('ready-to-show', () => {
-      newWindow.show()
-      newWindow.focus()
-      newWindow.moveTop()
-    })
+    // Keep Welcome hidden until the onboarding service slides Hiyori aside.
+    // ready-to-show must not reveal the window early on first install.
     protectPrivilegedWindowNavigation(newWindow)
 
     // TODO: once we refactored eventa to support window-namespaced contexts,

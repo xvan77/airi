@@ -7,6 +7,8 @@ import {
   ProviderSettingsLayout,
 } from '@proj-airi/stage-ui/components'
 import { LOCAL_LLM_BASE_CATALOG } from '@proj-airi/stage-ui/libs/local-llm-catalog'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -24,6 +26,8 @@ const electronLocalLlmProgressEvent = defineEventa<any>('eventa:event:electron:l
 const providerId = 'local-llm'
 const router = useRouter()
 const providersStore = useProviderStore()
+const consciousnessStore = useConsciousnessStore()
+const airiCardStore = useAiriCardStore()
 
 const baseCatalog = LOCAL_LLM_BASE_CATALOG
 
@@ -286,6 +290,9 @@ async function handleStartServer(filename: string) {
   try {
     await api.startServer({ modelId: filename })
     providersStore.forceProviderConfigured(providerId)
+    // Activate this model for chat / Consciousness / card without a second trip to Consciousness.
+    consciousnessStore.commitChatSelection(providerId, filename)
+    await airiCardStore.updateActiveCardConsciousness({ provider: providerId, model: filename })
     await refreshState()
   }
   catch (err) {

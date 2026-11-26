@@ -475,18 +475,20 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
 
   async function removeProvider(providerId: string) {
     const provider = providers.value[providerId]
-    if (!provider)
-      return
+    if (provider) {
+      if (isUserProvider(provider))
+        pendingDeletes.value[providerId] = new Date().toISOString()
 
-    if (isUserProvider(provider))
-      pendingDeletes.value[providerId] = new Date().toISOString()
+      delete providers.value[providerId]
+      const nextRemote = { ...lastLiveRemote.value }
+      delete nextRemote[providerId]
+      lastLiveRemote.value = nextRemote
+      schedulePush()
+    }
 
-    delete providers.value[providerId]
+    // Always clear the module-list mark. Credential-free locals can sit in
+    // addedProviders without a providers record after a failed or partial add.
     unmarkProviderAdded(providerId)
-    const nextRemote = { ...lastLiveRemote.value }
-    delete nextRemote[providerId]
-    lastLiveRemote.value = nextRemote
-    schedulePush()
   }
 
   async function updateProviderConfig(providerId: string, config: Record<string, unknown>, status: ProviderValidationStatus) {

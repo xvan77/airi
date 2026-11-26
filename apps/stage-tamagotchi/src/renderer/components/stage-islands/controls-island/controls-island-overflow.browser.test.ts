@@ -41,11 +41,15 @@ const authState = vi.hoisted(() => ({
   onLogout: () => () => {},
 }))
 
-vi.mock('@proj-airi/electron-vueuse', () => ({
-  useElectronEventaContext: () => ref({ on: vi.fn(() => vi.fn()), emit: vi.fn() }),
-  useElectronEventaInvoke: (event: unknown) => event === electronOpenSettings ? openSettings : vi.fn().mockResolvedValue(false),
-  useElectronMouseInElement: () => ({ isOutside }),
-}))
+vi.mock('@proj-airi/electron-vueuse', async () => {
+  const { ref, readonly } = await import('vue')
+  return {
+    useElectronEventaContext: () => ref({ on: vi.fn(() => vi.fn()), emit: vi.fn() }),
+    useElectronEventaInvoke: (event: unknown) => event === electronOpenSettings ? openSettings : vi.fn().mockResolvedValue(false),
+    useElectronMouseInElement: () => ({ isOutside }),
+    isElectronWindowResizing: readonly(ref(false)),
+  }
+})
 
 vi.mock('@moeru/eventa', async importOriginal => ({
   ...await importOriginal<typeof import('@moeru/eventa')>(),
@@ -367,6 +371,29 @@ describe.skip('controls Island overflow', () => {
     collapse.blur()
     await page.viewport(450, 190)
     await expect.poll(() => viewport.scrollTop).toBe(viewport.scrollHeight - viewport.clientHeight)
+  })
+
+  // ROOT CAUSE:
+  // Auto fit clips a short viewport then scales from the bottom dock corner.
+  // The full-height stack stayed top-aligned, so scaled icons fell below the window.
+  //
+  // We fixed this by flex-end aligning the stack in the short fit viewport.
+  it('keeps bottom-docked Auto fit icons inside the window after a shrink', async () => {
+    await page.viewport(380, 520)
+    const { screen } = mountControlsIsland('bottom-right', 'auto')
+    const main = screen.getByTestId('main-controls').element() as HTMLElement
+
+    await page.viewport(380, 220)
+    await expect.poll(() => Number.parseFloat(getComputedStyle(main).height)).toBeLessThan(200)
+
+    const buttons = main.querySelectorAll('button')
+    const first = buttons[0]!
+    const last = buttons[buttons.length - 1]!
+    const height = 220
+    await expect.poll(() => first.getBoundingClientRect().top).toBeGreaterThanOrEqual(0)
+    expect(first.getBoundingClientRect().bottom).toBeLessThanOrEqual(height)
+    expect(last.getBoundingClientRect().top).toBeGreaterThanOrEqual(0)
+    expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(height - 4)
   })
 
   // ROOT CAUSE:

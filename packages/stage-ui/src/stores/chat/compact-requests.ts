@@ -17,9 +17,16 @@ export function shouldIncludeChatFormatRules(compactRequests: boolean, providerI
   return !compactRequests
 }
 
-/** Omits memory tools when compact mode has nothing to read yet. */
-export function shouldAttachMemoryTools(memoryEnabled: boolean, memoryIndex: string, compactRequests: boolean): boolean {
+/** Omits memory tools when compact mode has nothing to read yet, or when the provider is on-device slim. */
+export function shouldAttachMemoryTools(
+  memoryEnabled: boolean,
+  memoryIndex: string,
+  compactRequests: boolean,
+  providerId?: string,
+): boolean {
   if (!memoryEnabled)
+    return false
+  if (isOnDeviceSlimChatProvider(providerId))
     return false
   if (!compactRequests)
     return true

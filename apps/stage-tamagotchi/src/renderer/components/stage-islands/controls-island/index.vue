@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { defineInvoke } from '@moeru/eventa'
-import { useElectronEventaContext, useElectronEventaInvoke, useElectronMouseInElement } from '@proj-airi/electron-vueuse'
+import { isElectronWindowResizing, useElectronEventaContext, useElectronEventaInvoke, useElectronMouseInElement } from '@proj-airi/electron-vueuse'
 import { HearingConfigDialog } from '@proj-airi/stage-ui/components'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { ScrollableArea, useTheme } from '@proj-airi/ui'
-import { useFocusWithin, useMouseInElement, useMousePressed } from '@vueuse/core'
+import { useElementSize, useFocusWithin, useMouseInElement, useMousePressed, useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, reactive, ref, useTemplateRef, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ControlButtonTooltip from './control-button-tooltip.vue'
@@ -77,6 +77,8 @@ const islandScrollArea = useTemplateRef<InstanceType<typeof ScrollableArea>>('is
 const islandViewport = computed(() => islandScrollArea.value?.viewport)
 const islandContent = useTemplateRef<HTMLElement>('islandContent')
 const mainControlsElement = useTemplateRef<HTMLElement>('mainControls')
+/** Unscaled button column — used to decide how much Auto mode must shrink. */
+const mainControlsStackElement = useTemplateRef<HTMLElement>('mainControlsStack')
 const menuContent = useTemplateRef<HTMLElement>('menuContent')
 const availableSpaceElement = useTemplateRef<HTMLElement>('availableSpace')
 const gapElement = useTemplateRef<HTMLElement>('gap')
@@ -174,28 +176,128 @@ watch(alwaysOnTop, (val) => {
   setAlwaysOnTop(val)
 }, { immediate: true })
 
-// Grouped classes for icon / border / padding and combined style class
-const adjustStyleClasses = computed(() => {
-  let isLarge: boolean
+/**
+ * Auto fit: keep full-size icons while the window is taller than the main bar.
+ * If the window is shorter, scale the whole stack so every icon still fits.
+ * Example: 10 icons × (20px + 5px gap) ≈ 250px — no scale above that height.
+ */
+const { height: windowHeight } = useWindowSize()
+/** top-2 / bottom-2 island inset (0.5rem × 2). */
+const ISLAND_EDGE_MARGIN_PX = 16
+/** Do not shrink past this — buttons stay clickable on tiny windows. */
+const MIN_FIT_SCALE = 0.4
+/** Extra room required before returning to full size (stops threshold flicker). */
+const FIT_SCALE_HYSTERESIS_PX = 16
+const fitScale = shallowRef(1)
+const mainControlsNatural = useElementSize(mainControlsStackElement, undefined, { box: 'border-box' })
+/** Full-size stack height captured while unscaled — never learned from a scaled layout. */
+const frozenNaturalHeight = shallowRef(0)
 
-  // Determine size based on setting
-  switch (controlsIslandIconSize.value) {
-    case 'large':
-      isLarge = true
-      break
-    case 'small':
-      isLarge = false
-      break
-    case 'auto':
-    default:
-      isLarge = true
-      break
+function roundFitScale(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+function resolveFitScale() {
+  if (controlsIslandIconSize.value !== 'auto')
+    return 1
+
+  const naturalHeight = frozenNaturalHeight.value
+  if (naturalHeight <= 0)
+    return 1
+
+  const availableHeight = Math.max(0, windowHeight.value - ISLAND_EDGE_MARGIN_PX)
+  if (fitScale.value < 1) {
+    if (availableHeight >= naturalHeight + FIT_SCALE_HYSTERESIS_PX)
+      return 1
+    return roundFitScale(Math.max(MIN_FIT_SCALE, availableHeight / naturalHeight))
   }
 
+  if (availableHeight >= naturalHeight)
+    return 1
+
+  return roundFitScale(Math.max(MIN_FIT_SCALE, availableHeight / naturalHeight))
+}
+
+function refreshFitScale() {
+  if (isElectronWindowResizing.value)
+    return
+  const next = resolveFitScale()
+  if (next === fitScale.value)
+    return
+  fitScale.value = next
+}
+
+// Learn natural height only while the stack is drawn at full size.
+watch(() => mainControlsNatural.height.value, (height) => {
+  if (height <= 0)
+    return
+  if (fitScale.value < 1)
+    return
+  if (height === frozenNaturalHeight.value)
+    return
+  frozenNaturalHeight.value = height
+  refreshFitScale()
+})
+
+// NOTICE:
+// Do not update fit scale while a corner resize is active. Mid-drag layout
+// changes race click-through and can leave resize stuck.
+// Removal condition: remove when resize no longer fights setIgnoreMouseEvents.
+watch(
+  [windowHeight, controlsIslandIconSize, isElectronWindowResizing],
+  () => {
+    if (controlsIslandIconSize.value !== 'auto') {
+      fitScale.value = 1
+      return
+    }
+    refreshFitScale()
+  },
+  { immediate: true },
+)
+
+// Auto always draws large icons, then scales the column. Large / small stay fixed.
+const adjustStyleClasses = computed(() => {
+  const isLarge = controlsIslandIconSize.value !== 'small'
   const icon = isLarge ? 'size-5' : 'size-3.5'
   const border = isLarge ? 'border-2' : 'border'
   const padding = isLarge ? 'p-2' : 'p-1'
   return { icon, border, padding, button: `${border} ${padding}` }
+})
+
+const fitOrigin = computed(() => {
+  const vertical = isTop.value ? 'top' : 'bottom'
+  const horizontal = isLeft.value ? 'left' : 'right'
+  return `${vertical} ${horizontal}`
+})
+
+/** Shrinks only the layout height so width constraints cannot reflow the stack. */
+const mainControlsFitViewportStyle = computed(() => {
+  if (controlsIslandIconSize.value !== 'auto' || fitScale.value >= 1)
+    return undefined
+
+  const height = frozenNaturalHeight.value
+  if (height <= 0)
+    return undefined
+
+  // Bottom docks pin the stack to the short viewport bottom so scale stays visible.
+  return {
+    height: `${height * fitScale.value}px`,
+    overflow: 'hidden' as const,
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
+    justifyContent: isTop.value ? 'flex-start' as const : 'flex-end' as const,
+  }
+})
+
+const mainControlsFitTransformStyle = computed(() => {
+  if (controlsIslandIconSize.value !== 'auto' || fitScale.value >= 1)
+    return undefined
+
+  return {
+    transform: `scale(${fitScale.value})`,
+    transformOrigin: fitOrigin.value,
+    width: 'max-content',
+  }
 })
 
 const islandPositionClasses = computed(() => [
@@ -263,145 +365,156 @@ const startDraggingWindow = !isLinux() ? defineInvoke(context.value, electronSta
           :class="['pointer-events-none invisible absolute size-0 overflow-hidden [contain:strict]']"
         />
 
-        <!-- Main Controls -->
-        <div ref="mainControls" data-testid="main-controls" :class="['shrink-0', mainControlsLayoutClasses]">
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              v-track-button="{ name: 'controls_island_action', action: 'toggle_settings' }"
-              data-testid="controls-island-settings"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="t('tamagotchi.stage.controls-island.open-settings')"
-              @click="openSettings({ route: '/settings' })"
-            >
-              <div :class="['i-solar:settings-minimalistic-outline text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-            </ControlButton>
-            <template #tooltip>
-              {{ t('tamagotchi.stage.controls-island.open-settings') }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              v-track-button="{ name: 'controls_island_action', action: 'open_consciousness_settings' }"
-              data-testid="controls-island-consciousness"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="t('tamagotchi.stage.controls-island.open-consciousness')"
-              @click="openSettings({ route: '/settings/modules/consciousness' })"
-            >
-              <div :class="['i-solar:ghost-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-            </ControlButton>
-            <template #tooltip>
-              {{ t('tamagotchi.stage.controls-island.open-consciousness') }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              v-track-button="{ name: 'controls_island_action', action: 'open_speech_settings' }"
-              data-testid="controls-island-speech-module"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="t('tamagotchi.stage.controls-island.open-speech')"
-              @click="openSettings({ route: '/settings/modules/speech' })"
-            >
-              <div :class="['i-solar:user-speak-rounded-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-            </ControlButton>
-            <template #tooltip>
-              {{ t('tamagotchi.stage.controls-island.open-speech') }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              v-track-button="{ name: 'controls_island_action', action: 'open_models_settings' }"
-              data-testid="controls-island-models"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="t('tamagotchi.stage.controls-island.open-models')"
-              @click="openSettings({ route: '/settings/models' })"
-            >
-              <div :class="['i-solar:people-nearby-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-            </ControlButton>
-            <template #tooltip>
-              {{ t('tamagotchi.stage.controls-island.open-models') }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              v-track-button="{ name: 'controls_island_action', action: 'open_airi_card_settings' }"
-              data-testid="controls-island-airi-card"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="t('tamagotchi.stage.controls-island.open-airi-card')"
-              @click="openSettings({ route: '/settings/airi-card' })"
-            >
-              <div :class="['i-solar:card-2-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-            </ControlButton>
-            <template #tooltip>
-              {{ t('tamagotchi.stage.controls-island.open-airi-card') }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              v-track-button="{
-                name: 'controls_island_action',
-                action: themeActions[themeMode],
-              }"
-              data-testid="controls-island-theme"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="themeLabel"
-              @click="switchToNextTheme"
-            >
-              <Transition name="fade" mode="out-in">
-                <div :key="themeMode" :class="[themeIcons[themeMode], 'text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-              </Transition>
-            </ControlButton>
-            <template #tooltip>
-              {{ themeLabel }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlsIslandChatButton :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton
-              data-testid="controls-island-microphone"
-              :button-style="adjustStyleClasses.button"
-              :aria-label="microphoneLabel"
-              :aria-pressed="enabled"
-              :aria-busy="microphonePending"
-              :disabled="microphonePending"
-              @click="toggleMicrophone"
-            >
-              <Transition name="fade" mode="out-in">
-                <IndicatorMicVolume v-if="enabled" :class="adjustStyleClasses.icon" />
-                <div v-else :class="['i-ph:microphone-slash text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-              </Transition>
-            </ControlButton>
-            <template #tooltip>
-              {{ microphoneLabel }}
-            </template>
-          </ControlButtonTooltip>
-
-          <ControlsIslandSpeechMute
-            :button-style="adjustStyleClasses.button"
-            :icon-class="adjustStyleClasses.icon"
-          />
-
-          <ControlButtonTooltip side="inward">
-            <ControlButton :button-style="adjustStyleClasses.button" :class="['cursor-move', { 'drag-region': isLinux }]" @mousedown="startDraggingWindow?.()">
-              <div :class="['i-ph:arrows-out-cardinal text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
-            </ControlButton>
-            <template #tooltip>
-              {{ t('tamagotchi.stage.controls-island.drag-to-move-window') }}
-            </template>
-          </ControlButtonTooltip>
-
-          <HearingConfigDialog
-            :show="blockingOverlays.has('hearing')"
-            @update:show="value => setOverlay('hearing', value)"
+        <!-- Main Controls: auto mode scales this column when the window is shorter than the stack. -->
+        <div
+          ref="mainControls"
+          data-testid="main-controls"
+          class="shrink-0"
+          :style="mainControlsFitViewportStyle"
+        >
+          <div
+            ref="mainControlsStack"
+            :class="['w-max shrink-0', mainControlsLayoutClasses]"
+            :style="mainControlsFitTransformStyle"
           >
-            <span :class="['sr-only']" aria-hidden="true" />
-          </HearingConfigDialog>
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                v-track-button="{ name: 'controls_island_action', action: 'toggle_settings' }"
+                data-testid="controls-island-settings"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.open-settings')"
+                @click="openSettings({ route: '/settings' })"
+              >
+                <div :class="['i-solar:settings-minimalistic-outline text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.open-settings') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                v-track-button="{ name: 'controls_island_action', action: 'open_consciousness_settings' }"
+                data-testid="controls-island-consciousness"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.open-consciousness')"
+                @click="openSettings({ route: '/settings/modules/consciousness' })"
+              >
+                <div :class="['i-solar:ghost-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.open-consciousness') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                v-track-button="{ name: 'controls_island_action', action: 'open_speech_settings' }"
+                data-testid="controls-island-speech-module"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.open-speech')"
+                @click="openSettings({ route: '/settings/modules/speech' })"
+              >
+                <div :class="['i-solar:user-speak-rounded-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.open-speech') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                v-track-button="{ name: 'controls_island_action', action: 'open_models_settings' }"
+                data-testid="controls-island-models"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.open-models')"
+                @click="openSettings({ route: '/settings/models' })"
+              >
+                <div :class="['i-solar:people-nearby-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.open-models') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                v-track-button="{ name: 'controls_island_action', action: 'open_airi_card_settings' }"
+                data-testid="controls-island-airi-card"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.open-airi-card')"
+                @click="openSettings({ route: '/settings/airi-card' })"
+              >
+                <div :class="['i-solar:card-2-bold-duotone text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.open-airi-card') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                v-track-button="{
+                  name: 'controls_island_action',
+                  action: themeActions[themeMode],
+                }"
+                data-testid="controls-island-theme"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="themeLabel"
+                @click="switchToNextTheme"
+              >
+                <Transition name="fade" mode="out-in">
+                  <div :key="themeMode" :class="[themeIcons[themeMode], 'text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+                </Transition>
+              </ControlButton>
+              <template #tooltip>
+                {{ themeLabel }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlsIslandChatButton :button-style="adjustStyleClasses.button" :icon-class="adjustStyleClasses.icon" />
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton
+                data-testid="controls-island-microphone"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="microphoneLabel"
+                :aria-pressed="enabled"
+                :aria-busy="microphonePending"
+                :disabled="microphonePending"
+                @click="toggleMicrophone"
+              >
+                <Transition name="fade" mode="out-in">
+                  <IndicatorMicVolume v-if="enabled" :class="adjustStyleClasses.icon" />
+                  <div v-else :class="['i-ph:microphone-slash text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+                </Transition>
+              </ControlButton>
+              <template #tooltip>
+                {{ microphoneLabel }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlsIslandSpeechMute
+              :button-style="adjustStyleClasses.button"
+              :icon-class="adjustStyleClasses.icon"
+            />
+
+            <ControlButtonTooltip side="inward">
+              <ControlButton :button-style="adjustStyleClasses.button" :class="['cursor-move', { 'drag-region': isLinux }]" @mousedown="startDraggingWindow?.()">
+                <div :class="['i-ph:arrows-out-cardinal text-neutral-800 dark:text-neutral-300', adjustStyleClasses.icon]" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.drag-to-move-window') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <HearingConfigDialog
+              :show="blockingOverlays.has('hearing')"
+              @update:show="value => setOverlay('hearing', value)"
+            >
+              <span :class="['sr-only']" aria-hidden="true" />
+            </HearingConfigDialog>
+          </div>
         </div>
       </div>
     </ScrollableArea>

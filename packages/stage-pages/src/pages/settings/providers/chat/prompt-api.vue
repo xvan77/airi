@@ -21,7 +21,6 @@ const {
   isValid,
   validationMessage,
   handleResetSettings,
-  forceValid,
   hasManualValidators,
   isManualTesting,
   manualTestPassed,
@@ -70,9 +69,7 @@ function setVaild() {
         :is-manual-testing="isManualTesting"
         :manual-test-passed="manualTestPassed"
         :manual-test-message="manualTestMessage"
-        :on-run-test="runManualTest"
-        :on-force-valid="forceValid"
-        :on-go-to-model-selection="() => router.push('/settings/modules/consciousness')"
+        :on-run-test="runManualTest" :on-go-to-model-selection="() => router.push('/settings/modules/consciousness')"
       />
     </ProviderSettingsContainer>
   </ProviderSettingsLayout>

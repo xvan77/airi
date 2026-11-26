@@ -6,7 +6,7 @@ import type { SelectTabOption } from '@proj-airi/ui'
 import type { Live2DPreviewTarget } from '../../../../stores/live2d'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { defaultModelParameters, isLive2DControlEnabled, updateLive2DControlPolicy, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { defaultControlConfig, defaultModelParameters, isLive2DControlEnabled, updateLive2DControlPolicy, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCache } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { useIntervalFn } from '@vueuse/core'
@@ -355,7 +355,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <template #label>
         <div flex items-center>
           <div>{{ t('settings.live2d.scale-and-position.scale') }}</div>
-          <button px-2 text-xs outline-none title="Reset value to default" @click="() => scale = 1">
+          <button px-2 text-xs outline-none title="Reset value to default" @click="() => scale = defaultControlConfig.scale.default">
             <div i-solar:forward-linear transform-scale-x--100 text="neutral-500 dark:neutral-400" />
           </button>
         </div>
@@ -365,7 +365,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <template #label>
         <div flex items-center>
           <div>{{ t('settings.live2d.scale-and-position.x') }}</div>
-          <button px-2 text-xs outline-none title="Reset value to default" @click="() => position.x = 0">
+          <button px-2 text-xs outline-none title="Reset value to default" @click="() => position.x = defaultControlConfig.x.default">
             <div i-solar:forward-linear transform-scale-x--100 text="neutral-500 dark:neutral-400" />
           </button>
         </div>
@@ -375,7 +375,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <template #label>
         <div flex items-center>
           <div>{{ t('settings.live2d.scale-and-position.y') }}</div>
-          <button px-2 text-xs outline-none title="Reset value to default" @click="() => position.y = 0">
+          <button px-2 text-xs outline-none title="Reset value to default" @click="() => position.y = defaultControlConfig.y.default">
             <div i-solar:forward-linear transform-scale-x--100 text="neutral-500 dark:neutral-400" />
           </button>
         </div>

@@ -11,8 +11,18 @@ const viewControlsEnabled = ref(false)
 const viewControlMode = ref<SupportedControl>('scale')
 /** model position relative to the center of the screen, in percentages */
 const position = useLocalStorage<{ x: number, y: number }>('settings/live2d/position', { x: 0, y: 0 })
-/** model scaling factor. `1` means no scaling. */
-const scale = useLocalStorage('settings/live2d/scale', 1)
+
+/**
+ * Scale used only when `settings/live2d/scale` has never been written.
+ * Paired with the compact first-install main window (~380×300). Fit-model
+ * still frames the upper body at the bottom; this keeps Hiyori large enough
+ * that the short window does not leave a tall empty band above her head.
+ * Existing saved values are left alone.
+ */
+const FIRST_INSTALL_LIVE2D_SCALE = 1.15
+
+/** model scaling factor. `1` means fit-model's full upper-body frame. */
+const scale = useLocalStorage('settings/live2d/scale', FIRST_INSTALL_LIVE2D_SCALE)
 
 const formatPercentD1 = (val: number) => `${val.toFixed(1)}%`
 const formatToPercent = (val: number) => `${(val * 100).toFixed(0)}%`
@@ -37,6 +47,7 @@ export const defaultControlConfig: Record<SupportedControl, ControlConfig> = {
     min: 0.01,
     max: 3,
     step: 0.01,
+    // Reset button returns to the full frame. First install uses FIRST_INSTALL_LIVE2D_SCALE above.
     default: 1,
     buttonText: 'Scale',
   },
